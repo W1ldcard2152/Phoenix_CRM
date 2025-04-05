@@ -1,0 +1,321 @@
+# Auto Repair Shop CRM Project Summary
+
+## Business Context
+- Independent auto repair shop specializing in German vehicles
+- Rural location with limited competition for German car repairs
+- Adding repair services while maintaining existing parts business
+- Need system to manage local repair clients
+- Timeline: Approximately 2 weeks to launch
+
+## Core Requirements
+
+### Customer Management
+- Store customer contact information
+- Track customer vehicles and service history
+- Maintain notes and communication preferences
+
+### Vehicle Tracking
+- Year, make, model tracking
+- VIN and license plate information
+- Service history linked to each vehicle
+
+### Work Order System
+- Status tracking (Inspected, Parts Ordered, In Progress, etc.)
+- Priority levels
+- Diagnostic notes
+- Parts tracking and ordering
+- Labor estimates
+- Media attachments (scans, photos, receipts)
+
+### Media Repository
+- Store pre/post inspection scans
+- Diagnostic photos
+- Parts receipts
+- Ability to share media with customers
+
+### Appointment Scheduling
+- Calendar integration
+- Service type & duration tracking
+- Technician assignment
+- Online booking capability
+
+### Communication System
+- SMS/MMS capabilities
+- Email notifications
+- Appointment reminders
+- Status updates
+
+## Technology Stack
+
+### Frontend
+- React.js for Progressive Web App (PWA)
+- Tailwind CSS for responsive design
+- Service workers for offline capabilities
+- IndexedDB for local data caching
+
+### Backend
+- Node.js with Express
+- MongoDB for database
+- AWS S3 for media storage
+- Mongoose for data modeling
+
+### APIs & Services
+- Twilio for SMS/MMS
+- SendGrid for email
+- AWS S3 for file storage
+
+## Proposed File Structure
+
+```
+auto-repair-crm/
+│
+├── client/                     # Frontend React Application
+│   ├── public/                 
+│   │   ├── manifest.json       # PWA manifest
+│   │   ├── service-worker.js   # PWA service worker
+│   │   └── icons/              # PWA icons
+│   │
+│   ├── src/
+│   │   ├── assets/             # Static assets
+│   │   ├── components/         # Reusable components
+│   │   │   ├── common/         # Buttons, inputs, etc.
+│   │   │   ├── layout/         # Layout components
+│   │   │   ├── customers/      # Customer-related components
+│   │   │   ├── vehicles/       # Vehicle-related components
+│   │   │   ├── workorders/     # Work order components
+│   │   │   ├── appointments/   # Appointment components
+│   │   │   └── media/          # Media management components
+│   │   │
+│   │   ├── pages/              # Page components
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Customers/
+│   │   │   ├── Vehicles/
+│   │   │   ├── WorkOrders/
+│   │   │   ├── Appointments/
+│   │   │   └── Settings/
+│   │   │
+│   │   ├── contexts/           # React contexts
+│   │   ├── hooks/              # Custom React hooks
+│   │   ├── services/           # API services
+│   │   ├── utils/              # Utility functions
+│   │   ├── App.jsx             # Main App component
+│   │   └── index.jsx           # Entry point
+│   │
+│   └── package.json            # Frontend dependencies
+│
+├── server/                     # Backend Node.js Application
+│   ├── config/                 # Configuration files
+│   ├── controllers/            # Route controllers
+│   │   ├── customerController.js
+│   │   ├── vehicleController.js
+│   │   ├── workOrderController.js
+│   │   ├── appointmentController.js
+│   │   └── mediaController.js
+│   │
+│   ├── models/                 # Mongoose models
+│   │   ├── Customer.js
+│   │   ├── Vehicle.js
+│   │   ├── WorkOrder.js
+│   │   ├── Appointment.js
+│   │   └── Media.js
+│   │
+│   ├── routes/                 # Express routes
+│   │   ├── customerRoutes.js
+│   │   ├── vehicleRoutes.js
+│   │   ├── workOrderRoutes.js
+│   │   ├── appointmentRoutes.js
+│   │   └── mediaRoutes.js
+│   │
+│   ├── services/               # External services
+│   │   ├── s3Service.js        # AWS S3 integration
+│   │   ├── twilioService.js    # SMS/MMS integration
+│   │   └── emailService.js     # Email service
+│   │
+│   ├── utils/                  # Utility functions
+│   ├── middleware/             # Custom middleware
+│   ├── app.js                  # Express app setup
+│   └── server.js               # Entry point
+│
+├── .gitignore
+├── package.json                # Project dependencies
+└── README.md                   # Project documentation
+```
+
+## Data Models
+
+### Customer Schema
+```javascript
+{
+  name: String,
+  phone: String,
+  email: String,
+  address: {
+    street: String,
+    city: String,
+    state: String,
+    zip: String
+  },
+  vehicles: [{ type: ObjectId, ref: 'Vehicle' }],
+  communicationPreference: String, // "SMS", "Email", etc.
+  notes: String,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Vehicle Schema
+```javascript
+{
+  customer: { type: ObjectId, ref: 'Customer' },
+  year: Number,
+  make: String,
+  model: String,
+  vin: String,
+  licensePlate: String,
+  serviceHistory: [{ type: ObjectId, ref: 'WorkOrder' }],
+  notes: String,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### WorkOrder Schema
+```javascript
+{
+  vehicle: { type: ObjectId, ref: 'Vehicle' },
+  customer: { type: ObjectId, ref: 'Customer' },
+  date: Date,
+  priority: String, // "Normal", "High", "Low"
+  status: String, // "Inspected - Need Parts Ordered", etc.
+  serviceRequested: String,
+  diagnosticNotes: String,
+  parts: [{
+    name: String,
+    partNumber: String,
+    quantity: Number,
+    price: Number,
+    ordered: Boolean,
+    received: Boolean
+  }],
+  labor: [{
+    description: String,
+    hours: Number,
+    rate: Number
+  }],
+  media: [{
+    type: String, // "Pre-Inspection", "Diagnostic", "Parts Receipt", "Post-Inspection"
+    fileUrl: String,
+    fileName: String,
+    uploadedAt: Date,
+    notes: String
+  }],
+  totalEstimate: Number,
+  totalActual: Number,
+  appointmentId: { type: ObjectId, ref: 'Appointment' },
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Appointment Schema
+```javascript
+{
+  customer: { type: ObjectId, ref: 'Customer' },
+  vehicle: { type: ObjectId, ref: 'Vehicle' },
+  serviceType: String,
+  startTime: Date,
+  endTime: Date,
+  technician: String,
+  notes: String,
+  status: String, // "Scheduled", "Confirmed", "In Progress", "Completed", "Cancelled"
+  workOrder: { type: ObjectId, ref: 'WorkOrder' },
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## Key UI Components & Pages
+
+### Dashboard
+- Daily appointments overview
+- Vehicles currently in shop by status
+- Pending parts orders
+- Quick customer/vehicle lookup
+
+### Customer Management
+- Customer list with search and filtering
+- Customer details page with vehicles
+- Service history view
+- Add/Edit customer forms
+
+### Vehicle Management
+- Vehicle details page
+- Service history timeline
+- Media gallery for vehicle
+- Add/Edit vehicle forms
+
+### Work Order Management
+- Create/Edit work order forms
+- Status update workflow
+- Parts and labor tracking
+- Media upload and organization
+- Invoice generation
+
+### Appointment Scheduler
+- Calendar view by day/week/month
+- Appointment booking interface
+- Technician assignment and availability
+- Service duration estimates
+
+### Communication Center
+- SMS/MMS templates and sending interface
+- Email notifications
+- Automated appointment reminders
+- Status update notifications
+
+## Development Phases
+
+### Phase 1: Core Backend & Data Models
+- Set up MongoDB and Express server
+- Create data models and relations
+- Implement basic CRUD API endpoints
+
+### Phase 2: Basic Frontend
+- Create React application with routing
+- Implement core UI components
+- Connect to backend APIs
+
+### Phase 3: Media Management
+- S3 integration for file storage
+- Media upload/download functionality
+- Image preview and gallery views
+
+### Phase 4: Communication Features
+- Twilio integration for SMS/MMS
+- Email service integration
+- Notification templates and triggers
+
+### Phase 5: PWA & Offline Support
+- Service worker implementation
+- Offline data caching
+- Mobile-responsive layout optimization
+
+### Phase 6: Testing & Refinement
+- User testing with real workflows
+- Bug fixes and performance optimization
+- Documentation and training materials
+
+## MongoDB Configuration
+
+### Project Structure
+- **Project Name**: PhoenixCRM
+- **Cluster Name**: Development
+- **Database Name**: auto-repair-crm
+- **Collections**:
+  - customers
+  - vehicles
+  - workOrders
+  - appointments
+  - media
+
+This MongoDB Atlas configuration is set up on the free tier with automated security. The connection string for this database will be used in the application's environment variables for database connectivity.
