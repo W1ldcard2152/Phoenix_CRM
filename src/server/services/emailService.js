@@ -1,5 +1,5 @@
 const sgMail = require('@sendgrid/mail');
-const AppError = require('../../utils/appError');
+const AppError = require('../utils/appError');
 
 // Initialize SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);

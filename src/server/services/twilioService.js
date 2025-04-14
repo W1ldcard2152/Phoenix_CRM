@@ -1,5 +1,5 @@
 const twilio = require('twilio');
-const AppError = require('../../utils/appError');
+const AppError = require('../utils/appError');
 
 // Initialize Twilio client
 const client = twilio(
