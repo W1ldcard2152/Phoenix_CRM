@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Repair Shop - Work Order & Invoice Generator</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <!-- jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- html2canvas for PDF rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @media print {
+            .no-print { display: none; }
+            .print-only { display: block; }
+            body { font-size: 12pt; }
+            .page-break { page-break-after: always; }
+        }
+        .print-only { display: none; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="bg-gray-800 text-white py-6 px-4">
+                <h1 class="text-3xl font-bold text-center">Phoenix Automotive Group, Inc.</h1>
+                <p class="text-center mt-1">201 Ford St Newark NY 14513 | 315.830.0008</p>
+            </div>
+            <p class="text-center text-gray-600 mt-4 no-print">Generate professional work orders and invoices</p>
+        </header>
+
+        <!-- Tabs -->
+        <div class="no-print mb-6 flex border-b">
+            <button id="workOrderTab" class="px-4 py-2 text-blue-600 font-medium border-b-2 border-blue-600">Work Order</button>
+            <button id="invoiceTab" class="px-4 py-2 text-gray-600 font-medium">Invoice</button>
+            <button id="settingsTab" class="px-4 py-2 text-gray-600 font-medium">Settings</button>
+        </div>
+
+        <!-- Main Content -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <!-- Work Order Tab -->
+            <div id="workOrderContent" class="tab-content active">
+                <h2 class="text-2xl font-semibold mb-4">Create Work Order</h2>
+                <form id="workOrderForm" class="space-y-4">
+                    <!-- Work Order Info -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Work Order #</label>
+                            <input type="text" id="workOrderNumber" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Date</label>
+                            <input type="date" id="workOrderDate" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                        </div>
+                    </div>
+
+                    <!-- Customer Info -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Customer Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Name</label>
+                                <input type="text" id="customerName" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Phone</label>
+                                <input type="tel" id="customerPhone" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Email</label>
+                                <input type="email" id="customerEmail" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Address</label>
+                                <input type="text" id="customerAddress" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Info -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Vehicle Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Year/Make/Model</label>
+                                <input type="text" id="vehicleInfo" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="2015 BMW 335i" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">VIN</label>
+                                <input type="text" id="vehicleVin" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">License Plate</label>
+                                <input type="text" id="vehicleLicense" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Mileage</label>
+                                <input type="text" id="vehicleMileage" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Service Details -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Service Details</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Service Requested</label>
+                            <textarea id="serviceRequested" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Diagnostic Notes</label>
+                            <textarea id="diagnosticNotes" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Technician</label>
+                            <input type="text" id="technician" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                        </div>
+                    </div>
+
+                    <!-- Custom Message -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Custom Message</h3>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Message for Work Order/Invoice Footer (e.g., Thank you for choosing us!)</label>
+                            <textarea id="customMessage" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="Enter a message to include in the footer of the printed work order/invoice"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Parts -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Parts</h3>
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase no-print">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="partsTableBody" class="divide-y divide-gray-200"></tbody>
+                        </table>
+                        <button type="button" id="addPartBtn" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 no-print">Add Part</button>
+                    </div>
+
+                    <!-- Labor -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Labor</h3>
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase no-print">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="laborTableBody" class="divide-y divide-gray-200"></tbody>
+                        </table>
+                        <button type="button" id="addLaborBtn" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 no-print">Add Labor</button>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="flex justify-between">
+                        <button type="submit" id="saveWorkOrderBtn" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Save Work Order</button>
+                        <div class="space-x-2">
+                            <button type="button" id="printWorkOrderBtn" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Print Work Order</button>
+                            <button type="button" id="pdfWorkOrderBtn" class="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">Save as PDF</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Invoice Tab -->
+            <div id="invoiceContent" class="tab-content">
+                <h2 class="text-2xl font-semibold mb-4">Generate Invoice</h2>
+                <form id="invoiceForm" class="space-y-4">
+                    <!-- Load Work Order -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Load Work Order</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Select Work Order</label>
+                                <select id="selectWorkOrder" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <option value="">Select a work order...</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button type="button" id="loadWorkOrderBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Load</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Invoice Info -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Invoice Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Invoice #</label>
+                                <input type="text" id="invoiceNumber" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Date</label>
+                                <input type="date" id="invoiceDate" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Due Date</label>
+                                <input type="date" id="invoiceDueDate" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Payment Terms</label>
+                                <select id="paymentTerms" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <option value="Due on Receipt">Due on Receipt</option>
+                                    <option value="Net 15">Net 15</option>
+                                    <option value="Net 30">Net 30</option>
+                                    <option value="Net 60">Net 60</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Customer & Vehicle Info -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Customer & Vehicle Information</h3>
+                        <div id="invoiceCustomerVehicleInfo" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <p class="text-gray-500 italic col-span-2">Load a work order to populate this section.</p>
+                        </div>
+                    </div>
+
+                    <!-- Invoice Items -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Invoice Items</h3>
+                        <div id="invoiceItemsContainer">
+                            <p class="text-gray-500 italic">Load a work order to populate parts and labor.</p>
+                        </div>
+                    </div>
+
+                    <!-- Totals -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Totals</h3>
+                        <div class="flex justify-end">
+                            <div class="w-full md:w-1/2 space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="font-medium">Subtotal:</span>
+                                    <span id="invoiceSubtotal">$0.00</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-medium">Tax Rate:</span>
+                                    <div class="flex items-center">
+                                        <input type="number" id="taxRate" value="0" min="0" max="100" step="0.01" class="w-16 border border-gray-300 rounded-md shadow-sm p-1">
+                                        <span class="ml-1">%</span>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-medium">Tax Amount:</span>
+                                    <span id="taxAmount">$0.00</span>
+                                </div>
+                                <div class="flex justify-between border-t pt-2">
+                                    <span class="font-bold">Total:</span>
+                                    <span id="invoiceTotal" class="font-bold">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notes & Terms -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Notes & Terms</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Notes</label>
+                            <textarea id="invoiceNotes" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Terms & Conditions</label>
+                            <textarea id="invoiceTerms" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="flex justify-between">
+                        <button type="submit" id="saveInvoiceBtn" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Save Invoice</button>
+                        <div class="space-x-2">
+                            <button type="button" id="printInvoiceBtn" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Print Invoice</button>
+                            <button type="button" id="pdfInvoiceBtn" class="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">Save as PDF</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settingsContent" class="tab-content">
+                <h2 class="text-2xl font-semibold mb-4">Settings</h2>
+                <form id="settingsForm" class="space-y-4">
+                    <!-- Business Info -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Business Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Email</label>
+                                <input type="email" id="businessEmail" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Website</label>
+                                <input type="url" id="businessWebsite" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Defaults -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Defaults</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Tax Rate (%)</label>
+                                <input type="number" id="defaultTaxRate" min="0" max="100" step="0.01" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Labor Rate ($/hr)</label>
+                                <input type="number" id="defaultLaborRate" min="0" step="0.01" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Payment Terms</label>
+                                <select id="defaultPaymentTerms" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <option value="Due on Receipt">Due on Receipt</option>
+                                    <option value="Net 15">Net 15</option>
+                                    <option value="Net 30">Net 30</option>
+                                    <option value="Net 60">Net 60</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Number Prefix</label>
+                                <input type="text" id="numberPrefix" placeholder="e.g., INV-" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Default Notes, Terms, and Custom Message -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Default Notes, Terms, and Message</h3>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Invoice Notes</label>
+                            <textarea id="defaultNotes" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700">Invoice Terms</label>
+                            <textarea id="defaultTerms" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Work Order/Invoice Footer Message</label>
+                            <textarea id="defaultCustomMessage" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., Thank you for choosing us!"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Data Management -->
+                    <div class="border rounded-md p-4">
+                        <h3 class="text-lg font-medium mb-2">Data Management</h3>
+                        <p class="text-sm text-gray-600 mb-4">Data is stored locally in your browser.</p>
+                        <div class="flex space-x-4">
+                            <button type="button" id="exportDataBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Export Data</button>
+                            <button type="button" id="importDataBtn" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">Import Data</button>
+                            <input type="file" id="importDataFile" accept=".json" class="hidden">
+                        </div>
+                        <div class="mt-6">
+                            <button type="button" id="clearDataBtn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Clear All Data</button>
+                            <p class="text-xs text-gray-500 mt-1">Permanently deletes all data. Use with caution!</p>
+                        </div>
+                    </div>
+
+                    <!-- Save Settings -->
+                    <button type="submit" id="saveSettingsBtn" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Save Settings</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Print Templates -->
+        <div id="workOrderPrintTemplate" class="print-only"></div>
+        <div id="invoicePrintTemplate" class="print-only"></div>
+
+        <script>
+            // Global state
+            let workOrders = JSON.parse(localStorage.getItem('workOrders')) || [];
+            let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
+            let settings = JSON.parse(localStorage.getItem('settings')) || {
+                businessEmail: '',
+                businessWebsite: '',
+                defaultTaxRate: 0,
+                defaultLaborRate: 100,
+                defaultPaymentTerms: 'Due on Receipt',
+                numberPrefix: '',
+                defaultNotes: '',
+                defaultTerms: '',
+                defaultCustomMessage: 'Thank you for choosing Phoenix Automotive Group, Inc.!'
+            };
+            let partRowId = 0;
+            let laborRowId = 0;
+
+            // DOM Elements
+            const tabs = {
+                workOrder: document.getElementById('workOrderTab'),
+                invoice: document.getElementById('invoiceTab'),
+                settings: document.getElementById('settingsTab')
+            };
+            const contents = {
+                workOrder: document.getElementById('workOrderContent'),
+                invoice: document.getElementById('invoiceContent'),
+                settings: document.getElementById('settingsContent')
+            };
+
+            // Utility Functions
+            function generateId() {
+                return Date.now().toString(36) + Math.random().toString(36).substr(2);
+            }
+
+            function formatCurrency(amount) {
+                return `$${parseFloat(amount).toFixed(2)}`;
+            }
+
+            function parseCurrency(value) {
+                return parseFloat(value.replace(/\$/, '').replace(/,/g, '')) || 0;
+            }
+
+            function validateForm(formId) {
+                const form = document.getElementById(formId);
+                const requiredInputs = form.querySelectorAll('input[required]');
+                for (let input of requiredInputs) {
+                    if (!input.value.trim()) {
+                        alert(`Please fill in the required field: ${input.previousElementSibling.textContent}`);
+                        input.focus();
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // Preload Image for PDF Rendering
+            function preloadImage(src) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous"; // Handle CORS if image is hosted online
+                    img.onload = () => resolve(img);
+                    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+                    img.src = src;
+                });
+            }
+
+            // Tab Switching
+            function switchTab(tabName) {
+                Object.values(contents).forEach(content => content.classList.remove('active'));
+                Object.values(tabs).forEach(tab => {
+                    tab.classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+                    tab.classList.add('text-gray-600');
+                });
+                contents[tabName].classList.add('active');
+                tabs[tabName].classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+            }
+
+            tabs.workOrder.addEventListener('click', () => switchTab('workOrder'));
+            tabs.invoice.addEventListener('click', () => switchTab('invoice'));
+            tabs.settings.addEventListener('click', () => switchTab('settings'));
+
+            // Initialize Form
+            function initForm() {
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('workOrderDate').value = today;
+                document.getElementById('invoiceDate').value = today;
+
+                const prefix = settings.numberPrefix || '';
+                document.getElementById('workOrderNumber').value = `${prefix}WO-${(workOrders.length + 1).toString().padStart(4, '0')}`;
+                document.getElementById('invoiceNumber').value = `${prefix}INV-${(invoices.length + 1).toString().padStart(4, '0')}`;
+
+                let dueDate = new Date();
+                if (settings.defaultPaymentTerms === 'Net 15') dueDate.setDate(dueDate.getDate() + 15);
+                else if (settings.defaultPaymentTerms === 'Net 30') dueDate.setDate(dueDate.getDate() + 30);
+                else if (settings.defaultPaymentTerms === 'Net 60') dueDate.setDate(dueDate.getDate() + 60);
+                document.getElementById('invoiceDueDate').value = dueDate.toISOString().split('T')[0];
+
+                document.getElementById('taxRate').value = settings.defaultTaxRate;
+                document.getElementById('paymentTerms').value = settings.defaultPaymentTerms;
+                document.getElementById('invoiceNotes').value = settings.defaultNotes;
+                document.getElementById('invoiceTerms').value = settings.defaultTerms;
+                document.getElementById('customMessage').value = settings.defaultCustomMessage;
+
+                // Populate settings form
+                document.getElementById('businessEmail').value = settings.businessEmail;
+                document.getElementById('businessWebsite').value = settings.businessWebsite;
+                document.getElementById('defaultTaxRate').value = settings.defaultTaxRate;
+                document.getElementById('defaultLaborRate').value = settings.defaultLaborRate;
+                document.getElementById('defaultPaymentTerms').value = settings.defaultPaymentTerms;
+                document.getElementById('numberPrefix').value = settings.numberPrefix;
+                document.getElementById('defaultNotes').value = settings.defaultNotes;
+                document.getElementById('defaultTerms').value = settings.defaultTerms;
+                document.getElementById('defaultCustomMessage').value = settings.defaultCustomMessage;
+
+                // Populate work order dropdown
+                const selectWorkOrder = document.getElementById('selectWorkOrder');
+                selectWorkOrder.innerHTML = '<option value="">Select a work order...</option>';
+                workOrders.forEach(wo => {
+                    const option = document.createElement('option');
+                    option.value = wo.id;
+                    option.textContent = `${wo.workOrderNumber} - ${wo.customerName} - ${wo.vehicleInfo}`;
+                    selectWorkOrder.appendChild(option);
+                });
+
+                // Clear tables and add default rows
+                document.getElementById('partsTableBody').innerHTML = '';
+                document.getElementById('laborTableBody').innerHTML = '';
+                partRowId = 0;
+                laborRowId = 0;
+                addPartRow();
+                addLaborRow();
+            }
+
+            // Parts and Labor Management
+            function addPartRow(data = {}) {
+                const id = partRowId++;
+                const tbody = document.getElementById('partsTableBody');
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-3 py-2">
+                        <input type="text" id="partDesc${id}" value="${data.description || ''}" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <input type="text" id="partNumber${id}" value="${data.partNumber || ''}" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <input type="number" id="partQty${id}" value="${data.quantity || 1}" min="1" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <input type="number" id="partPrice${id}" value="${data.price || 0}" min="0" step="0.01" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <span id="partTotal${id}">${formatCurrency((data.quantity || 1) * (data.price || 0))}</span>
+                    </td>
+                    <td class="px-3 py-2 no-print">
+                        <button type="button" class="text-red-600 hover:text-red-800 remove-part">Remove</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+
+                const updateTotal = () => {
+                    const qty = parseFloat(document.getElementById(`partQty${id}`).value) || 0;
+                    const price = parseFloat(document.getElementById(`partPrice${id}`).value) || 0;
+                    document.getElementById(`partTotal${id}`).textContent = formatCurrency(qty * price);
+                };
+
+                document.getElementById(`partQty${id}`).addEventListener('input', updateTotal);
+                document.getElementById(`partPrice${id}`).addEventListener('input', updateTotal);
+                row.querySelector('.remove-part').addEventListener('click', () => row.remove());
+            }
+
+            function addLaborRow(data = {}) {
+                const id = laborRowId++;
+                const tbody = document.getElementById('laborTableBody');
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-3 py-2">
+                        <input type="text" id="laborDesc${id}" value="${data.description || ''}" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <input type="number" id="laborHours${id}" value="${data.hours || 1}" min="0.1" step="0.1" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <input type="number" id="laborRate${id}" value="${data.rate || settings.defaultLaborRate}" min="0" step="0.01" class="block w-full border-gray-300 rounded-md shadow-sm p-1">
+                    </td>
+                    <td class="px-3 py-2">
+                        <span id="laborTotal${id}">${formatCurrency((data.hours || 1) * (data.rate || settings.defaultLaborRate))}</span>
+                    </td>
+                    <td class="px-3 py-2 no-print">
+                        <button type="button" class="text-red-600 hover:text-red-800 remove-labor">Remove</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+
+                const updateTotal = () => {
+                    const hours = parseFloat(document.getElementById(`laborHours${id}`).value) || 0;
+                    const rate = parseFloat(document.getElementById(`laborRate${id}`).value) || 0;
+                    document.getElementById(`laborTotal${id}`).textContent = formatCurrency(hours * rate);
+                };
+
+                document.getElementById(`laborHours${id}`).addEventListener('input', updateTotal);
+                document.getElementById(`laborRate${id}`).addEventListener('input', updateTotal);
+                row.querySelector('.remove-labor').addEventListener('click', () => row.remove());
+            }
+
+            // Collect Work Order Data
+            function collectWorkOrderData() {
+                const wo = {
+                    id: generateId(),
+                    workOrderNumber: document.getElementById('workOrderNumber').value,
+                    workOrderDate: document.getElementById('workOrderDate').value,
+                    customerName: document.getElementById('customerName').value,
+                    customerPhone: document.getElementById('customerPhone').value,
+                    customerEmail: document.getElementById('customerEmail').value,
+                    customerAddress: document.getElementById('customerAddress').value,
+                    vehicleInfo: document.getElementById('vehicleInfo').value,
+                    vehicleVin: document.getElementById('vehicleVin').value,
+                    vehicleLicense: document.getElementById('vehicleLicense').value,
+                    vehicleMileage: document.getElementById('vehicleMileage').value,
+                    serviceRequested: document.getElementById('serviceRequested').value,
+                    diagnosticNotes: document.getElementById('diagnosticNotes').value,
+                    technician: document.getElementById('technician').value,
+                    customMessage: document.getElementById('customMessage').value,
+                    parts: [],
+                    labor: []
+                };
+
+                document.querySelectorAll('#partsTableBody tr').forEach(row => {
+                    const id = row.querySelector('input[id^="partDesc"]').id.replace('partDesc', '');
+                    const part = {
+                        description: document.getElementById(`partDesc${id}`).value,
+                        partNumber: document.getElementById(`partNumber${id}`).value,
+                        quantity: parseFloat(document.getElementById(`partQty${id}`).value) || 0,
+                        price: parseFloat(document.getElementById(`partPrice${id}`).value) || 0,
+                        total: parseCurrency(document.getElementById(`partTotal${id}`).textContent)
+                    };
+                    if (part.description) wo.parts.push(part);
+                });
+
+                document.querySelectorAll('#laborTableBody tr').forEach(row => {
+                    const id = row.querySelector('input[id^="laborDesc"]').id.replace('laborDesc', '');
+                    const labor = {
+                        description: document.getElementById(`laborDesc${id}`).value,
+                        hours: parseFloat(document.getElementById(`laborHours${id}`).value) || 0,
+                        rate: parseFloat(document.getElementById(`laborRate${id}`).value) || 0,
+                        total: parseCurrency(document.getElementById(`laborTotal${id}`).textContent)
+                    };
+                    if (labor.description) wo.labor.push(labor);
+                });
+
+                return wo;
+            }
+
+            // Save Work Order
+            document.getElementById('workOrderForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!validateForm('workOrderForm')) return;
+
+                const workOrder = collectWorkOrderData();
+                workOrders.push(workOrder);
+                localStorage.setItem('workOrders', JSON.stringify(workOrders));
+                alert('Work Order saved!');
+                document.getElementById('workOrderForm').reset();
+                initForm();
+            });
+
+            // Generate Work Order Print/PDF Content
+            function generateWorkOrderContent(wo) {
+                const total = wo.parts.reduce((sum, p) => sum + p.total, 0) + wo.labor.reduce((sum, l) => sum + l.total, 0);
+                return `
+                    <div style="padding: 20px; max-width: 100%; background-color: white;">
+                        <!-- Header -->
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                            <div>
+                                <img src="phxLogo.jpg" alt="Phoenix Automotive Group Logo" style="height: 60px; margin-bottom: 8px;">
+                                <h1 style="font-size: 24pt; font-weight: bold;">Phoenix Automotive Group, Inc.</h1>
+                                <p style="font-size: 10pt;">201 Ford St Newark NY 14513</p>
+                                <p style="font-size: 10pt;">Phone: 315.830.0008</p>
+                                <p style="font-size: 10pt;">Email: ${settings.businessEmail}</p>
+                                <p style="font-size: 10pt;">Web: ${settings.businessWebsite}</p>
+                            </div>
+                            <div style="text-align: right;">
+                                <h2 style="font-size: 18pt; font-weight: bold;">Work Order - Quote</h2>
+                                <p style="font-size: 14pt; font-weight: 600;">Work Order #${wo.workOrderNumber}</p>
+                                <p style="font-size: 10pt;">Date: ${new Date(wo.workOrderDate).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+
+                        <!-- Customer and Vehicle Info -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Customer Information</h3>
+                                <p style="font-size: 10pt;"><strong>Name:</strong> ${wo.customerName}</p>
+                                <p style="font-size: 10pt;"><strong>Phone:</strong> ${wo.customerPhone}</p>
+                                <p style="font-size: 10pt;"><strong>Email:</strong> ${wo.customerEmail}</p>
+                                <p style="font-size: 10pt;"><strong>Address:</strong> ${wo.customerAddress}</p>
+                            </div>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Vehicle Information</h3>
+                                <p style="font-size: 10pt;"><strong>Vehicle:</strong> ${wo.vehicleInfo}</p>
+                                <p style="font-size: 10pt;"><strong>VIN:</strong> ${wo.vehicleVin}</p>
+                                <p style="font-size: 10pt;"><strong>License:</strong> ${wo.vehicleLicense}</p>
+                                <p style="font-size: 10pt;"><strong>Mileage:</strong> ${wo.vehicleMileage}</p>
+                            </div>
+                        </div>
+
+                        <!-- Service Details -->
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Service Requested</h3>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <p style="font-size: 10pt;">${wo.serviceRequested.replace(/\n/g, '<br>') || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Diagnostic Notes</h3>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <p style="font-size: 10pt;">${wo.diagnosticNotes.replace(/\n/g, '<br>') || 'N/A'}</p>
+                            </div>
+                        </div>
+
+                        <!-- Parts -->
+                        ${wo.parts.length ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Parts</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #f3f4f6;">
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Description</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Part Number</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Qty</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Unit Price</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${wo.parts.map(p => `
+                                        <tr>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.description}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.partNumber}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.quantity}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(p.price)}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(p.total)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        ` : ''}
+
+                        <!-- Labor -->
+                        ${wo.labor.length ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Labor</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #f3f4f6;">
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Description</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Hours</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Rate</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${wo.labor.map(l => `
+                                        <tr>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${l.description}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${l.hours}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(l.rate)}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(l.total)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        ` : ''}
+
+                        <!-- Total -->
+                        <div style="margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: flex-end;">
+                                <div style="width: 200px;">
+                                    <div style="display: flex; justify-content: space-between; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0;">
+                                        <span style="font-weight: bold; font-size: 10pt;">Total Estimated Cost:</span>
+                                        <span style="font-weight: bold; font-size: 10pt;">${formatCurrency(total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Signature Section -->
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Customer Approval</h3>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <p style="font-size: 10pt; margin-bottom: 16px;">I authorize Phoenix Automotive Group, Inc. to perform the work described above and understand this is an estimate. Additional charges may apply if unforeseen issues arise.</p>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                    <div>
+                                        <p style="font-size: 10pt;"><strong>Customer Signature:</strong></p>
+                                        <p style="border-top: 1px solid #d1d5db; margin-top: 8px; padding-top: 8px;">_______________________________</p>
+                                    </div>
+                                    <div>
+                                        <p style="font-size: 10pt;"><strong>Date:</strong></p>
+                                        <p style="border-top: 1px solid #d1d5db; margin-top: 8px; padding-top: 8px;">_______________________________</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Custom Message Footer -->
+                        ${wo.customMessage ? `
+                        <div style="text-align: center; font-size: 9pt; color: #6b7280;">
+                            <p>${wo.customMessage.replace(/\n/g, '<br>')}</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // Print Work Order
+            document.getElementById('printWorkOrderBtn').addEventListener('click', () => {
+                if (!validateForm('workOrderForm')) return;
+
+                const wo = collectWorkOrderData();
+                document.getElementById('workOrderPrintTemplate').innerHTML = generateWorkOrderContent(wo);
+                window.print();
+            });
+
+            // Save Work Order as PDF
+            document.getElementById('pdfWorkOrderBtn').addEventListener('click', async () => {
+                if (!validateForm('workOrderForm')) return;
+
+                const wo = collectWorkOrderData();
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const content = generateWorkOrderContent(wo);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                tempDiv.style.width = '200mm'; // Approximate A4 width
+                document.body.appendChild(tempDiv);
+
+                try {
+                    // Preload the logo image
+                    await preloadImage('phxLogo.jpg');
+                    const canvas = await html2canvas(tempDiv, { scale: 2 });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgProps = doc.getImageProperties(imgData);
+                    const pdfWidth = doc.internal.pageSize.getWidth() - 10;
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    doc.addImage(imgData, 'PNG', 5, 5, pdfWidth, pdfHeight);
+                    doc.save(`WorkOrder_${wo.workOrderNumber}.pdf`);
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    alert('Failed to generate PDF. Please ensure the logo image is accessible and try again.');
+                } finally {
+                    document.body.removeChild(tempDiv);
+                }
+            });
+
+            // Load Work Order for Invoice
+            document.getElementById('loadWorkOrderBtn').addEventListener('click', () => {
+                const workOrderId = document.getElementById('selectWorkOrder').value;
+                if (!workOrderId) return alert('Please select a work order');
+
+                const wo = workOrders.find(w => w.id === workOrderId);
+                if (!wo) return alert('Work order not found');
+
+                document.getElementById('invoiceCustomerVehicleInfo').innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <h4 class="font-medium">Customer</h4>
+                            <p>${wo.customerName}</p>
+                            <p>${wo.customerPhone}</p>
+                            <p>${wo.customerEmail}</p>
+                            <p>${wo.customerAddress}</p>
+                        </div>
+                        <div>
+                            <h4 class="font-medium">Vehicle</h4>
+                            <p>${wo.vehicleInfo}</p>
+                            <p>VIN: ${wo.vehicleVin}</p>
+                            <p>License: ${wo.vehicleLicense}</p>
+                            <p>Mileage: ${wo.vehicleMileage}</p>
+                        </div>
+                    </div>
+                `;
+
+                const itemsContainer = document.getElementById('invoiceItemsContainer');
+                itemsContainer.innerHTML = '';
+                if (wo.parts.length) {
+                    itemsContainer.innerHTML += `
+                        <h4 class="font-medium mb-2">Parts</h4>
+                        <table class="min-w-full divide-y divide-gray-200 mb-4">
+                            <thead>
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part Number</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${wo.parts.map(p => `
+                                    <tr>
+                                        <td class="px-3 py-2">${p.description}</td>
+                                        <td class="px-3 py-2">${p.partNumber}</td>
+                                        <td class="px-3 py-2">${p.quantity}</td>
+                                        <td class="px-3 py-2">${formatCurrency(p.price)}</td>
+                                        <td class="px-3 py-2">${formatCurrency(p.total)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+                if (wo.labor.length) {
+                    itemsContainer.innerHTML += `
+                        <h4 class="font-medium mb-2">Labor</h4>
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Hours</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${wo.labor.map(l => `
+                                    <tr>
+                                        <td class="px-3 py-2">${l.description}</td>
+                                        <td class="px-3 py-2">${l.hours}</td>
+                                        <td class="px-3 py-2">${formatCurrency(l.rate)}</td>
+                                        <td class="px-3 py-2">${formatCurrency(l.total)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+
+                const subtotal = wo.parts.reduce((sum, p) => sum + p.total, 0) + wo.labor.reduce((sum, l) => sum + l.total, 0);
+                const taxRate = parseFloat(document.getElementById('taxRate').value) || 0;
+                const taxAmount = subtotal * (taxRate / 100);
+                const total = subtotal + taxAmount;
+
+                document.getElementById('invoiceSubtotal').textContent = formatCurrency(subtotal);
+                document.getElementById('taxAmount').textContent = formatCurrency(taxAmount);
+                document.getElementById('invoiceTotal').textContent = formatCurrency(total);
+            });
+
+            // Save Invoice
+            document.getElementById('invoiceForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!validateForm('invoiceForm')) return;
+
+                const workOrderId = document.getElementById('selectWorkOrder').value;
+                if (!workOrderId) return alert('Please select a work order');
+
+                const wo = workOrders.find(w => w.id === workOrderId) || {};
+                const invoice = {
+                    id: generateId(),
+                    invoiceNumber: document.getElementById('invoiceNumber').value,
+                    invoiceDate: document.getElementById('invoiceDate').value,
+                    invoiceDueDate: document.getElementById('invoiceDueDate').value,
+                    paymentTerms: document.getElementById('paymentTerms').value,
+                    relatedWorkOrder: workOrderId,
+                    customerName: wo.customerName || '',
+                    customerPhone: wo.customerPhone || '',
+                    customerEmail: wo.customerEmail || '',
+                    customerAddress: wo.customerAddress || '',
+                    vehicleInfo: wo.vehicleInfo || '',
+                    vehicleVin: wo.vehicleVin || '',
+                    vehicleLicense: wo.vehicleLicense || '',
+                    vehicleMileage: wo.vehicleMileage || '',
+                    customMessage: wo.customMessage || '',
+                    parts: wo.parts || [],
+                    labor: wo.labor || [],
+                    subtotal: parseCurrency(document.getElementById('invoiceSubtotal').textContent),
+                    taxRate: parseFloat(document.getElementById('taxRate').value) || 0,
+                    taxAmount: parseCurrency(document.getElementById('taxAmount').textContent),
+                    total: parseCurrency(document.getElementById('invoiceTotal').textContent),
+                    notes: document.getElementById('invoiceNotes').value,
+                    terms: document.getElementById('invoiceTerms').value,
+                    businessEmail: settings.businessEmail,
+                    businessWebsite: settings.businessWebsite
+                };
+
+                invoices.push(invoice);
+                localStorage.setItem('invoices', JSON.stringify(invoices));
+                alert('Invoice saved!');
+                document.getElementById('invoiceForm').reset();
+                document.getElementById('invoiceCustomerVehicleInfo').innerHTML = '<p class="text-gray-500 italic col-span-2">Load a work order to populate this section.</p>';
+                document.getElementById('invoiceItemsContainer').innerHTML = '<p class="text-gray-500 italic">Load a work order to populate parts and labor.</p>';
+                initForm();
+            });
+
+            // Generate Invoice Print/PDF Content
+            function generateInvoiceContent(invoice) {
+                return `
+                    <div style="padding: 20px; max-width: 100%; background-color: white;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                            <div>
+                                <img src="phxLogo.jpg" alt="Phoenix Automotive Group Logo" style="height: 60px; margin-bottom: 8px;">
+                                <h1 style="font-size: 24pt; font-weight: bold;">Phoenix Automotive Group, Inc.</h1>
+                                <p style="font-size: 10pt;">201 Ford St Newark NY 14513</p>
+                                <p style="font-size: 10pt;">Phone: 315.830.0008</p>
+                                <p style="font-size: 10pt;">Email: ${settings.businessEmail}</p>
+                                <p style="font-size: 10pt;">Web: ${settings.businessWebsite}</p>
+                            </div>
+                            <div style="text-align: right;">
+                                <h2 style="font-size: 18pt; font-weight: bold;">INVOICE</h2>
+                                <p style="font-size: 14pt; font-weight: 600;">Invoice #${invoice.invoiceNumber}</p>
+                                <p style="font-size: 10pt;">Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}</p>
+                                <p style="font-size: 10pt;">Due: ${new Date(invoice.invoiceDueDate).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Customer Information</h3>
+                                <p style="font-size: 10pt;"><strong>Name:</strong> ${invoice.customerName}</p>
+                                <p style="font-size: 10pt;"><strong>Phone:</strong> ${invoice.customerPhone}</p>
+                                <p style="font-size: 10pt;"><strong>Email:</strong> ${invoice.customerEmail}</p>
+                                <p style="font-size: 10pt;"><strong>Address:</strong> ${invoice.customerAddress}</p>
+                            </div>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Vehicle Information</h3>
+                                <p style="font-size: 10pt;"><strong>Vehicle:</strong> ${invoice.vehicleInfo}</p>
+                                <p style="font-size: 10pt;"><strong>VIN:</strong> ${invoice.vehicleVin}</p>
+                                <p style="font-size: 10pt;"><strong>License:</strong> ${invoice.vehicleLicense}</p>
+                                <p style="font-size: 10pt;"><strong>Mileage:</strong> ${invoice.vehicleMileage}</p>
+                            </div>
+                        </div>
+                        ${invoice.parts.length ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Parts</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #f3f4f6;">
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Description</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Part Number</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Qty</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Price</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${invoice.parts.map(p => `
+                                        <tr>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.description}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.partNumber}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${p.quantity}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(p.price)}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(p.total)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        ` : ''}
+                        ${invoice.labor.length ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Labor</h3>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #f3f4f6;">
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Description</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Hours</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Rate</th>
+                                        <th style="border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 10pt; font-weight: 600;">Total</th>
+                                    </tr>
+                                </                </thead>
+                                <tbody>
+                                    ${invoice.labor.map(l => `
+                                        <tr>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${l.description}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${l.hours}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(l.rate)}</td>
+                                            <td style="border: 1px solid #e5e7eb; padding: 8px; font-size: 10pt;">${formatCurrency(l.total)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        ` : ''}
+                        <div style="margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: flex-end;">
+                                <div style="width: 200px;">
+                                    <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                                        <span style="font-size: 10pt;">Subtotal:</span>
+                                        <span style="font-size: 10pt;">${formatCurrency(invoice.subtotal)}</span>
+                                    </div>
+                                    <div style="display: flexibly; justify-content: space-between; padding: 8px 0;">
+                                        <span style="font-size: 10pt;">Tax (${invoice.taxRate}%):</span>
+                                        <span style="font-size: 10pt;">${formatCurrency(invoice.taxAmount)}</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 0; font-weight: bold;">
+                                        <span style="font-size: 10pt;">Total:</span>
+                                        <span style="font-size: 10pt;">${formatCurrency(invoice.total)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ${invoice.notes ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Notes</h3>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <p style="font-size: 10pt;">${invoice.notes.replace(/\n/g, '<br>')}</p>
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${invoice.terms ? `
+                        <div style="margin-bottom: 20px;">
+                            <h3 style="font-size: 14pt; font-weight: 600; margin-bottom: 8px;">Terms & Conditions</h3>
+                            <div style="border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px;">
+                                <p style="font-size: 10pt;">${invoice.terms.replace(/\n/g, '<br>')}</p>
+                            </div>
+                        </div>
+                        ` : ''}
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div></div>
+                            <div style="text-align: right;">
+                                <p style="margin-bottom: 32px; font-size: 10pt;">Payment Received: _______________________</p>
+                                <p style="font-size: 10pt;">Date: _______________________</p>
+                            </div>
+                        </div>
+                        <!-- Custom Message Footer -->
+                        ${invoice.customMessage ? `
+                        <div style="text-align: center; font-size: 9pt; color: #6b7280; margin-top: 20px;">
+                            <p>${invoice.customMessage.replace(/\n/g, '<br>')}</p>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // Print Invoice
+            document.getElementById('printInvoiceBtn').addEventListener('click', () => {
+                if (!validateForm('invoiceForm')) return;
+
+                const workOrderId = document.getElementById('selectWorkOrder').value;
+                if (!workOrderId) return alert('Please select a work order');
+
+                const wo = workOrders.find(w => w.id === workOrderId) || {};
+                const invoice = {
+                    invoiceNumber: document.getElementById('invoiceNumber').value,
+                    invoiceDate: document.getElementById('invoiceDate').value,
+                    invoiceDueDate: document.getElementById('invoiceDueDate').value,
+                    paymentTerms: document.getElementById('paymentTerms').value,
+                    customerName: wo.customerName || '',
+                    customerPhone: wo.customerPhone || '',
+                    customerEmail: wo.customerEmail || '',
+                    customerAddress: wo.customerAddress || '',
+                    vehicleInfo: wo.vehicleInfo || '',
+                    vehicleVin: wo.vehicleVin || '',
+                    vehicleLicense: wo.vehicleLicense || '',
+                    vehicleMileage: wo.vehicleMileage || '',
+                    customMessage: wo.customMessage || '',
+                    parts: wo.parts || [],
+                    labor: wo.labor || [],
+                    subtotal: parseCurrency(document.getElementById('invoiceSubtotal').textContent),
+                    taxRate: parseFloat(document.getElementById('taxRate').value) || 0,
+                    taxAmount: parseCurrency(document.getElementById('taxAmount').textContent),
+                    total: parseCurrency(document.getElementById('invoiceTotal').textContent),
+                    notes: document.getElementById('invoiceNotes').value,
+                    terms: document.getElementById('invoiceTerms').value
+                };
+
+                document.getElementById('invoicePrintTemplate').innerHTML = generateInvoiceContent(invoice);
+                window.print();
+            });
+
+            // Save Invoice as PDF
+            document.getElementById('pdfInvoiceBtn').addEventListener('click', async () => {
+                if (!validateForm('invoiceForm')) return;
+
+                const workOrderId = document.getElementById('selectWorkOrder').value;
+                if (!workOrderId) return alert('Please select a work order');
+
+                const wo = workOrders.find(w => w.id === workOrderId) || {};
+                const invoice = {
+                    invoiceNumber: document.getElementById('invoiceNumber').value,
+                    invoiceDate: document.getElementById('invoiceDate').value,
+                    invoiceDueDate: document.getElementById('invoiceDueDate').value,
+                    paymentTerms: document.getElementById('paymentTerms').value,
+                    customerName: wo.customerName || '',
+                    customerPhone: wo.customerPhone || '',
+                    customerEmail: wo.customerEmail || '',
+                    customerAddress: wo.customerAddress || '',
+                    vehicleInfo: wo.vehicleInfo || '',
+                    vehicleVin: wo.vehicleVin || '',
+                    vehicleLicense: wo.vehicleLicense || '',
+                    vehicleMileage: wo.vehicleMileage || '',
+                    customMessage: wo.customMessage || '',
+                    parts: wo.parts || [],
+                    labor: wo.labor || [],
+                    subtotal: parseCurrency(document.getElementById('invoiceSubtotal').textContent),
+                    taxRate: parseFloat(document.getElementById('taxRate').value) || 0,
+                    taxAmount: parseCurrency(document.getElementById('taxAmount').textContent),
+                    total: parseCurrency(document.getElementById('invoiceTotal').textContent),
+                    notes: document.getElementById('invoiceNotes').value,
+                    terms: document.getElementById('invoiceTerms').value
+                };
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const content = generateInvoiceContent(invoice);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                tempDiv.style.width = '200mm'; // Approximate A4 width
+                document.body.appendChild(tempDiv);
+
+                try {
+                    // Preload the logo image
+                    await preloadImage('phxLogo.jpg');
+                    const canvas = await html2canvas(tempDiv, { scale: 2 });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgProps = doc.getImageProperties(imgData);
+                    const pdfWidth = doc.internal.pageSize.getWidth() - 10;
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    doc.addImage(imgData, 'PNG', 5, 5, pdfWidth, pdfHeight);
+                    doc.save(`Invoice_${invoice.invoiceNumber}.pdf`);
+                } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    alert('Failed to generate PDF. Please ensure the logo image is accessible and try again.');
+                } finally {
+                    document.body.removeChild(tempDiv);
+                }
+            });
+
+            // Save Settings
+            document.getElementById('settingsForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                settings = {
+                    businessEmail: document.getElementById('businessEmail').value,
+                    businessWebsite: document.getElementById('businessWebsite').value,
+                    defaultTaxRate: parseFloat(document.getElementById('defaultTaxRate').value) || 0,
+                    defaultLaborRate: parseFloat(document.getElementById('defaultLaborRate').value) || 0,
+                    defaultPaymentTerms: document.getElementById('defaultPaymentTerms').value,
+                    numberPrefix: document.getElementById('numberPrefix').value,
+                    defaultNotes: document.getElementById('defaultNotes').value,
+                    defaultTerms: document.getElementById('defaultTerms').value,
+                    defaultCustomMessage: document.getElementById('defaultCustomMessage').value
+                };
+                localStorage.setItem('settings', JSON.stringify(settings));
+                alert('Settings saved!');
+                initForm();
+            });
+
+            // Data Management
+            document.getElementById('exportDataBtn').addEventListener('click', () => {
+                const data = { workOrders, invoices, settings };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'auto-repair-data.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            document.getElementById('importDataBtn').addEventListener('click', () => {
+                document.getElementById('importDataFile').click();
+            });
+
+            document.getElementById('importDataFile').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        workOrders = data.workOrders || [];
+                        invoices = data.invoices || [];
+                        settings = data.settings || settings;
+                        localStorage.setItem('workOrders', JSON.stringify(workOrders));
+                        localStorage.setItem('invoices', JSON.stringify(invoices));
+                        localStorage.setItem('settings', JSON.stringify(settings));
+                        alert('Data imported!');
+                        initForm();
+                    } catch (err) {
+                        alert('Invalid file format');
+                    }
+                };
+                reader.readAsText(file);
+            });
+
+            document.getElementById('clearDataBtn').addEventListener('click', () => {
+                if (confirm('Clear all data? This cannot be undone.')) {
+                    workOrders = [];
+                    invoices = [];
+                    localStorage.removeItem('workOrders');
+                    localStorage.removeItem('invoices');
+                    if (!confirm('Keep settings?')) {
+                        settings = {};
+                        localStorage.removeItem('settings');
+                    }
+                    alert('Data cleared!');
+                    initForm();
+                }
+            });
+
+            // Tax Rate Update
+            document.getElementById('taxRate').addEventListener('input', () => {
+                const workOrderId = document.getElementById('selectWorkOrder').value;
+                if (!workOrderId) return;
+
+                const wo = workOrders.find(w => w.id === workOrderId);
+                if (!wo) return;
+
+                const subtotal = wo.parts.reduce((sum, p) => sum + p.total, 0) + wo.labor.reduce((sum, l) => sum + l.total, 0);
+                const taxRate = parseFloat(document.getElementById('taxRate').value) || 0;
+                const taxAmount = subtotal * (taxRate / 100);
+                const total = subtotal + taxAmount;
+
+                document.getElementById('invoiceSubtotal').textContent = formatCurrency(subtotal);
+                document.getElementById('taxAmount').textContent = formatCurrency(taxAmount);
+                document.getElementById('invoiceTotal').textContent = formatCurrency(total);
+            });
+
+            // Initialize
+            document.getElementById('addPartBtn').addEventListener('click', () => addPartRow());
+            document.getElementById('addLaborBtn').addEventListener('click', () => addLaborRow());
+            initForm();
+        </script>
+        <!-- html2canvas for PDF rendering -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    </div>
+</body>
+</html>

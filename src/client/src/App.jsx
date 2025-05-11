@@ -1,3 +1,5 @@
+// src/client/src/App.jsx - Updated with Invoice Generator Routes
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -16,6 +18,7 @@ import VehicleForm from './pages/Vehicles/VehicleForm';
 import WorkOrderList from './pages/WorkOrders/WorkOrderList';
 import WorkOrderDetail from './pages/WorkOrders/WorkOrderDetail';
 import WorkOrderForm from './pages/WorkOrders/WorkOrderForm';
+import InvoiceGenerator from './pages/Invoices/InvoiceGenerator';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 
@@ -70,6 +73,11 @@ const App = () => {
                       <Route path="/work-orders/new" element={<WorkOrderForm />} />
                       <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
                       <Route path="/work-orders/:id/edit" element={<WorkOrderForm />} />
+                      
+                      {/* Invoice Routes */}
+                      <Route path="/invoices/new" element={<InvoiceGenerator />} />
+                      <Route path="/invoices/new/:id" element={<InvoiceGenerator />} />
+                      <Route path="/invoices/generate" element={<InvoiceGenerator />} />
                       
                       {/* Fallback - Redirect to Dashboard */}
                       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,3 +1,5 @@
+// src/client/src/components/layout/Sidebar.jsx - Updated with Invoice link
+
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +24,7 @@ const Sidebar = () => {
     { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car' },
     { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list' },
     { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt' },
+    { name: 'Invoices', path: '/invoices/generate', icon: 'fas fa-file-invoice-dollar' },
   ];
 
   return (

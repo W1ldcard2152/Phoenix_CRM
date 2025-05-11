@@ -108,16 +108,9 @@ const WorkOrderDetail = () => {
     }
   };
 
-  const generateInvoice = async () => {
-    try {
-      const response = await WorkOrderService.generateInvoice(id);
-      // In a real app, you might do something with the invoice data
-      console.log('Invoice generated:', response.data.invoice);
-      alert('Invoice generated successfully!');
-    } catch (err) {
-      console.error('Error generating invoice:', err);
-      setError('Failed to generate invoice. Please try again later.');
-    }
+  const generateInvoice = () => {
+    // Navigate to the invoice generator with this work order ID
+    navigate(`/invoices/new/${id}`);
   };
 
   // Format currency
@@ -266,17 +259,19 @@ const WorkOrderDetail = () => {
         </Card>
 
         <Card 
-          title="Totals" 
-          headerActions={
-            <Button
-              onClick={generateInvoice}
-              variant="outline"
-              size="sm"
-            >
-              Generate Invoice
-            </Button>
-          }
-        >
+  title="Totals" 
+  headerActions={
+    <div className="flex space-x-2">
+      <Button
+        onClick={generateInvoice}
+        variant="primary"
+        size="sm"
+      >
+        Generate Invoice
+      </Button>
+    </div>
+  }
+>
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-sm">

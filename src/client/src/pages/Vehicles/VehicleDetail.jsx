@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
-import WorkOrderService from '../../services/workOrderService';
 import AppointmentService from '../../services/appointmentService';
 
 const VehicleDetail = () => {
