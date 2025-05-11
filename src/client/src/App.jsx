@@ -1,4 +1,4 @@
-// src/client/src/App.jsx - Updated with Invoice Generator Routes
+// src/client/src/App.jsx - Fixed with Appointment Routes
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -18,6 +18,9 @@ import VehicleForm from './pages/Vehicles/VehicleForm';
 import WorkOrderList from './pages/WorkOrders/WorkOrderList';
 import WorkOrderDetail from './pages/WorkOrders/WorkOrderDetail';
 import WorkOrderForm from './pages/WorkOrders/WorkOrderForm';
+import AppointmentList from './pages/Appointments/AppointmentList';
+import AppointmentDetail from './pages/Appointments/AppointmentDetail';
+import AppointmentForm from './pages/Appointments/AppointmentForm';
 import InvoiceGenerator from './pages/Invoices/InvoiceGenerator';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
@@ -73,6 +76,12 @@ const App = () => {
                       <Route path="/work-orders/new" element={<WorkOrderForm />} />
                       <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
                       <Route path="/work-orders/:id/edit" element={<WorkOrderForm />} />
+                      
+                      {/* Appointment Routes */}
+                      <Route path="/appointments" element={<AppointmentList />} />
+                      <Route path="/appointments/new" element={<AppointmentForm />} />
+                      <Route path="/appointments/:id" element={<AppointmentDetail />} />
+                      <Route path="/appointments/:id/edit" element={<AppointmentForm />} />
                       
                       {/* Invoice Routes */}
                       <Route path="/invoices/new" element={<InvoiceGenerator />} />
