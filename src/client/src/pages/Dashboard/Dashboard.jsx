@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import AppointmentCalendar from '../../components/dashboard/AppointmentCalendar';
 import WorkOrderService from '../../services/workOrderService';
 import AppointmentService from '../../services/appointmentService';
 
@@ -66,6 +67,10 @@ const Dashboard = () => {
           {error}
         </div>
       )}
+      
+      <div className="mb-6">
+        <AppointmentCalendar />
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Quick Stats */}
