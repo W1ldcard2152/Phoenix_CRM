@@ -1,71 +1,31 @@
-// src/client/src/components/dashboard/WorkflowSummary.jsx - Fixed imports
+// src/client/src/components/dashboard/WorkflowSummary.jsx
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../common/Card';
 import Button from '../common/Button';
-// Import services directly - fix the imports
 import AppointmentService from '../../services/appointmentService';
-import WorkOrderService from '../../services/workOrderService';
-import QuickScheduleModal from '../scheduling/QuickScheduleModal';
 
 /**
- * Component that displays a summary of work orders and appointments
- * to help manage the workflow between the two
+ * Modified Workflow Summary Component that shows Today's Appointments
+ * instead of Needs Scheduling section
  */
 const WorkflowSummary = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [unscheduledWorkOrders, setUnscheduledWorkOrders] = useState([]);
   const [todayAppointments, setTodayAppointments] = useState([]);
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
-  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState(null);
 
   useEffect(() => {
     fetchWorkflowData();
   }, []);
 
-  // Replace the workflowService with direct calls to services
   const fetchWorkflowData = async () => {
     try {
       setLoading(true);
       
       // Get today's appointments
       const todayApptsResponse = await AppointmentService.getTodayAppointments();
-      
-      // Get active work orders that need scheduling
-      // Get active work orders (not completed or cancelled)
-      const schedulableStatuses = ['Created', 'Inspected - Need Parts Ordered', 'Parts Ordered', 'Parts Received'];
-      
-      const workOrdersPromises = schedulableStatuses.map(status => 
-        WorkOrderService.getWorkOrdersByStatus(status)
-      );
-      
-      const workOrdersResponses = await Promise.all(workOrdersPromises);
-      
-      // Combine and flatten work orders from different statuses
-      const allWorkOrders = workOrdersResponses.flatMap(
-        response => response.data.workOrders || []
-      );
-      
-      // Get all appointments to filter out work orders that already have appointments
-      const appointmentsResponse = await AppointmentService.getAllAppointments();
-      const appointments = appointmentsResponse.data.appointments || [];
-      
-      // Create a set of work order IDs that already have appointments
-      const scheduledWorkOrderIds = new Set(
-        appointments
-          .filter(a => a.workOrder)
-          .map(a => typeof a.workOrder === 'object' ? a.workOrder._id : a.workOrder)
-      );
-      
-      // Filter out work orders that already have appointments
-      const unscheduledWorkOrders = allWorkOrders.filter(
-        wo => !scheduledWorkOrderIds.has(wo._id)
-      );
-      
-      // Set the state
-      setUnscheduledWorkOrders(unscheduledWorkOrders || []);
       setTodayAppointments(todayApptsResponse.data.appointments || []);
       
       setLoading(false);
@@ -74,16 +34,6 @@ const WorkflowSummary = () => {
       setError('Failed to load workflow data');
       setLoading(false);
     }
-  };
-
-  const handleQuickSchedule = (workOrderId) => {
-    setSelectedWorkOrderId(workOrderId);
-    setScheduleModalOpen(true);
-  };
-
-  const handleAppointmentCreated = (result) => {
-    // Refresh the data after an appointment is created
-    fetchWorkflowData();
   };
 
   const formatTime = (dateString) => {
@@ -115,72 +65,32 @@ const WorkflowSummary = () => {
     <Card 
       title="Workflow Summary" 
       headerActions={
-        <Button 
-          to="/work-orders/new?createAppointment=true" 
-          variant="primary"
-          size="sm"
-        >
-          New Work Order + Appointment
-        </Button>
+        <div className="flex space-x-2">
+          <Button 
+            to="/work-orders/new?createAppointment=true" 
+            variant="primary"
+            size="sm"
+          >
+            New Work Order + Appointment
+          </Button>
+          <Button 
+            to="/customers/new" 
+            variant="outline"
+            size="sm"
+          >
+            New Customer
+          </Button>
+          <Button 
+            to="/vehicles/new" 
+            variant="outline"
+            size="sm"
+          >
+            New Vehicle
+          </Button>
+        </div>
       }
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Unscheduled Work Orders */}
-        <div>
-          <h3 className="font-medium text-lg mb-3 text-gray-700">Needs Scheduling</h3>
-          {unscheduledWorkOrders.length === 0 ? (
-            <div className="text-center py-4 bg-gray-50 rounded-md text-gray-500">
-              <p>No unscheduled work orders</p>
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {unscheduledWorkOrders.slice(0, 5).map(workOrder => (
-                <li key={workOrder._id} className="py-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-800">
-                        {workOrder.serviceRequested}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {workOrder.customer?.name} • {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Created: {new Date(workOrder.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        onClick={() => handleQuickSchedule(workOrder._id)}
-                        variant="primary"
-                        size="sm"
-                      >
-                        Schedule
-                      </Button>
-                      <Button
-                        to={`/work-orders/${workOrder._id}`}
-                        variant="outline"
-                        size="sm"
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-              {unscheduledWorkOrders.length > 5 && (
-                <li className="py-3 text-center">
-                  <Button
-                    to="/appointments"
-                    variant="link"
-                  >
-                    View all {unscheduledWorkOrders.length} unscheduled work orders
-                  </Button>
-                </li>
-              )}
-            </ul>
-          )}
-        </div>
-        
+      <div>
         {/* Today's Appointments */}
         <div>
           <h3 className="font-medium text-lg mb-3 text-gray-700">Today's Appointments</h3>
@@ -190,7 +100,7 @@ const WorkflowSummary = () => {
             </div>
           ) : (
             <ul className="divide-y divide-gray-200">
-              {todayAppointments.slice(0, 5).map(appointment => (
+              {todayAppointments.map((appointment) => (
                 <li key={appointment._id} className="py-3">
                   <div className="flex justify-between items-start">
                     <div>
@@ -251,28 +161,10 @@ const WorkflowSummary = () => {
                   </div>
                 </li>
               ))}
-              {todayAppointments.length > 5 && (
-                <li className="py-3 text-center">
-                  <Button
-                    to="/appointments"
-                    variant="link"
-                  >
-                    View all {todayAppointments.length} appointments
-                  </Button>
-                </li>
-              )}
             </ul>
           )}
         </div>
       </div>
-      
-      {/* Quick Schedule Modal */}
-      <QuickScheduleModal
-        isOpen={scheduleModalOpen}
-        onClose={() => setScheduleModalOpen(false)}
-        workOrderId={selectedWorkOrderId}
-        onScheduled={handleAppointmentCreated}
-      />
     </Card>
   );
 };
