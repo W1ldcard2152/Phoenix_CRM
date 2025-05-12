@@ -75,6 +75,15 @@ const MediaSchema = new Schema({
   }
 });
 
+// Service Schema (new addition)
+const ServiceSchema = new Schema({
+  description: {
+    type: String,
+    required: true,
+    trim: true
+  }
+});
+
 // Main WorkOrder Schema
 const WorkOrderSchema = new Schema(
   {
@@ -114,9 +123,11 @@ const WorkOrderSchema = new Schema(
       ],
       default: 'Created'
     },
+    // Replace single serviceRequested with services array
+    services: [ServiceSchema],
+    // Keep serviceRequested for backward compatibility
     serviceRequested: {
       type: String,
-      required: true,
       trim: true
     },
     diagnosticNotes: {
@@ -169,6 +180,22 @@ WorkOrderSchema.virtual('laborCost').get(function() {
 // Virtual for total cost calculation
 WorkOrderSchema.virtual('totalCost').get(function() {
   return this.partsCost + this.laborCost;
+});
+
+// Middleware to handle backward compatibility
+WorkOrderSchema.pre('save', function(next) {
+  // If serviceRequested exists but services is empty, migrate it
+  if (this.serviceRequested && (!this.services || this.services.length === 0)) {
+    this.services = [{ description: this.serviceRequested }];
+  }
+  
+  // If services exists, update serviceRequested for backward compatibility
+  if (this.services && this.services.length > 0) {
+    // Join all service descriptions with linebreaks for display in single field
+    this.serviceRequested = this.services.map(service => service.description).join('\n');
+  }
+  
+  next();
 });
 
 // Method to update status and track status history

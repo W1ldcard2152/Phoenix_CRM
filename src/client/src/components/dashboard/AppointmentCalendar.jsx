@@ -1,4 +1,4 @@
-// src/client/src/components/Dashboard/AppointmentCalendar.jsx
+// src/client/src/components/Dashboard/AppointmentCalendar.jsx - Fixed dependency issue
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import moment from 'moment';
@@ -14,9 +14,10 @@ const AppointmentCalendar = () => {
   const [showWeekends, setShowWeekends] = useState(false);
   const navigate = useNavigate();
 
+  // Make sure currentWeek is included in the dependency array
   useEffect(() => {
     fetchWeekAppointments();
-  }, [currentWeek]);
+  }, [currentWeek]); // currentWeek is now properly included as a dependency
 
   const fetchWeekAppointments = async () => {
     try {

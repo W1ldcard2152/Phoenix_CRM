@@ -179,7 +179,9 @@ const WorkOrderDetail = () => {
     <div className="container mx-auto">
       <div className="mb-6 flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">
-          Work Order: {workOrder.serviceRequested}
+          Work Order: {workOrder.services && workOrder.services.length > 0 
+            ? workOrder.services[0].description 
+            : workOrder.serviceRequested || 'No Description'}
         </h1>
         <div className="flex space-x-2">
           <Button
@@ -235,10 +237,32 @@ const WorkOrderDetail = () => {
                 {new Date(workOrder.date).toLocaleDateString()}
               </p>
             </div>
+            
+            {/* Services Requested - Updated to display multiple services */}
             <div>
-              <p className="text-sm text-gray-500">Service Requested</p>
-              <p className="font-medium">{workOrder.serviceRequested}</p>
+              <p className="text-sm text-gray-500">Services Requested</p>
+              <div className="font-medium space-y-1">
+                {workOrder.services && workOrder.services.length > 0 ? (
+                  workOrder.services.map((service, index) => (
+                    <div key={index} className="py-1">
+                      {index > 0 && <div className="border-t border-gray-100 my-1"></div>}
+                      <p>{service.description}</p>
+                    </div>
+                  ))
+                ) : workOrder.serviceRequested ? (
+                  // Backward compatibility: Display serviceRequested if services array is empty
+                  workOrder.serviceRequested.split('\n').map((line, idx) => (
+                    <div key={idx} className="py-1">
+                      {idx > 0 && <div className="border-t border-gray-100 my-1"></div>}
+                      <p>{line}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p>No services specified</p>
+                )}
+              </div>
             </div>
+            
             <div>
               <p className="text-sm text-gray-500">Priority</p>
               <p className="font-medium">{workOrder.priority}</p>
@@ -259,19 +283,19 @@ const WorkOrderDetail = () => {
         </Card>
 
         <Card 
-  title="Totals" 
-  headerActions={
-    <div className="flex space-x-2">
-      <Button
-        onClick={generateInvoice}
-        variant="primary"
-        size="sm"
-      >
-        Generate Invoice
-      </Button>
-    </div>
-  }
->
+          title="Totals" 
+          headerActions={
+            <div className="flex space-x-2">
+              <Button
+                onClick={generateInvoice}
+                variant="primary"
+                size="sm"
+              >
+                Generate Invoice
+              </Button>
+            </div>
+          }
+        >
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-sm">

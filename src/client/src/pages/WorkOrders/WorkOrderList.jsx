@@ -99,18 +99,48 @@ const WorkOrderList = () => {
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
-  // Get status label for display
-  const getStatusLabel = (status) => {
-    const option = statusOptions.find(option => option.value === status);
-    return option ? option.label : status;
-  };
-
   // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
     }).format(amount || 0);
+  };
+
+  // Helper function to display service description, handling both the new
+  // services array and the legacy serviceRequested field
+  const getServiceDisplay = (workOrder) => {
+    if (workOrder.services && workOrder.services.length > 0) {
+      return (
+        <div>
+          {/* Show first service and indicate if there are more */}
+          <span>{workOrder.services[0].description}</span>
+          {workOrder.services.length > 1 && (
+            <span className="text-xs ml-1 text-primary-600">
+              (+{workOrder.services.length - 1} more)
+            </span>
+          )}
+        </div>
+      );
+    } else {
+      // Handle legacy format and potentially newline separated services
+      if (workOrder.serviceRequested && workOrder.serviceRequested.includes('\n')) {
+        const services = workOrder.serviceRequested.split('\n').filter(s => s.trim());
+        return (
+          <div>
+            <span>{services[0]}</span>
+            {services.length > 1 && (
+              <span className="text-xs ml-1 text-primary-600">
+                (+{services.length - 1} more)
+              </span>
+            )}
+          </div>
+        );
+      }
+      
+      // Simple single service
+      return workOrder.serviceRequested || 'No service specified';
+    }
   };
 
   return (
@@ -140,6 +170,7 @@ const WorkOrderList = () => {
                   handleSearch();
                 }
               }}
+              className="mt-1 block w-full"
             />
           </div>
           <div className="flex">
@@ -212,7 +243,7 @@ const WorkOrderList = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 truncate max-w-xs">
-                        {workOrder.serviceRequested}
+                        {getServiceDisplay(workOrder)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

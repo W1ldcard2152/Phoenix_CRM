@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Formik, Form } from 'formik';
+import { Formik, Form, FieldArray } from 'formik';
 import * as Yup from 'yup';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -11,11 +11,15 @@ import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService';
 
-// Validation schema
+// Validation schema - updated for services array
 const WorkOrderSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   vehicle: Yup.string().required('Vehicle is required'),
-  serviceRequested: Yup.string().required('Service requested is required'),
+  services: Yup.array().of(
+    Yup.object().shape({
+      description: Yup.string().required('Service description is required')
+    })
+  ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
   status: Yup.string().required('Status is required'),
   diagnosticNotes: Yup.string()
@@ -39,7 +43,7 @@ const WorkOrderForm = () => {
     customer: customerIdParam || '',
     vehicle: vehicleIdParam || '',
     date: new Date().toISOString().split('T')[0],
-    serviceRequested: '',
+    services: [{ description: '' }], // Initialize with one empty service item
     priority: 'Normal',
     status: 'Created',
     diagnosticNotes: '',
@@ -62,6 +66,24 @@ const WorkOrderForm = () => {
           const workOrderData = workOrderResponse.data.workOrder;
           setWorkOrder(workOrderData);
           
+          // Convert existing serviceRequested to services array if needed
+          let servicesArray = [];
+          if (workOrderData.services && workOrderData.services.length > 0) {
+            servicesArray = workOrderData.services;
+          } else if (workOrderData.serviceRequested) {
+            // Handle legacy data - split by newlines if present
+            servicesArray = workOrderData.serviceRequested.split('\n')
+              .filter(line => line.trim().length > 0)
+              .map(line => ({ description: line.trim() }));
+            
+            // If no newlines, just use the whole string
+            if (servicesArray.length === 0) {
+              servicesArray = [{ description: workOrderData.serviceRequested }];
+            }
+          } else {
+            servicesArray = [{ description: '' }];
+          }
+          
           // Set initial form values
           setInitialValues({
             customer: typeof workOrderData.customer === 'object' 
@@ -71,7 +93,7 @@ const WorkOrderForm = () => {
               ? workOrderData.vehicle._id 
               : workOrderData.vehicle,
             date: new Date(workOrderData.date).toISOString().split('T')[0],
-            serviceRequested: workOrderData.serviceRequested || '',
+            services: servicesArray,
             priority: workOrderData.priority || 'Normal',
             status: workOrderData.status || 'Created',
             diagnosticNotes: workOrderData.diagnosticNotes || '',
@@ -133,12 +155,19 @@ const WorkOrderForm = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      // Prepare final data - ensure services array is properly formatted
+      const finalData = {
+        ...values,
+        // Generate serviceRequested for backward compatibility
+        serviceRequested: values.services.map(s => s.description).join('\n')
+      };
+      
       if (id) {
         // Update existing work order
-        await WorkOrderService.updateWorkOrder(id, values);
+        await WorkOrderService.updateWorkOrder(id, finalData);
       } else {
         // Create new work order
-        await WorkOrderService.createWorkOrder(values);
+        await WorkOrderService.createWorkOrder(finalData);
       }
       
       // Redirect to work order list or detail page
@@ -274,17 +303,73 @@ const WorkOrderForm = () => {
                   />
                 </div>
                 
+                {/* Services Section - Multiple services can be added */}
                 <div className="md:col-span-2">
-                  <Input
-                    label="Service Requested"
-                    name="serviceRequested"
-                    value={values.serviceRequested}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.serviceRequested}
-                    touched={touched.serviceRequested}
-                    required
-                  />
+                  <FieldArray name="services">
+                    {({ insert, remove, push }) => (
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Services Requested <span className="text-red-500">*</span>
+                          </label>
+                          <button
+                            type="button"
+                            className="text-primary-600 hover:text-primary-800 text-sm"
+                            onClick={() => push({ description: '' })}
+                          >
+                            + Add Another Service
+                          </button>
+                        </div>
+                        
+                        {values.services && values.services.length > 0 ? (
+                          values.services.map((service, index) => (
+                            <div key={index} className="flex items-center mb-2">
+                              <div className="flex-grow">
+                                <Input
+                                  name={`services.${index}.description`}
+                                  value={service.description}
+                                  onChange={handleChange}
+                                  onBlur={handleBlur}
+                                  error={
+                                    errors.services && 
+                                    errors.services[index] && 
+                                    errors.services[index].description
+                                  }
+                                  touched={
+                                    touched.services && 
+                                    touched.services[index] && 
+                                    touched.services[index].description
+                                  }
+                                  placeholder={`Service request ${index + 1}`}
+                                  required
+                                />
+                              </div>
+                              {values.services.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="ml-2 text-red-600 hover:text-red-800"
+                                  onClick={() => remove(index)}
+                                >
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-primary-600 hover:text-primary-800"
+                            onClick={() => push({ description: '' })}
+                          >
+                            Add a service
+                          </button>
+                        )}
+                        {typeof errors.services === 'string' && (
+                          <div className="text-red-500 text-sm mt-1">{errors.services}</div>
+                        )}
+                      </div>
+                    )}
+                  </FieldArray>
                 </div>
                 
                 <div>

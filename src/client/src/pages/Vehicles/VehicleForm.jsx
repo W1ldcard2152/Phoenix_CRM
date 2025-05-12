@@ -1,3 +1,4 @@
+// src/client/src/pages/Vehicles/VehicleForm.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Formik, Form } from 'formik';
@@ -10,7 +11,7 @@ import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 
-// Validation schema
+// Validation schema - updated with required VIN
 const VehicleSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   year: Yup.number()
@@ -20,6 +21,7 @@ const VehicleSchema = Yup.object().shape({
   make: Yup.string().required('Make is required'),
   model: Yup.string().required('Model is required'),
   vin: Yup.string()
+    .required('VIN is required') // Made VIN required
     .min(11, 'VIN must be at least 11 characters')
     .max(17, 'VIN cannot exceed 17 characters'),
   licensePlate: Yup.string(),
@@ -88,8 +90,10 @@ const VehicleForm = () => {
     fetchData();
   }, [id, customerIdParam]);
 
-  const handleSubmit = async (values, { setSubmitting }) => {
+  const handleSubmit = async (values, { setSubmitting, setErrors }) => {
     try {
+      console.log('Submitting vehicle:', values); // Debug log
+      
       if (id) {
         // Update existing vehicle
         await VehicleService.updateVehicle(id, values);
@@ -106,7 +110,18 @@ const VehicleForm = () => {
       }
     } catch (err) {
       console.error('Error saving vehicle:', err);
-      setError('Failed to save vehicle. Please try again later.');
+      
+      // Handle validation errors from server
+      if (err.errors) {
+        const formErrors = {};
+        Object.keys(err.errors).forEach(key => {
+          formErrors[key] = err.errors[key].message;
+        });
+        setErrors(formErrors);
+      } else {
+        setError('Failed to save vehicle. Please try again later.');
+      }
+      
       setSubmitting(false);
     }
   };
@@ -212,6 +227,7 @@ const VehicleForm = () => {
                     onBlur={handleBlur}
                     error={errors.vin}
                     touched={touched.vin}
+                    required  // Added required prop here
                   />
                 </div>
                 

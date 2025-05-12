@@ -28,6 +28,7 @@ const handleJWTExpiredError = () =>
   new AppError('Your token has expired. Please log in again.', 401);
 
 // Send detailed error in development
+// Find this function in your errorHandler.js
 const sendErrorDev = (err, req, res) => {
   // API errors
   if (req.originalUrl.startsWith('/api')) {
@@ -41,13 +42,23 @@ const sendErrorDev = (err, req, res) => {
   
   // Rendered website errors (for future frontend integration)
   console.error('ERROR 💥', err);
-  return res.status(err.statusCode).render('error', {
+  
+  // Change this part to avoid using res.render() which requires a view engine
+  return res.status(err.statusCode).send({
     title: 'Something went wrong!',
     msg: err.message
   });
+  
+  // Or if you prefer to just send a JSON response:
+  /*
+  return res.status(err.statusCode).json({
+    title: 'Something went wrong!',
+    msg: err.message
+  });
+  */
 };
 
-// Send simplified error in production
+// Also modify this function similarly
 const sendErrorProd = (err, req, res) => {
   // API errors
   if (req.originalUrl.startsWith('/api')) {
@@ -69,14 +80,16 @@ const sendErrorProd = (err, req, res) => {
   
   // Rendered website errors (for future frontend integration)
   if (err.isOperational) {
-    return res.status(err.statusCode).render('error', {
+    // Change this to avoid using res.render()
+    return res.status(err.statusCode).send({
       title: 'Something went wrong!',
       msg: err.message
     });
   }
   
   console.error('ERROR 💥', err);
-  return res.status(err.statusCode).render('error', {
+  // Change this to avoid using res.render()
+  return res.status(err.statusCode).send({
     title: 'Something went wrong!',
     msg: 'Please try again later'
   });

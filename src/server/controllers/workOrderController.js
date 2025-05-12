@@ -80,28 +80,64 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
     );
   }
   
+  // Handle services array if provided
+  let workOrderData = { ...req.body };
+  
+  if (!workOrderData.services || workOrderData.services.length === 0) {
+    // If no services array but serviceRequested is provided, convert to services
+    if (workOrderData.serviceRequested) {
+      // Split by newlines if there are any
+      if (workOrderData.serviceRequested.includes('\n')) {
+        workOrderData.services = workOrderData.serviceRequested
+          .split('\n')
+          .filter(line => line.trim())
+          .map(line => ({ description: line.trim() }));
+      } else {
+        // Single service
+        workOrderData.services = [{ description: workOrderData.serviceRequested }];
+      }
+    } else {
+      // Empty services array if nothing provided
+      workOrderData.services = [];
+    }
+  } else if (typeof workOrderData.services === 'string') {
+    // Handle case where services might be sent as a string
+    try {
+      workOrderData.services = JSON.parse(workOrderData.services);
+    } catch (e) {
+      workOrderData.services = [{ description: workOrderData.services }];
+    }
+  }
+  
+  // Generate serviceRequested field for backward compatibility
+  if (Array.isArray(workOrderData.services) && workOrderData.services.length > 0) {
+    workOrderData.serviceRequested = workOrderData.services
+      .map(service => service.description)
+      .join('\n');
+  }
+  
   // Calculate total estimate if parts and labor are provided
-  if (req.body.parts && req.body.parts.length > 0) {
-    const partsCost = req.body.parts.reduce((total, part) => {
+  if (workOrderData.parts && workOrderData.parts.length > 0) {
+    const partsCost = workOrderData.parts.reduce((total, part) => {
       return total + (part.price * part.quantity);
     }, 0);
     
-    if (!req.body.totalEstimate) {
-      req.body.totalEstimate = partsCost;
+    if (!workOrderData.totalEstimate) {
+      workOrderData.totalEstimate = partsCost;
     }
   }
   
-  if (req.body.labor && req.body.labor.length > 0) {
-    const laborCost = req.body.labor.reduce((total, labor) => {
+  if (workOrderData.labor && workOrderData.labor.length > 0) {
+    const laborCost = workOrderData.labor.reduce((total, labor) => {
       return total + (labor.hours * labor.rate);
     }, 0);
     
-    if (!req.body.totalEstimate) {
-      req.body.totalEstimate = (req.body.totalEstimate || 0) + laborCost;
+    if (!workOrderData.totalEstimate) {
+      workOrderData.totalEstimate = (workOrderData.totalEstimate || 0) + laborCost;
     }
   }
   
-  const newWorkOrder = await WorkOrder.create(req.body);
+  const newWorkOrder = await WorkOrder.create(workOrderData);
   
   // Add the work order to the vehicle's service history
   vehicle.serviceHistory.push(newWorkOrder._id);
@@ -117,62 +153,92 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
 
 // Update a work order
 exports.updateWorkOrder = catchAsync(async (req, res, next) => {
+  // Handle services array if provided
+  let workOrderData = { ...req.body };
+  
+  // Process services array
+  if (workOrderData.services) {
+    // Ensure services is in the correct format
+    if (typeof workOrderData.services === 'string') {
+      try {
+        workOrderData.services = JSON.parse(workOrderData.services);
+      } catch (e) {
+        workOrderData.services = [{ description: workOrderData.services }];
+      }
+    }
+    
+    // Generate serviceRequested field for backward compatibility
+    workOrderData.serviceRequested = Array.isArray(workOrderData.services) 
+      ? workOrderData.services.map(s => s.description).join('\n')
+      : '';
+  } else if (workOrderData.serviceRequested) {
+    // If serviceRequested is provided but not services, convert to services array
+    if (workOrderData.serviceRequested.includes('\n')) {
+      workOrderData.services = workOrderData.serviceRequested
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => ({ description: line.trim() }));
+    } else {
+      workOrderData.services = [{ description: workOrderData.serviceRequested }];
+    }
+  }
+  
   // Recalculate total estimate/actual if parts or labor changed
-  if (req.body.parts || req.body.labor) {
+  if (workOrderData.parts || workOrderData.labor) {
     const workOrder = await WorkOrder.findById(req.params.id);
     
     if (!workOrder) {
       return next(new AppError('No work order found with that ID', 404));
     }
     
-    if (req.body.parts) {
-      const partsCost = req.body.parts.reduce((total, part) => {
+    if (workOrderData.parts) {
+      const partsCost = workOrderData.parts.reduce((total, part) => {
         return total + (part.price * part.quantity);
       }, 0);
       
       // Only update totalEstimate if it's not explicitly provided
-      if (!req.body.totalEstimate) {
+      if (!workOrderData.totalEstimate) {
         // Calculate labor cost from existing data if not updated
-        const laborCost = req.body.labor 
-          ? req.body.labor.reduce((total, labor) => {
+        const laborCost = workOrderData.labor 
+          ? workOrderData.labor.reduce((total, labor) => {
               return total + (labor.hours * labor.rate);
             }, 0)
           : workOrder.labor.reduce((total, labor) => {
               return total + (labor.hours * labor.rate);
             }, 0);
             
-        req.body.totalEstimate = partsCost + laborCost;
+        workOrderData.totalEstimate = partsCost + laborCost;
       }
     }
     
-    if (req.body.labor) {
-      const laborCost = req.body.labor.reduce((total, labor) => {
+    if (workOrderData.labor) {
+      const laborCost = workOrderData.labor.reduce((total, labor) => {
         return total + (labor.hours * labor.rate);
       }, 0);
       
       // Only update totalEstimate if it's not explicitly provided
-      if (!req.body.totalEstimate) {
+      if (!workOrderData.totalEstimate) {
         // Calculate parts cost from existing data if not updated
-        const partsCost = req.body.parts 
-          ? req.body.parts.reduce((total, part) => {
+        const partsCost = workOrderData.parts 
+          ? workOrderData.parts.reduce((total, part) => {
               return total + (part.price * part.quantity);
             }, 0)
           : workOrder.parts.reduce((total, part) => {
               return total + (part.price * part.quantity);
             }, 0);
             
-        req.body.totalEstimate = partsCost + laborCost;
+        workOrderData.totalEstimate = partsCost + laborCost;
       }
     }
   }
   
   // If status is being updated
-  if (req.body.status) {
+  if (workOrderData.status) {
     const oldWorkOrder = await WorkOrder.findById(req.params.id)
       .populate('customer')
       .populate('vehicle');
       
-    if (oldWorkOrder && oldWorkOrder.status !== req.body.status) {
+    if (oldWorkOrder && oldWorkOrder.status !== workOrderData.status) {
       // Send notification if status is changing to a notifiable status
       const notifiableStatuses = [
         'Inspected - Need Parts Ordered',
@@ -182,7 +248,7 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         'Completed - Paid'
       ];
       
-      if (notifiableStatuses.includes(req.body.status) && 
+      if (notifiableStatuses.includes(workOrderData.status) && 
           oldWorkOrder.customer && 
           oldWorkOrder.vehicle) {
         
@@ -191,7 +257,7 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
             oldWorkOrder.customer.phone) {
           try {
             await twilioService.sendStatusUpdate(
-              { status: req.body.status },
+              { status: workOrderData.status },
               oldWorkOrder.customer,
               oldWorkOrder.vehicle
             );
@@ -216,7 +282,7 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   }
   
-  const workOrder = await WorkOrder.findByIdAndUpdate(req.params.id, req.body, {
+  const workOrder = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
     new: true,
     runValidators: true
   });
@@ -449,7 +515,7 @@ exports.generateInvoice = catchAsync(async (req, res, next) => {
   });
 });
 
-// Search work orders
+// Search work orders - Updated to search in services array
 exports.searchWorkOrders = catchAsync(async (req, res, next) => {
   const { query } = req.query;
   
@@ -457,10 +523,11 @@ exports.searchWorkOrders = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a search query', 400));
   }
   
-  // Search work orders by service requested, status, or diagnostic notes
+  // Search work orders by service requested, services array, status, or diagnostic notes
   const workOrders = await WorkOrder.find({
     $or: [
       { serviceRequested: { $regex: query, $options: 'i' } },
+      { 'services.description': { $regex: query, $options: 'i' } }, // Search in services array
       { status: { $regex: query, $options: 'i' } },
       { diagnosticNotes: { $regex: query, $options: 'i' } }
     ]
