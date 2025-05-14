@@ -9,7 +9,7 @@ import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
-import VehicleService from '../../services/vehicleService';
+// No need to import VehicleService as it's not used
 
 // Validation schema - updated for services array
 const WorkOrderSchema = Yup.object().shape({
@@ -29,7 +29,7 @@ const WorkOrderForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [workOrder, setWorkOrder] = useState(null);
+  // No need to maintain workOrder state since we use initialValues
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,7 @@ const WorkOrderForm = () => {
         if (id) {
           const workOrderResponse = await WorkOrderService.getWorkOrder(id);
           const workOrderData = workOrderResponse.data.workOrder;
-          setWorkOrder(workOrderData);
+          // No need to set workOrder since we use initialValues
           
           // Convert existing serviceRequested to services array if needed
           let servicesArray = [];

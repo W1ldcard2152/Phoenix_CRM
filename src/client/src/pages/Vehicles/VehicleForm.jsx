@@ -32,7 +32,7 @@ const VehicleForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [vehicle, setVehicle] = useState(null);
+  // No need to store the vehicle object since we use initialValues
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -63,7 +63,7 @@ const VehicleForm = () => {
         if (id) {
           const vehicleResponse = await VehicleService.getVehicle(id);
           const vehicleData = vehicleResponse.data.vehicle;
-          setVehicle(vehicleData);
+          // No need to set the vehicle state since we use initialValues
           
           // Set initial form values
           setInitialValues({

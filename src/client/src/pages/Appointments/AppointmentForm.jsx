@@ -27,7 +27,7 @@ const AppointmentForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [appointment, setAppointment] = useState(null);
+  // Removed unused state variable for appointment
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +74,6 @@ const AppointmentForm = () => {
         if (id) {
           const appointmentResponse = await AppointmentService.getAppointment(id);
           const appointmentData = appointmentResponse.data.appointment;
-          setAppointment(appointmentData);
           
           // Format date for form inputs
           const formatDateForInput = (dateStr) => {
@@ -139,7 +138,7 @@ const AppointmentForm = () => {
     };
 
     fetchData();
-  }, [id, customerIdParam, vehicleIdParam, workOrderIdParam]);
+  }, [id, customerIdParam, vehicleIdParam, workOrderIdParam, loadWorkOrder]);
 
   const loadWorkOrder = async (workOrderId) => {
     try {

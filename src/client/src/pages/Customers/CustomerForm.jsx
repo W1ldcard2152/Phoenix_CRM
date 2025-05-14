@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Formik, Form, Field, ErrorMessage } from 'formik';
+import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -25,7 +25,7 @@ const CustomerSchema = Yup.object().shape({
 const CustomerForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [customer, setCustomer] = useState(null);
+  // No need to store customer state since we use initialValues
   const [loading, setLoading] = useState(id ? true : false);
   const [error, setError] = useState(null);
   const [initialValues, setInitialValues] = useState({
@@ -48,7 +48,7 @@ const CustomerForm = () => {
         setLoading(true);
         const response = await CustomerService.getCustomer(id);
         const customerData = response.data.customer;
-        setCustomer(customerData);
+        // We don't need to set the customer state since we use initialValues
 
         // Set initial form values
         setInitialValues({

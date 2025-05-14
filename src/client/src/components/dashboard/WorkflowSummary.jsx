@@ -1,7 +1,7 @@
 // src/client/src/components/dashboard/WorkflowSummary.jsx
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+// No need for useNavigate import as we're using Button components with 'to' prop
 import Card from '../common/Card';
 import Button from '../common/Button';
 import AppointmentService from '../../services/appointmentService';
@@ -11,7 +11,7 @@ import AppointmentService from '../../services/appointmentService';
  * instead of Needs Scheduling section
  */
 const WorkflowSummary = () => {
-  const navigate = useNavigate();
+  // No need for navigate hook
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [todayAppointments, setTodayAppointments] = useState([]);

@@ -38,7 +38,7 @@ const formatCurrency = (amount, currencyCode = 'USD', locale = 'en-US') => {
 };
 
 const InvoiceGenerator = () => {
-  const navigate = useNavigate();
+  // We're not using navigate in this component
   const { id } = useParams(); // For loading a specific work order to convert to invoice
   const [searchParams] = useSearchParams();
   const workOrderIdParam = searchParams.get('workOrder');
@@ -396,7 +396,7 @@ const InvoiceGenerator = () => {
     setActiveTab('preview'); // Ensure preview is rendered
     setTimeout(() => { // Ensure DOM updates
         const printContents = printTemplateRef.current.innerHTML;
-        const originalContents = document.body.innerHTML;
+        // No need to store the original contents
         const popupWin = window.open('', '_blank', 'top=0,left=0,height=100%,width=auto');
         popupWin.document.open();
         popupWin.document.write(`
