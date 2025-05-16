@@ -1,0 +1,65 @@
+/* InvoiceStyle.css - Styles for Invoice Generator */
+
+.invoice-container {
+  background-color: #ffffff;
+  color: #333333;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  max-width: 4xl;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.invoice-container .logo-image {
+  height: 64px;
+  margin-bottom: 0.5rem;
+}
+
+/* Print styles */
+@media print {
+  .invoice-container {
+    padding: 0;
+    max-width: 100%;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  .invoice-container .logo-image {
+    height: 64px;
+    display: block;
+  }
+}
+
+/* Fix for PDF generation */
+.print-friendly-font {
+  font-family: Arial, sans-serif !important;
+}
+
+/* Ensure tables have proper borders when printed */
+.border-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.border-table th,
+.border-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px;
+}
+
+.border-table th {
+  background-color: #f8fafc;
+  font-weight: 600;
+}
+
+/* Make sure the logo appears in PDF */
+img.logo-for-pdf {
+  display: block !important;
+  height: 64px !important;
+  margin-bottom: 0.5rem !important;
+  /* Force the logo to be visible */
+  visibility: visible !important;
+  opacity: 1 !important;
+}
