@@ -15,6 +15,8 @@ const WorkOrderDetail = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [partModalOpen, setPartModalOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
+  const [editingPart, setEditingPart] = useState(null);
+  const [editingLabor, setEditingLabor] = useState(null);
   const [newPart, setNewPart] = useState({
     name: '',
     partNumber: '',
@@ -73,6 +75,52 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const openAddPartModal = () => {
+    setEditingPart(null);
+    setNewPart({
+      name: '',
+      partNumber: '',
+      quantity: 1,
+      price: 0,
+      ordered: false,
+      received: false
+    });
+    setPartModalOpen(true);
+  };
+
+  const openEditPartModal = (part, index) => {
+    setEditingPart({ ...part, index });
+    setNewPart({
+      name: part.name || '',
+      partNumber: part.partNumber || '',
+      quantity: part.quantity || 1,
+      price: part.price || 0,
+      ordered: part.ordered || false,
+      received: part.received || false
+    });
+    setPartModalOpen(true);
+  };
+
+  const openAddLaborModal = () => {
+    setEditingLabor(null);
+    setNewLabor({
+      description: '',
+      hours: 1,
+      rate: 75
+    });
+    setLaborModalOpen(true);
+  };
+
+  const openEditLaborModal = (labor, index) => {
+    setEditingLabor({ ...labor, index });
+    setNewLabor({
+      description: labor.description || '',
+      hours: labor.hours || 1,
+      rate: labor.rate || 75
+    });
+    setLaborModalOpen(true);
+  };
+
   const handleAddPart = async () => {
     try {
       const response = await WorkOrderService.addPart(id, newPart);
@@ -92,6 +140,49 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const handleEditPart = async () => {
+    try {
+      // Create an updated work order with the edited part
+      const updatedWorkOrder = { ...workOrder };
+      const updatedParts = [...updatedWorkOrder.parts];
+      updatedParts[editingPart.index] = {
+        ...updatedParts[editingPart.index],
+        ...newPart
+      };
+      updatedWorkOrder.parts = updatedParts;
+
+      // Send the entire updated work order to the server
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+      setPartModalOpen(false);
+      setEditingPart(null);
+      setNewPart({
+        name: '',
+        partNumber: '',
+        quantity: 1,
+        price: 0,
+        ordered: false,
+        received: false
+      });
+    } catch (err) {
+      console.error('Error updating part:', err);
+      setError('Failed to update part. Please try again later.');
+    }
+  };
+
+  const handleRemovePart = async (index) => {
+    try {
+      const updatedWorkOrder = { ...workOrder };
+      updatedWorkOrder.parts = workOrder.parts.filter((_, idx) => idx !== index);
+      
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+    } catch (err) {
+      console.error('Error removing part:', err);
+      setError('Failed to remove part. Please try again later.');
+    }
+  };
+
   const handleAddLabor = async () => {
     try {
       const response = await WorkOrderService.addLabor(id, newLabor);
@@ -107,10 +198,51 @@ const WorkOrderDetail = () => {
       setError('Failed to add labor. Please try again later.');
     }
   };
-const generateInvoice = () => {
-  // Navigate to the invoice generator with this work order ID as a search param
-  navigate(`/invoices/generate?workOrder=${id}`);
-};
+
+  const handleEditLabor = async () => {
+    try {
+      // Create an updated work order with the edited labor
+      const updatedWorkOrder = { ...workOrder };
+      const updatedLabor = [...updatedWorkOrder.labor];
+      updatedLabor[editingLabor.index] = {
+        ...updatedLabor[editingLabor.index],
+        ...newLabor
+      };
+      updatedWorkOrder.labor = updatedLabor;
+
+      // Send the entire updated work order to the server
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+      setLaborModalOpen(false);
+      setEditingLabor(null);
+      setNewLabor({
+        description: '',
+        hours: 1,
+        rate: 75
+      });
+    } catch (err) {
+      console.error('Error updating labor:', err);
+      setError('Failed to update labor. Please try again later.');
+    }
+  };
+
+  const handleRemoveLabor = async (index) => {
+    try {
+      const updatedWorkOrder = { ...workOrder };
+      updatedWorkOrder.labor = workOrder.labor.filter((_, idx) => idx !== index);
+      
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+    } catch (err) {
+      console.error('Error removing labor:', err);
+      setError('Failed to remove labor. Please try again later.');
+    }
+  };
+
+  const generateInvoice = () => {
+    // Navigate to the invoice generator with this work order ID as a search param
+    navigate(`/invoices/generate?workOrder=${id}`);
+  };
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -339,7 +471,7 @@ const generateInvoice = () => {
           title="Parts" 
           headerActions={
             <Button
-              onClick={() => setPartModalOpen(true)}
+              onClick={openAddPartModal}
               variant="outline"
               size="sm"
             >
@@ -367,6 +499,9 @@ const generateInvoice = () => {
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -406,6 +541,22 @@ const generateInvoice = () => {
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-right">
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => openEditPartModal(part, index)}
+                            className="text-blue-600 hover:text-blue-800 text-xs"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemovePart(index)}
+                            className="text-red-600 hover:text-red-800 text-xs"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -418,7 +569,7 @@ const generateInvoice = () => {
           title="Labor" 
           headerActions={
             <Button
-              onClick={() => setLaborModalOpen(true)}
+              onClick={openAddLaborModal}
               variant="outline"
               size="sm"
             >
@@ -447,6 +598,9 @@ const generateInvoice = () => {
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total
                     </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -470,6 +624,22 @@ const generateInvoice = () => {
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {formatCurrency(labor.hours * labor.rate)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-right">
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => openEditLaborModal(labor, index)}
+                            className="text-blue-600 hover:text-blue-800 text-xs"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveLabor(index)}
+                            className="text-red-600 hover:text-red-800 text-xs"
+                          >
+                            Remove
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -507,11 +677,13 @@ const generateInvoice = () => {
         </div>
       )}
 
-      {/* Add Part Modal */}
+      {/* Part Modal (Add/Edit) */}
       {partModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Add Part</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {editingPart ? 'Edit Part' : 'Add Part'}
+            </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -570,7 +742,12 @@ const generateInvoice = () => {
                     id="ordered"
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                     checked={newPart.ordered}
-                    onChange={(e) => setNewPart({ ...newPart, ordered: e.target.checked })}
+                    onChange={(e) => setNewPart({ 
+                      ...newPart, 
+                      ordered: e.target.checked,
+                      // If ordered is unchecked, received should also be unchecked
+                      received: e.target.checked ? newPart.received : false
+                    })}
                   />
                   <label htmlFor="ordered" className="ml-2 block text-sm text-gray-700">
                     Ordered
@@ -594,27 +771,32 @@ const generateInvoice = () => {
             <div className="mt-6 flex justify-end space-x-3">
               <Button
                 variant="light"
-                onClick={() => setPartModalOpen(false)}
+                onClick={() => {
+                  setPartModalOpen(false);
+                  setEditingPart(null);
+                }}
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
-                onClick={handleAddPart}
+                onClick={editingPart ? handleEditPart : handleAddPart}
                 disabled={!newPart.name}
               >
-                Add Part
+                {editingPart ? 'Update Part' : 'Add Part'}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Labor Modal */}
+      {/* Labor Modal (Add/Edit) */}
       {laborModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Add Labor</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {editingLabor ? 'Edit Labor' : 'Add Labor'}
+            </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -656,20 +838,27 @@ const generateInvoice = () => {
                   />
                 </div>
               </div>
+              <div className="border p-3 rounded bg-gray-50">
+                <p className="text-sm text-gray-600 mb-1">Calculated Total:</p>
+                <p className="font-medium">{formatCurrency((newLabor.hours || 0) * (newLabor.rate || 0))}</p>
+              </div>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
               <Button
                 variant="light"
-                onClick={() => setLaborModalOpen(false)}
+                onClick={() => {
+                  setLaborModalOpen(false);
+                  setEditingLabor(null);
+                }}
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
-                onClick={handleAddLabor}
+                onClick={editingLabor ? handleEditLabor : handleAddLabor}
                 disabled={!newLabor.description || !newLabor.hours || !newLabor.rate}
               >
-                Add Labor
+                {editingLabor ? 'Update Labor' : 'Add Labor'}
               </Button>
             </div>
           </div>

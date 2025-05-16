@@ -15,6 +15,12 @@ const VehicleDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [mileageModalOpen, setMileageModalOpen] = useState(false);
+  const [newMileageRecord, setNewMileageRecord] = useState({
+    date: new Date().toISOString().split('T')[0],
+    mileage: '',
+    notes: ''
+  });
 
   useEffect(() => {
     const fetchVehicleData = async () => {
@@ -35,8 +41,14 @@ const VehicleDetail = () => {
         setServiceHistory(historyResponse.data.serviceHistory || []);
         
         // Fetch vehicle appointments
-        const appointmentsResponse = await AppointmentService.getVehicleAppointments(id);
-        setAppointments(appointmentsResponse.data.appointments || []);
+        try {
+          const appointmentsResponse = await AppointmentService.getVehicleAppointments(id);
+          setAppointments(appointmentsResponse.data.appointments || []);
+        } catch (apptErr) {
+          console.error('Error loading appointments:', apptErr);
+          // Don't fail the entire load if just appointments fail
+          setAppointments([]);
+        }
         
         setLoading(false);
       } catch (err) {
@@ -60,6 +72,44 @@ const VehicleDetail = () => {
     }
   };
 
+  const handleAddMileageRecord = async () => {
+    if (!newMileageRecord.mileage) {
+      setError('Mileage is required');
+      return;
+    }
+
+    try {
+      // Create a copy of vehicle with updated mileage history
+      const updatedVehicle = {
+        ...vehicle,
+        mileageHistory: [
+          ...vehicle.mileageHistory || [], 
+          newMileageRecord
+        ],
+        currentMileage: Math.max(vehicle.currentMileage || 0, parseInt(newMileageRecord.mileage))
+      };
+      
+      // Update the vehicle
+      await VehicleService.updateVehicle(id, updatedVehicle);
+      
+      // Reload the vehicle data
+      const vehicleResponse = await VehicleService.getVehicle(id);
+      setVehicle(vehicleResponse.data.vehicle);
+      
+      // Reset the form and close modal
+      setNewMileageRecord({
+        date: new Date().toISOString().split('T')[0],
+        mileage: '',
+        notes: ''
+      });
+      
+      setMileageModalOpen(false);
+    } catch (err) {
+      console.error('Error adding mileage record:', err);
+      setError('Failed to add mileage record. Please try again later.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto flex justify-center items-center h-48">
@@ -71,7 +121,7 @@ const VehicleDetail = () => {
   if (error) {
     return (
       <div className="container mx-auto">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
         </div>
       </div>
@@ -81,12 +131,25 @@ const VehicleDetail = () => {
   if (!vehicle) {
     return (
       <div className="container mx-auto">
-        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
           Vehicle not found.
         </div>
       </div>
     );
   }
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
+  // Format mileage with commas
+  const formatMileage = (mileage) => {
+    if (mileage === undefined || mileage === null) return 'Not recorded';
+    return new Intl.NumberFormat().format(mileage) + ' miles';
+  };
 
   return (
     <div className="container mx-auto">
@@ -131,6 +194,18 @@ const VehicleDetail = () => {
                 <p className="font-medium">{vehicle.licensePlate}</p>
               </div>
             )}
+            <div>
+              <p className="text-sm text-gray-500">Current Mileage</p>
+              <p className="font-medium">
+                {formatMileage(vehicle.currentMileage)}
+                <button 
+                  onClick={() => setMileageModalOpen(true)}
+                  className="ml-2 text-blue-600 text-sm hover:text-blue-800"
+                >
+                  Update
+                </button>
+              </p>
+            </div>
           </div>
         </Card>
 
@@ -171,6 +246,69 @@ const VehicleDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Mileage History Card */}
+        <Card 
+          title="Mileage History" 
+          headerActions={
+            <Button 
+              onClick={() => setMileageModalOpen(true)} 
+              variant="outline"
+              size="sm"
+            >
+              Add Mileage
+            </Button>
+          }
+        >
+          {!vehicle.mileageHistory || vehicle.mileageHistory.length === 0 ? (
+            <div className="text-center py-6 text-gray-500">
+              <p>No mileage history recorded.</p>
+              <p className="text-sm mt-2">Click "Add Mileage" to record the vehicle's odometer reading.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Mileage
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Notes
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {/* Sort mileage history by date descending */}
+                  {[...vehicle.mileageHistory]
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .map((record, index) => (
+                      <tr key={index} className={index === 0 ? 'bg-blue-50' : ''}>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="font-medium text-gray-900">
+                            {formatDate(record.date)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatMileage(record.mileage)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="text-sm text-gray-900">
+                            {record.notes || '-'}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
         <Card 
           title="Service History" 
           headerActions={
@@ -195,7 +333,7 @@ const VehicleDetail = () => {
                     <div>
                       <p className="font-medium">{workOrder.serviceRequested}</p>
                       <p className="text-sm text-gray-500">
-                        {new Date(workOrder.date).toLocaleDateString()}
+                        {formatDate(workOrder.date)}
                       </p>
                       {workOrder.diagnosticNotes && (
                         <p className="text-sm text-gray-600 mt-1">
@@ -232,86 +370,6 @@ const VehicleDetail = () => {
             </div>
           )}
         </Card>
-
-        <Card 
-          title="Upcoming Appointments"
-          headerActions={
-            <Button 
-              to={`/appointments/new?vehicle=${id}`} 
-              variant="outline"
-              size="sm"
-            >
-              Schedule Appointment
-            </Button>
-          }
-        >
-          {appointments.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              <p>No appointments scheduled for this vehicle.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {appointments
-                .filter(appointment => new Date(appointment.startTime) >= new Date())
-                .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-                .slice(0, 5)
-                .map((appointment) => (
-                  <div key={appointment._id} className="py-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">{appointment.serviceType}</p>
-                        <p className="text-sm text-gray-600">
-                          {new Date(appointment.startTime).toLocaleDateString()} at {
-                            new Date(appointment.startTime).toLocaleTimeString([], { 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            })
-                          }
-                        </p>
-                        {appointment.technician && (
-                          <p className="text-sm text-gray-500">
-                            Technician: {appointment.technician}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <span 
-                          className={`inline-block px-2 py-1 text-xs rounded-full ${
-                            appointment.status === 'Confirmed' 
-                              ? 'bg-green-100 text-green-800' 
-                              : appointment.status === 'Cancelled'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-blue-100 text-blue-800'
-                          }`}
-                        >
-                          {appointment.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex justify-end space-x-2">
-                      <Button 
-                        to={`/appointments/${appointment._id}`}
-                        variant="outline"
-                        size="sm"
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              {appointments.filter(appointment => new Date(appointment.startTime) >= new Date()).length > 5 && (
-                <div className="pt-3 text-center">
-                  <Button
-                    to={`/appointments?vehicle=${id}`}
-                    variant="link"
-                  >
-                    View all appointments
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -334,6 +392,70 @@ const VehicleDetail = () => {
                 onClick={handleDeleteVehicle}
               >
                 Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Mileage Modal */}
+      {mileageModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Update Mileage</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newMileageRecord.date}
+                  onChange={(e) => setNewMileageRecord({ ...newMileageRecord, date: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mileage (mi)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newMileageRecord.mileage}
+                  onChange={(e) => setNewMileageRecord({ ...newMileageRecord, mileage: e.target.value })}
+                  placeholder="Enter current odometer reading"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newMileageRecord.notes}
+                  onChange={(e) => setNewMileageRecord({ ...newMileageRecord, notes: e.target.value })}
+                  placeholder="Service performed, service center, etc."
+                  rows="3"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <Button
+                variant="light"
+                onClick={() => setMileageModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleAddMileageRecord}
+                disabled={!newMileageRecord.mileage}
+              >
+                Save Mileage
               </Button>
             </div>
           </div>

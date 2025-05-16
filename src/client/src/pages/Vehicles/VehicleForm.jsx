@@ -1,7 +1,7 @@
 // src/client/src/pages/Vehicles/VehicleForm.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Formik, Form } from 'formik';
+import { Formik, Form, FieldArray } from 'formik';
 import * as Yup from 'yup';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -11,7 +11,7 @@ import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 
-// Validation schema - updated with required VIN
+// Validation schema - updated with mileage history
 const VehicleSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   year: Yup.number()
@@ -21,10 +21,20 @@ const VehicleSchema = Yup.object().shape({
   make: Yup.string().required('Make is required'),
   model: Yup.string().required('Model is required'),
   vin: Yup.string()
-    .required('VIN is required') // Made VIN required
+    .required('VIN is required')
     .min(11, 'VIN must be at least 11 characters')
     .max(17, 'VIN cannot exceed 17 characters'),
   licensePlate: Yup.string(),
+  currentMileage: Yup.number()
+    .min(0, 'Mileage cannot be negative')
+    .nullable(),
+  mileageHistory: Yup.array().of(
+    Yup.object().shape({
+      date: Yup.date().required('Date is required'),
+      mileage: Yup.number().required('Mileage is required').min(0, 'Mileage cannot be negative'),
+      notes: Yup.string()
+    })
+  ),
   notes: Yup.string()
 });
 
@@ -32,7 +42,6 @@ const VehicleForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // No need to store the vehicle object since we use initialValues
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -47,6 +56,8 @@ const VehicleForm = () => {
     model: '',
     vin: '',
     licensePlate: '',
+    currentMileage: '',
+    mileageHistory: [],
     notes: ''
   });
 
@@ -63,7 +74,6 @@ const VehicleForm = () => {
         if (id) {
           const vehicleResponse = await VehicleService.getVehicle(id);
           const vehicleData = vehicleResponse.data.vehicle;
-          // No need to set the vehicle state since we use initialValues
           
           // Set initial form values
           setInitialValues({
@@ -75,6 +85,8 @@ const VehicleForm = () => {
             model: vehicleData.model || '',
             vin: vehicleData.vin || '',
             licensePlate: vehicleData.licensePlate || '',
+            currentMileage: vehicleData.currentMileage || '',
+            mileageHistory: vehicleData.mileageHistory || [],
             notes: vehicleData.notes || ''
           });
         }
@@ -92,7 +104,24 @@ const VehicleForm = () => {
 
   const handleSubmit = async (values, { setSubmitting, setErrors }) => {
     try {
-      console.log('Submitting vehicle:', values); // Debug log
+      // Add current mileage to history if provided and no existing record for today
+      if (values.currentMileage) {
+        const today = new Date().toISOString().split('T')[0];
+        const hasTodayRecord = values.mileageHistory.some(record => 
+          new Date(record.date).toISOString().split('T')[0] === today
+        );
+        
+        if (!hasTodayRecord) {
+          values.mileageHistory.push({
+            date: today,
+            mileage: values.currentMileage,
+            notes: 'Auto-added from current mileage field'
+          });
+        }
+      }
+      
+      // Sort mileage history by date (newest first)
+      values.mileageHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
       
       if (id) {
         // Update existing vehicle
@@ -140,6 +169,13 @@ const VehicleForm = () => {
     label: customer.name
   }));
 
+  // Format date for input field
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toISOString().split('T')[0];
+  };
+
   return (
     <div className="container mx-auto">
       <div className="mb-6">
@@ -161,7 +197,7 @@ const VehicleForm = () => {
           onSubmit={handleSubmit}
           enableReinitialize
         >
-          {({ isSubmitting, touched, errors, values, handleChange, handleBlur }) => (
+          {({ isSubmitting, touched, errors, values, handleChange, handleBlur, setFieldValue }) => (
             <Form>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
@@ -227,7 +263,7 @@ const VehicleForm = () => {
                     onBlur={handleBlur}
                     error={errors.vin}
                     touched={touched.vin}
-                    required  // Added required prop here
+                    required
                   />
                 </div>
                 
@@ -241,6 +277,147 @@ const VehicleForm = () => {
                     error={errors.licensePlate}
                     touched={touched.licensePlate}
                   />
+                </div>
+                
+                <div>
+                  <Input
+                    label="Current Mileage"
+                    name="currentMileage"
+                    type="number"
+                    min="0"
+                    value={values.currentMileage}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.currentMileage}
+                    touched={touched.currentMileage}
+                    placeholder="Enter current odometer reading"
+                  />
+                </div>
+                
+                {/* Mileage History Section */}
+                <div className="md:col-span-2 mt-4">
+                  <div className="border-t border-gray-200 pt-4">
+                    <h3 className="text-lg font-medium text-gray-700 mb-2">Mileage History</h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Track mileage readings over time to maintain accurate service records. This helps with future maintenance scheduling.
+                    </p>
+                    
+                    <FieldArray name="mileageHistory">
+                      {({ insert, remove, push }) => (
+                        <div>
+                          <div className="mb-2 flex justify-end">
+                            <Button
+                              type="button"
+                              onClick={() => push({ 
+                                date: new Date().toISOString().split('T')[0],
+                                mileage: values.currentMileage || '',
+                                notes: ''
+                              })}
+                              variant="primary"
+                              size="sm"
+                            >
+                              Add Mileage Record
+                            </Button>
+                          </div>
+                          
+                          {values.mileageHistory.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Date
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Mileage
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Notes
+                                    </th>
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                      Actions
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {values.mileageHistory.map((record, index) => (
+                                    <tr key={index}>
+                                      <td className="px-4 py-2 whitespace-nowrap">
+                                        <Input
+                                          type="date"
+                                          name={`mileageHistory.${index}.date`}
+                                          value={formatDateForInput(record.date)}
+                                          onChange={handleChange}
+                                          onBlur={handleBlur}
+                                          error={
+                                            errors.mileageHistory && 
+                                            errors.mileageHistory[index] && 
+                                            errors.mileageHistory[index].date
+                                          }
+                                          touched={
+                                            touched.mileageHistory && 
+                                            touched.mileageHistory[index] && 
+                                            touched.mileageHistory[index].date
+                                          }
+                                          className="w-full"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2 whitespace-nowrap">
+                                        <Input
+                                          type="number"
+                                          name={`mileageHistory.${index}.mileage`}
+                                          value={record.mileage}
+                                          onChange={handleChange}
+                                          onBlur={handleBlur}
+                                          error={
+                                            errors.mileageHistory && 
+                                            errors.mileageHistory[index] && 
+                                            errors.mileageHistory[index].mileage
+                                          }
+                                          touched={
+                                            touched.mileageHistory && 
+                                            touched.mileageHistory[index] && 
+                                            touched.mileageHistory[index].mileage
+                                          }
+                                          placeholder="Miles"
+                                          min="0"
+                                          className="w-full"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        <Input
+                                          type="text"
+                                          name={`mileageHistory.${index}.notes`}
+                                          value={record.notes || ''}
+                                          onChange={handleChange}
+                                          onBlur={handleBlur}
+                                          placeholder="Service performed, etc."
+                                          className="w-full"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2 whitespace-nowrap text-right">
+                                        <button
+                                          type="button"
+                                          className="text-red-600 hover:text-red-800"
+                                          onClick={() => remove(index)}
+                                        >
+                                          Remove
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 p-4 text-center text-gray-500 rounded">
+                              No mileage records added yet. Click "Add Mileage Record" to track vehicle mileage.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </FieldArray>
+                  </div>
                 </div>
                 
                 <div className="md:col-span-2">
