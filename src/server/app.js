@@ -20,6 +20,7 @@ const vehicleRoutes = require('./routes/vehicleRoutes');
 const workOrderRoutes = require('./routes/workOrderRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 
 // Load environment variables
@@ -87,6 +88,7 @@ app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/workorders', workOrderRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // Basic route for testing API status
 app.get('/', (req, res) => {

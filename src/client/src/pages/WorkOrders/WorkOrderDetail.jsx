@@ -107,11 +107,10 @@ const WorkOrderDetail = () => {
       setError('Failed to add labor. Please try again later.');
     }
   };
-
-  const generateInvoice = () => {
-    // Navigate to the invoice generator with this work order ID
-    navigate(`/invoices/new/${id}`);
-  };
+const generateInvoice = () => {
+  // Navigate to the invoice generator with this work order ID as a search param
+  navigate(`/invoices/generate?workOrder=${id}`);
+};
 
   // Format currency
   const formatCurrency = (amount) => {

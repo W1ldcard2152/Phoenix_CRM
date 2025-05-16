@@ -1,31 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
+import WorkOrderService from '../../services/workOrderService';
+import CustomerService from '../../services/customerService';
+import VehicleService from '../../services/vehicleService';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import Card from '../../components/common/Card'; // Assuming these components exist
 import Input from '../../components/common/Input'; // Assuming these components exist
 import TextArea from '../../components/common/TextArea'; // Assuming these components exist
 import SelectInput from '../../components/common/SelectInput'; // Assuming these components exist
-// import Button from '../../components/common/Button'; // Assuming this component exists - will use standard buttons for now if not critical
-
-// Mock services if not fully implemented or for standalone testing
-const mockWorkOrderService = {
-  getAllWorkOrders: async () => ({ data: { workOrders: [] } }),
-  getWorkOrder: async (id) => ({ data: { workOrder: { _id: id, customer: 'mockCustId', vehicle: 'mockVehId', parts: [], labor: [], status: 'In Progress', serviceRequested: 'Mock service' } } }),
-};
-const mockCustomerService = {
-  getAllCustomers: async () => ({ data: { customers: [] } }),
-  getCustomer: async (id) => ({ data: { customer: { _id: id, name: 'Mock Customer', phone: '123-456-7890', email: 'mock@example.com', address: { street: '123 Mock St', city: 'Mockville', state: 'MS', zip: '12345'} } } }),
-  getCustomerVehicles: async (id) => ({ data: { vehicles: [] } }),
-};
-const mockVehicleService = {
-  getVehicle: async (id) => ({ data: { vehicle: { _id: id, year: '2023', make: 'Mock Make', model: 'Mock Model', vin: 'MOCKVIN123', licensePlate: 'MOCKPL8' } } }),
-};
-
-const WorkOrderService = window.WorkOrderService || mockWorkOrderService;
-const CustomerService = window.CustomerService || mockCustomerService;
-const VehicleService = window.VehicleService || mockVehicleService;
-
 
 // Import the utility formatters
 const formatCurrency = (amount, currencyCode = 'USD', locale = 'en-US') => {
@@ -131,60 +114,32 @@ const InvoiceGenerator = () => {
   }, [id, workOrderIdParam]);
   
   const loadWorkOrder = async (workOrderId) => {
-    if (!workOrderId) return;
-    try {
-      setLoading(true);
-      const response = await WorkOrderService.getWorkOrder(workOrderId);
-      const workOrder = response.data.workOrder;
-      
-      if (!workOrder) {
-        setError(`Work Order with ID ${workOrderId} not found.`);
-        setSelectedWorkOrder(null);
-        setLoading(false);
-        return;
-      }
-      setSelectedWorkOrder(workOrder);
-      
-      if (workOrder.customer) {
-        const customerId = typeof workOrder.customer === 'object' ? workOrder.customer._id : workOrder.customer;
-        const customerRes = await CustomerService.getCustomer(customerId);
-        setSelectedCustomer(customerRes.data.customer);
-        
-        const vehiclesRes = await CustomerService.getCustomerVehicles(customerId);
-        setVehicles(vehiclesRes.data.vehicles);
-
-        if (workOrder.vehicle) {
-            const vehicleId = typeof workOrder.vehicle === 'object' ? workOrder.vehicle._id : workOrder.vehicle;
-            const foundVehicle = vehiclesRes.data.vehicles.find(v => v._id === vehicleId);
-            if(foundVehicle) setSelectedVehicle(foundVehicle);
-            else {
-                 const vehicleRes = await VehicleService.getVehicle(vehicleId);
-                 setSelectedVehicle(vehicleRes.data.vehicle);
-            }
-        } else {
-            setSelectedVehicle(null);
-        }
-
-      } else {
-        setSelectedCustomer(null);
-        setVehicles([]);
-        setSelectedVehicle(null);
-      }
-      
-      setInvoiceData(prev => ({
-        ...prev,
-        parts: workOrder.parts ? workOrder.parts.map(p => ({...p, _id: p._id || Date.now().toString() + Math.random() })) : [],
-        labor: workOrder.labor ? workOrder.labor.map(l => ({...l, _id: l._id || Date.now().toString() + Math.random()})) : [],
-        // Potentially copy over notes from work order if applicable
-        // customerNotes: workOrder.notes || prev.customerNotes, 
-      }));
+  if (!workOrderId) return;
+  try {
+    setLoading(true);
+    console.log(`Attempting to load work order: ${workOrderId}`);
+    
+    // Use the imported WorkOrderService, not the mock/fallback
+    const response = await WorkOrderService.getWorkOrder(workOrderId);
+    const workOrder = response.data.workOrder;
+    
+    console.log("Work order data received:", workOrder);
+    
+    if (!workOrder) {
+      setError(`Work Order with ID ${workOrderId} not found.`);
+      setSelectedWorkOrder(null);
       setLoading(false);
-    } catch (err) {
-      console.error(`Error loading work order ${workOrderId}:`, err);
-      setError(`Failed to load work order details: ${err.message}`);
-      setLoading(false);
+      return;
     }
-  };
+    
+    setSelectedWorkOrder(workOrder);
+    // Rest of the function remains the same...
+  } catch (err) {
+    console.error(`Error loading work order ${workOrderId}:`, err);
+    setError(`Failed to load work order details: ${err.message}`);
+    setLoading(false);
+  }
+};
   
   const handleWorkOrderChange = async (e) => {
     const workOrderId = e.target.value;
