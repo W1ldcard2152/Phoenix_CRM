@@ -28,11 +28,11 @@ mongoose.connect(process.env.MONGODB_URI, {
   });
 
 // Import routes
-const customerRoutes = require('./src/server/routes/customerRoutes');
-const vehicleRoutes = require('./src/server/routes/vehicleRoutes');
-const workOrderRoutes = require('./src/routes/workOrderRoutes');
-const appointmentRoutes = require('./src/routes/appointmentRoutes');
-const mediaRoutes = require('./src/server/routes/mediaRoutes');
+const customerRoutes = require('../routes/customerRoutes');
+const vehicleRoutes = require('../routes/vehicleRoutes');
+const workOrderRoutes = require('../routes/workOrderRoutes');
+const appointmentRoutes = require('../routes/appointmentRoutes');
+const mediaRoutes = require('../routes/mediaRoutes');
 
 // Use routes
 app.use('/api/customers', customerRoutes);
@@ -48,8 +48,23 @@ app.get('/', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
+  console.error('Server error:', err);
+  
+  // Send a more detailed error response in development
+  if (process.env.NODE_ENV === 'development') {
+    res.status(err.statusCode || 500).json({
+      status: err.status || 'error',
+      message: err.message || 'An unexpected error occurred',
+      stack: err.stack,
+      error: err
+    });
+  } else {
+    // Production error - hide error details
+    res.status(err.statusCode || 500).json({
+      status: err.status || 'error',
+      message: err.message || 'Something went wrong!'
+    });
+  }
 });
 
 // Start server

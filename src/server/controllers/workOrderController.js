@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const WorkOrder = require('../models/WorkOrder');
 const Vehicle = require('../models/Vehicle');
 const Customer = require('../models/Customer');
@@ -41,21 +42,44 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
 
 // Get a single work order
 exports.getWorkOrder = catchAsync(async (req, res, next) => {
-  const workOrder = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('appointmentId');
-  
-  if (!workOrder) {
-    return next(new AppError('No work order found with that ID', 404));
-  }
-  
-  res.status(200).json({
-    status: 'success',
-    data: {
-      workOrder
+  try {
+    // Validate the work order ID format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(new AppError('Invalid work order ID format', 400));
     }
-  });
+    
+    const workOrder = await WorkOrder.findById(req.params.id)
+      .populate('customer', 'name phone email')
+      .populate('vehicle', 'year make model vin licensePlate')
+      .populate('appointmentId');
+    
+    if (!workOrder) {
+      return next(new AppError('No work order found with that ID', 404));
+    }
+    
+    // Check if the appointment reference is valid
+    if (workOrder.appointmentId && typeof workOrder.appointmentId === 'string') {
+      // If the appointment ID is just a string (not populated), try to populate it manually
+      const Appointment = require('../models/Appointment');
+      try {
+        const appointment = await Appointment.findById(workOrder.appointmentId);
+        workOrder.appointmentId = appointment;
+      } catch (err) {
+        console.log('Unable to populate appointment:', err.message);
+        // Don't fail if we can't populate the appointment
+      }
+    }
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        workOrder
+      }
+    });
+  } catch (err) {
+    console.error(`Error fetching work order ${req.params.id}:`, err);
+    return next(new AppError(`Failed to fetch work order details: ${err.message}`, 500));
+  }
 });
 
 // Create a new work order

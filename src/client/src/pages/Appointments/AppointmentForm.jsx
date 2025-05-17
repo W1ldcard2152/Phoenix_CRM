@@ -1,4 +1,4 @@
-// src/client/src/pages/Appointments/AppointmentForm.jsx - Redesigned
+// src/client/src/pages/Appointments/AppointmentForm.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Formik, Form } from 'formik';
@@ -17,7 +17,9 @@ const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   vehicle: Yup.string().required('Vehicle is required'),
   serviceType: Yup.string().required('Service type is required'),
+  startDate: Yup.string().required('Start date is required'),
   startTime: Yup.string().required('Start time is required'),
+  endDate: Yup.string().required('End date is required'),
   endTime: Yup.string().required('End time is required'),
   status: Yup.string().required('Status is required'),
   technician: Yup.string()
@@ -27,7 +29,6 @@ const AppointmentForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Removed unused state variable for appointment
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,25 +42,62 @@ const AppointmentForm = () => {
   const vehicleIdParam = searchParams.get('vehicle');
   const workOrderIdParam = searchParams.get('workOrder');
   
-  // Get current date and time
+  // Get current date and time, rounded to nearest 15 min
   const now = new Date();
-  const localStartTime = new Date(now.setMinutes(now.getMinutes() + (30 - (now.getMinutes() % 30)), 0))
-    .toISOString().slice(0, 16);
-  const localEndTime = new Date(now.setHours(now.getHours() + 1))
-    .toISOString().slice(0, 16);
+  now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
+  
+  // Format date for input field (YYYY-MM-DD)
+  const formatDate = (date) => {
+    return date.toISOString().split('T')[0];
+  };
+  
+  // Format time for input field (HH:MM)
+  const formatTime = (date) => {
+    return date.toTimeString().slice(0, 5);
+  };
+  
+  // Set one hour later for end time
+  const laterTime = new Date(now);
+  laterTime.setHours(now.getHours() + 1);
 
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',
     vehicle: vehicleIdParam || '',
     serviceType: '',
-    startTime: localStartTime,
-    endTime: localEndTime,
+    startDate: formatDate(now),
+    startTime: formatTime(now),
+    endDate: formatDate(laterTime),
+    endTime: formatTime(laterTime),
     technician: '',
     status: 'Scheduled',
     notes: '',
     workOrder: workOrderIdParam || '',
     createWorkOrder: false
   });
+
+  // Generate time options for dropdown (8:00 AM to 6:00 PM in 15 min increments)
+  const generateTimeOptions = () => {
+    const options = [];
+    const start = 8 * 60; // 8:00 AM in minutes
+    const end = 18 * 60;  // 6:00 PM in minutes
+    const increment = 15; // 15 minute increments
+    
+    for (let i = start; i <= end; i += increment) {
+      const hours = Math.floor(i / 60);
+      const minutes = i % 60;
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const hour12 = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+      
+      const timeValue = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      const timeLabel = `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
+      
+      options.push({ value: timeValue, label: timeLabel });
+    }
+    
+    return options;
+  };
+  
+  const timeOptions = generateTimeOptions();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -75,11 +113,9 @@ const AppointmentForm = () => {
           const appointmentResponse = await AppointmentService.getAppointment(id);
           const appointmentData = appointmentResponse.data.appointment;
           
-          // Format date for form inputs
-          const formatDateForInput = (dateStr) => {
-            const date = new Date(dateStr);
-            return date.toISOString().slice(0, 16);
-          };
+          // Extract date and time from datetime
+          const startDateTime = new Date(appointmentData.startTime);
+          const endDateTime = new Date(appointmentData.endTime);
           
           // Set initial form values
           setInitialValues({
@@ -90,8 +126,10 @@ const AppointmentForm = () => {
               ? appointmentData.vehicle._id 
               : appointmentData.vehicle,
             serviceType: appointmentData.serviceType || '',
-            startTime: formatDateForInput(appointmentData.startTime),
-            endTime: formatDateForInput(appointmentData.endTime),
+            startDate: formatDate(startDateTime),
+            startTime: formatTime(startDateTime),
+            endDate: formatDate(endDateTime),
+            endTime: formatTime(endDateTime),
             technician: appointmentData.technician || '',
             status: appointmentData.status || 'Scheduled',
             notes: appointmentData.notes || '',
@@ -138,9 +176,11 @@ const AppointmentForm = () => {
     };
 
     fetchData();
-  }, [id, customerIdParam, vehicleIdParam, workOrderIdParam, loadWorkOrder]);
+  }, [id, customerIdParam, vehicleIdParam, workOrderIdParam]);
 
   const loadWorkOrder = async (workOrderId) => {
+    if (!workOrderId) return;
+    
     try {
       const response = await WorkOrderService.getWorkOrder(workOrderId);
       const workOrderData = response.data.workOrder;
@@ -201,7 +241,11 @@ const AppointmentForm = () => {
   };
 
   const checkForConflicts = async (values) => {
-    if (!values.startTime || !values.endTime || !values.technician) {
+    // Combine date and time fields into datetime strings
+    const startDateTime = `${values.startDate}T${values.startTime}`;
+    const endDateTime = `${values.endDate}T${values.endTime}`;
+    
+    if (!startDateTime || !endDateTime || !values.technician) {
       setHasConflicts(false);
       setConflictMessage('');
       return false;
@@ -210,8 +254,8 @@ const AppointmentForm = () => {
     try {
       // Prepare request data
       const requestData = {
-        startTime: values.startTime,
-        endTime: values.endTime,
+        startTime: startDateTime,
+        endTime: endDateTime,
         technician: values.technician
       };
       
@@ -242,6 +286,17 @@ const AppointmentForm = () => {
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
+    // Combine date and time fields into datetime strings
+    const formattedValues = {
+      ...values,
+      startTime: `${values.startDate}T${values.startTime}`,
+      endTime: `${values.endDate}T${values.endTime}`
+    };
+    
+    // Remove individual date and time fields
+    delete formattedValues.startDate;
+    delete formattedValues.endDate;
+    
     // Check for conflicts one last time
     const conflicts = await checkForConflicts(values);
     if (conflicts) {
@@ -252,10 +307,10 @@ const AppointmentForm = () => {
     try {
       if (id) {
         // Update existing appointment
-        await AppointmentService.updateAppointment(id, values);
+        await AppointmentService.updateAppointment(id, formattedValues);
       } else {
         // Create new appointment
-        await AppointmentService.createAppointment(values);
+        await AppointmentService.createAppointment(formattedValues);
       }
       
       // Redirect to appointments list
@@ -305,6 +360,13 @@ const AppointmentForm = () => {
     { value: 'John', label: 'John' }
   ];
 
+  // Function to validate if start time is before end time
+  const validateTimes = (startDate, startTime, endDate, endTime) => {
+    const start = new Date(`${startDate}T${startTime}`);
+    const end = new Date(`${endDate}T${endTime}`);
+    return start < end;
+  };
+
   // Function to estimate appointment duration based on work order
   const estimateAppointmentDuration = (workOrderData) => {
     // Default duration is 1 hour
@@ -331,6 +393,21 @@ const AppointmentForm = () => {
     }
     
     return durationHours;
+  };
+
+  // Calculate end time based on start time and duration
+  const calculateEndTime = (startDate, startTime, durationHours) => {
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const hours = Math.floor(durationHours);
+    const minutes = Math.round((durationHours - hours) * 60);
+    
+    startDateTime.setHours(startDateTime.getHours() + hours);
+    startDateTime.setMinutes(startDateTime.getMinutes() + minutes);
+    
+    return {
+      date: formatDate(startDateTime),
+      time: formatTime(startDateTime)
+    };
   };
 
   return (
@@ -441,53 +518,160 @@ const AppointmentForm = () => {
                   />
                 </div>
                 
-                <div>
-                  <Input
-                    label="Start Time"
-                    name="startTime"
-                    type="datetime-local"
-                    value={values.startTime}
-                    onChange={(e) => {
-                      handleChange(e);
+                {/* Date and Time Section - Start */}
+                <div className="md:col-span-2">
+                  <h3 className="font-medium text-gray-700 mb-2">Appointment Time</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Start Date <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          type="date"
+                          name="startDate"
+                          value={values.startDate}
+                          onChange={(e) => {
+                            const newDate = e.target.value;
+                            setFieldValue('startDate', newDate);
+                            
+                            // If end date is before start date, set end date to start date
+                            if (new Date(`${newDate}T00:00`) > new Date(`${values.endDate}T00:00`)) {
+                              setFieldValue('endDate', newDate);
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={errors.startDate}
+                          touched={touched.startDate}
+                          required
+                        />
+                      </div>
                       
-                      // Automatically adjust end time based on work order duration estimate
-                      if (workOrder) {
-                        const durationHours = estimateAppointmentDuration(workOrder);
-                        const newStartTime = new Date(e.target.value);
-                        const newEndTime = new Date(newStartTime.getTime() + (durationHours * 60 * 60 * 1000));
-                        setFieldValue('endTime', newEndTime.toISOString().slice(0, 16));
-                      }
-                    }}
-                    onBlur={(e) => {
-                      handleBlur(e);
-                      if (values.technician) {
-                        checkForConflicts(values);
-                      }
-                    }}
-                    error={errors.startTime}
-                    touched={touched.startTime}
-                    required
-                  />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Start Time <span className="text-red-500">*</span>
+                        </label>
+                        <SelectInput
+                          name="startTime"
+                          options={timeOptions}
+                          value={values.startTime}
+                          onChange={(e) => {
+                            const newTime = e.target.value;
+                            setFieldValue('startTime', newTime);
+                            
+                            // Auto-adjust end time based on work order duration estimate
+                            if (workOrder) {
+                              const durationHours = estimateAppointmentDuration(workOrder);
+                              const newEnd = calculateEndTime(values.startDate, newTime, durationHours);
+                              setFieldValue('endDate', newEnd.date);
+                              setFieldValue('endTime', newEnd.time);
+                            }
+                            // If same day and end time is before or equal to start time, add 1 hour
+                            else if (values.startDate === values.endDate && 
+                                newTime >= values.endTime) {
+                              const newStartTime = new Date(`${values.startDate}T${newTime}`);
+                              const newEndTime = new Date(newStartTime.getTime() + (60 * 60 * 1000));
+                              setFieldValue('endTime', formatTime(newEndTime));
+                            }
+                            
+                            // Check for conflicts after a small delay to allow values to update
+                            setTimeout(() => {
+                              if (values.technician) {
+                                checkForConflicts({
+                                  ...values,
+                                  startTime: newTime
+                                });
+                              }
+                            }, 100);
+                          }}
+                          onBlur={handleBlur}
+                          error={errors.startTime}
+                          touched={touched.startTime}
+                          required
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          End Date <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          type="date"
+                          name="endDate"
+                          value={values.endDate}
+                          onChange={(e) => {
+                            const newDate = e.target.value;
+                            setFieldValue('endDate', newDate);
+                            
+                            // If end date is before start date, set start date to end date
+                            if (new Date(`${newDate}T00:00`) < new Date(`${values.startDate}T00:00`)) {
+                              setFieldValue('startDate', newDate);
+                            }
+                            
+                            // Check for conflicts
+                            if (values.technician) {
+                              checkForConflicts({
+                                ...values,
+                                endDate: newDate
+                              });
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={errors.endDate}
+                          touched={touched.endDate}
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          End Time <span className="text-red-500">*</span>
+                        </label>
+                        <SelectInput
+                          name="endTime"
+                          options={timeOptions}
+                          value={values.endTime}
+                          onChange={(e) => {
+                            const newTime = e.target.value;
+                            setFieldValue('endTime', newTime);
+                            
+                            // Check if end time is before start time on the same day
+                            if (values.startDate === values.endDate && 
+                                newTime <= values.startTime) {
+                              // Show error or adjust the time
+                              setError('End time must be after start time');
+                            } else {
+                              setError(null);
+                            }
+                            
+                            // Check for conflicts
+                            if (values.technician) {
+                              checkForConflicts({
+                                ...values,
+                                endTime: newTime
+                              });
+                            }
+                          }}
+                          onBlur={handleBlur}
+                          error={errors.endTime}
+                          touched={touched.endTime}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Time validation error */}
+                  {values.startDate && values.startTime && values.endDate && values.endTime && 
+                   !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime) && (
+                    <div className="text-red-500 text-sm mt-2">
+                      End time must be after start time
+                    </div>
+                  )}
                 </div>
-                
-                <div>
-                  <Input
-                    label="End Time"
-                    name="endTime"
-                    type="datetime-local"
-                    value={values.endTime}
-                    onChange={handleChange}
-                    onBlur={(e) => {
-                      handleBlur(e);
-                      if (values.technician) {
-                        checkForConflicts(values);
-                      }
-                    }}
-                    error={errors.endTime}
-                    touched={touched.endTime}
-                    required
-                  />
-                </div>
+                {/* Date and Time Section - End */}
                 
                 <div>
                   <SelectInput
@@ -495,13 +679,20 @@ const AppointmentForm = () => {
                     name="technician"
                     options={technicianOptions}
                     value={values.technician}
-                    onChange={handleChange}
-                    onBlur={(e) => {
-                      handleBlur(e);
-                      if (values.startTime && values.endTime) {
-                        checkForConflicts(values);
+                    onChange={(e) => {
+                      const newTechnician = e.target.value;
+                      setFieldValue('technician', newTechnician);
+                      
+                      // Check for conflicts if start and end times are set
+                      if (values.startDate && values.startTime && 
+                          values.endDate && values.endTime) {
+                        checkForConflicts({
+                          ...values,
+                          technician: newTechnician
+                        });
                       }
                     }}
+                    onBlur={handleBlur}
                     error={errors.technician}
                     touched={touched.technician}
                   />
@@ -563,7 +754,8 @@ const AppointmentForm = () => {
                 <Button
                   type="submit"
                   variant="primary"
-                  disabled={isSubmitting || hasConflicts}
+                  disabled={isSubmitting || hasConflicts || 
+                           !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime)}
                 >
                   {isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}
                 </Button>

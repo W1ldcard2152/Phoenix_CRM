@@ -245,7 +245,7 @@ const AppointmentDetail = () => {
                 This appointment has an associated work order.
               </p>
               <Button
-                to={`/work-orders/${appointment.workOrder}`}
+                to={`/work-orders/${typeof appointment.workOrder === 'object' ? appointment.workOrder._id : appointment.workOrder}`}
                 variant="primary"
               >
                 View Work Order

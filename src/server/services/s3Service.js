@@ -45,13 +45,22 @@ exports.uploadFile = async (fileBuffer, fileName, mimeType) => {
  * @returns {String} Signed URL
  */
 exports.getSignedUrl = (key, expiresIn = 3600) => {
-  const params = {
-    Bucket: bucketName,
-    Key: key,
-    Expires: expiresIn
-  };
-  
-  return s3.getSignedUrl('getObject', params);
+  try {
+    if (!key) {
+      throw new Error('S3 key is required to generate a signed URL');
+    }
+    
+    const params = {
+      Bucket: bucketName,
+      Key: key,
+      Expires: expiresIn
+    };
+    
+    return s3.getSignedUrl('getObject', params);
+  } catch (err) {
+    console.error('Error generating signed URL:', err);
+    throw new Error(`Failed to generate signed URL: ${err.message}`);
+  }
 };
 
 /**

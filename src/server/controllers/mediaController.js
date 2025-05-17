@@ -99,20 +99,39 @@ exports.deleteMedia = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
-  // Extract the key from the fileUrl
+  // Extract the key from the fileUrl with error handling
+  if (!media.fileUrl) {
+    // If no fileUrl, just delete the database record
+    await Media.findByIdAndDelete(req.params.id);
+    
+    return res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  }
+  
   const urlParts = media.fileUrl.split('/');
+  if (urlParts.length === 0) {
+    return next(new AppError('Invalid file URL format', 400));
+  }
+  
   const key = urlParts[urlParts.length - 1];
   
-  // Delete from S3
-  await s3Service.deleteFile(key);
-  
-  // Delete from database
-  await Media.findByIdAndDelete(req.params.id);
-  
-  res.status(204).json({
-    status: 'success',
-    data: null
-  });
+  try {
+    // Delete from S3
+    await s3Service.deleteFile(key);
+    
+    // Delete from database
+    await Media.findByIdAndDelete(req.params.id);
+    
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  } catch (err) {
+    console.error('Error deleting media file:', err);
+    return next(new AppError('Failed to delete media file from storage', 500));
+  }
 });
 
 // Get a signed URL for a media item
@@ -123,20 +142,33 @@ exports.getSignedUrl = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
-  // Extract the key from the fileUrl
+  // Extract the key from the fileUrl - Handle the case when fileUrl might be undefined or malformatted
+  if (!media.fileUrl) {
+    return next(new AppError('Media file URL is missing', 400));
+  }
+  
   const urlParts = media.fileUrl.split('/');
+  if (urlParts.length === 0) {
+    return next(new AppError('Invalid file URL format', 400));
+  }
+  
   const key = urlParts[urlParts.length - 1];
   
-  // Get a signed URL
-  const signedUrl = s3Service.getSignedUrl(key, 3600); // 1 hour expiration
-  
-  res.status(200).json({
-    status: 'success',
-    data: {
-      signedUrl,
-      expiresIn: 3600
-    }
-  });
+  // Get a signed URL with error handling
+  try {
+    const signedUrl = s3Service.getSignedUrl(key, 3600); // 1 hour expiration
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        signedUrl,
+        expiresIn: 3600
+      }
+    });
+  } catch (err) {
+    console.error('Error generating signed URL:', err);
+    return next(new AppError('Failed to generate signed URL for media file', 500));
+  }
 });
 
 // Share media with a customer via email
@@ -153,12 +185,26 @@ exports.shareMediaViaEmail = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
-  // Extract the key from the fileUrl
+  // Extract the key from the fileUrl with error handling
+  if (!media.fileUrl) {
+    return next(new AppError('Media file URL is missing', 400));
+  }
+  
   const urlParts = media.fileUrl.split('/');
+  if (urlParts.length === 0) {
+    return next(new AppError('Invalid file URL format', 400));
+  }
+  
   const key = urlParts[urlParts.length - 1];
   
-  // Get a signed URL with longer expiration (24 hours)
-  const signedUrl = s3Service.getSignedUrl(key, 86400);
+  // Get a signed URL with longer expiration (24 hours) and error handling
+  let signedUrl;
+  try {
+    signedUrl = s3Service.getSignedUrl(key, 86400);
+  } catch (err) {
+    console.error('Error generating signed URL for sharing:', err);
+    return next(new AppError('Failed to generate signed URL for sharing', 500));
+  }
   
   // Create a sharingLink object similar to what the model method would return
   const sharingLink = {

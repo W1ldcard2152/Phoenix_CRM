@@ -130,9 +130,11 @@ const WorkOrderForm = () => {
     try {
       const vehiclesResponse = await CustomerService.getCustomerVehicles(customerId);
       setVehicles(vehiclesResponse.data.vehicles || []);
+      return vehiclesResponse.data.vehicles || [];
     } catch (err) {
       console.error('Error fetching vehicles for customer:', err);
       setError('Failed to load vehicles for the selected customer.');
+      return [];
     }
   };
 
@@ -143,7 +145,12 @@ const WorkOrderForm = () => {
     
     if (customerId) {
       try {
-        await fetchVehiclesForCustomer(customerId);
+        const vehiclesResponse = await fetchVehiclesForCustomer(customerId);
+        
+        // Automatically select the first vehicle if available
+        if (vehiclesResponse && vehiclesResponse.length > 0) {
+          setFieldValue('vehicle', vehiclesResponse[0]._id);
+        }
       } catch (err) {
         console.error('Error fetching vehicles for customer:', err);
         setError('Failed to load vehicles for the selected customer.');
