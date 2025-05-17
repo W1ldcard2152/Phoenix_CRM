@@ -173,3 +173,93 @@ exports.getVehicleServiceHistory = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Add a mileage record to a vehicle
+exports.addMileageRecord = catchAsync(async (req, res, next) => {
+  const { mileage, date, notes } = req.body;
+  
+  // Validate that mileage is provided
+  if (!mileage) {
+    return next(new AppError('Please provide a mileage reading', 400));
+  }
+  
+  // Validate mileage is a positive number
+  if (mileage < 0) {
+    return next(new AppError('Mileage cannot be negative', 400));
+  }
+  
+  const vehicle = await Vehicle.findById(req.params.id);
+  
+  if (!vehicle) {
+    return next(new AppError('No vehicle found with that ID', 404));
+  }
+  
+  // Add mileage record using the model method
+  vehicle.addMileageRecord(
+    mileage,
+    date ? new Date(date) : new Date(),
+    notes || ''
+  );
+  
+  // Save the updated vehicle
+  await vehicle.save();
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      vehicle
+    }
+  });
+});
+
+// Get estimated mileage at a specific date
+exports.getMileageAtDate = catchAsync(async (req, res, next) => {
+  const { date } = req.query;
+  
+  if (!date) {
+    return next(new AppError('Please provide a date', 400));
+  }
+  
+  const vehicle = await Vehicle.findById(req.params.id);
+  
+  if (!vehicle) {
+    return next(new AppError('No vehicle found with that ID', 404));
+  }
+  
+  // Use the model method to estimate mileage at the given date
+  const estimatedMileage = vehicle.getMileageAtDate(new Date(date));
+  
+  res.status(200).json({
+    status: 'success',
+    data: {
+      date,
+      estimatedMileage,
+      isExact: vehicle.mileageHistory.some(record => 
+        new Date(record.date).toDateString() === new Date(date).toDateString()
+      )
+    }
+  });
+});
+
+// Get mileage history
+exports.getMileageHistory = catchAsync(async (req, res, next) => {
+  const vehicle = await Vehicle.findById(req.params.id);
+  
+  if (!vehicle) {
+    return next(new AppError('No vehicle found with that ID', 404));
+  }
+  
+  // Return mileage history sorted by date (newest first)
+  const mileageHistory = [...vehicle.mileageHistory].sort((a, b) => 
+    new Date(b.date) - new Date(a.date)
+  );
+  
+  res.status(200).json({
+    status: 'success',
+    results: mileageHistory.length,
+    data: {
+      currentMileage: vehicle.currentMileage,
+      mileageHistory
+    }
+  });
+});
