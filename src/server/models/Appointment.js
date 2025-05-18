@@ -115,24 +115,32 @@ AppointmentSchema.statics.checkConflicts = async function(startTime, endTime, te
 AppointmentSchema.methods.createWorkOrder = async function() {
   const WorkOrder = mongoose.model('WorkOrder');
   
-  const workOrderData = {
-    vehicle: this.vehicle,
-    customer: this.customer,
-    date: this.startTime,
-    serviceRequested: this.serviceType,
-    status: 'Scheduled', // Or derive from appointment status if needed
-    appointmentId: this._id,
-  };
+  // Explicitly create and assign fields to the new WorkOrder instance
+  const newWorkOrder = new WorkOrder();
+  newWorkOrder.vehicle = this.vehicle;
+  newWorkOrder.customer = this.customer;
+  newWorkOrder.date = this.startTime; // Or Date.now() if preferred for WO creation date
+  
+  // Handle services based on serviceType
+  // Assuming serviceType is a string description for a single service
+  newWorkOrder.services = [{ description: this.serviceType }];
+  // For backward compatibility, also set serviceRequested
+  newWorkOrder.serviceRequested = this.serviceType; 
+  
+  newWorkOrder.status = 'Scheduled'; // Default status for WO created from an appointment
+  newWorkOrder.appointmentId = this._id; // Link this appointment to the work order
 
   if (this.technician) {
-    workOrderData.assignedTechnician = this.technician; // Pass technician to WorkOrder
+    newWorkOrder.assignedTechnician = this.technician; // Assign technician from appointment
   }
   
-  const workOrder = new WorkOrder(workOrderData);
-  const savedWorkOrder = await workOrder.save();
-  this.workOrder = savedWorkOrder._id;
+  // Add any other default fields if necessary, e.g., priority
+  // newWorkOrder.priority = 'Normal'; 
+
+  const savedWorkOrder = await newWorkOrder.save();
   
-  return this.save();
+  this.workOrder = savedWorkOrder._id; // Link the new work order's ID to this appointment
+  return this.save(); // Save the appointment instance itself
 };
 
 const Appointment = mongoose.model('Appointment', AppointmentSchema);

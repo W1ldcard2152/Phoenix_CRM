@@ -319,6 +319,24 @@ const WorkOrderDetail = () => {
   
   const totalCost = partsCost + laborCost;
 
+  // Determine if an appointment exists and get its ID for linking
+  const appointmentExists = workOrder && workOrder.appointmentId;
+  const appointmentIdToLink = appointmentExists 
+    ? (typeof workOrder.appointmentId === 'string' ? workOrder.appointmentId : workOrder.appointmentId?._id) 
+    : null;
+
+  // Diagnostic logging
+  if (workOrder) {
+    console.log('WorkOrderDetail Debug:', {
+      workOrderId: workOrder._id,
+      appointmentIdRaw: workOrder.appointmentId,
+      typeofAppointmentId: typeof workOrder.appointmentId,
+      appointmentId_id: workOrder.appointmentId ? workOrder.appointmentId._id : 'N/A',
+      appointmentExists,
+      appointmentIdToLink
+    });
+  }
+
   return (
     <div className="container mx-auto">
       <div className="mb-6 flex justify-between items-center">
@@ -373,7 +391,7 @@ const WorkOrderDetail = () => {
             <div className="pt-2">
               <p className="text-sm text-gray-500">Assigned Technician</p>
               <p className="font-medium mt-1 text-gray-700">
-                {workOrder && workOrder.assignedTechnician ? workOrder.assignedTechnician.name : 'Unassigned'}
+                {workOrder?.appointmentId?.technician?.name || workOrder?.assignedTechnician?.name || 'Unassigned'}
               </p>
             </div>
           </div>
@@ -432,21 +450,11 @@ const WorkOrderDetail = () => {
             {/* Appointment Link Section */}
             <div className="pt-2">
               <p className="text-sm text-gray-500">Associated Appointment</p>
-              {workOrder.appointmentId && workOrder.appointmentId._id ? (
+              {appointmentExists && appointmentIdToLink ? (
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => navigate(`/appointments/${workOrder.appointmentId._id}`)}
-                  className="mt-1"
-                >
-                  View Appointment
-                </Button>
-              ) : workOrder.appointmentId && typeof workOrder.appointmentId === 'object' && workOrder.appointmentId.startTime ? (
-                // Fallback if _id is not present but it's a populated object from controller
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => navigate(`/appointments/${workOrder.appointmentId._id}`)} // Assuming _id will be there if populated
+                  onClick={() => navigate(`/appointments/${appointmentIdToLink}`)}
                   className="mt-1"
                 >
                   View Appointment
@@ -455,7 +463,11 @@ const WorkOrderDetail = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                  onClick={() => {
+                    const targetUrl = `/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`;
+                    console.log('Navigating to AppointmentForm with URL:', targetUrl);
+                    navigate(targetUrl);
+                  }}
                   className="mt-1"
                 >
                   Schedule Work Order

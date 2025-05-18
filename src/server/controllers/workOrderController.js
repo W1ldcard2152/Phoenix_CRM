@@ -54,9 +54,13 @@ exports.getWorkOrder = catchAsync(async (req, res, next) => {
       .populate('vehicle', 'year make model vin licensePlate')
       .populate({
         path: 'appointmentId',
-        select: 'technician startTime endTime status' // Specify fields to populate
+        select: '_id technician startTime endTime status', // _id first
+        populate: { 
+          path: 'technician',
+          select: '_id name specialization' // _id first
+        }
       })
-      .populate('assignedTechnician', 'name specialization');
+      .populate('assignedTechnician', '_id name specialization'); // _id first
     
     if (!workOrder) {
       return next(new AppError('No work order found with that ID', 404));
@@ -303,27 +307,54 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   
   const oldWorkOrder = await WorkOrder.findById(req.params.id); // Get current state for comparison
 
-  const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
+  // If an appointmentId is present and has a technician, ensure workOrder.assignedTechnician is synced
+  if (workOrderData.appointmentId) {
+    const Appointment = require('../models/Appointment'); // Ensure Appointment model is available
+    const appointment = await Appointment.findById(workOrderData.appointmentId).populate('technician');
+    if (appointment && appointment.technician) {
+      workOrderData.assignedTechnician = appointment.technician._id;
+    }
+  } else if (workOrderData.hasOwnProperty('appointmentId') && workOrderData.appointmentId === null) {
+    // If appointmentId is explicitly set to null, consider unassigning the technician
+    // or leaving it as is, depending on desired logic. For now, we'll let assignedTechnician be managed separately if no appointment.
+  }
+
+
+  const updatedWorkOrderPopulated = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
     new: true,
     runValidators: true
   }).populate('customer', 'name phone email')
     .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', 'name specialization')
-    .populate('appointmentId', 'technician startTime endTime'); // Populate appointmentId with specific fields
+    .populate('assignedTechnician', '_id name specialization') // _id first
+    .populate({
+        path: 'appointmentId',
+        select: '_id technician startTime endTime status', // _id first
+        populate: {
+          path: 'technician',
+          select: '_id name specialization' // _id first
+        }
+      });
 
-  if (!updatedWorkOrder) {
+  if (!updatedWorkOrderPopulated) {
     return next(new AppError('No work order found with that ID', 404));
   }
-
-  // Technician on WorkOrder is now primarily set via Appointment.
-  // If direct update to WorkOrder.assignedTechnician is still allowed by other means (not this UI flow),
-  // the responsibility of syncing to Appointment would be elsewhere or handled manually.
-  // For this simplified flow, we remove the automatic Appointment technician update from here.
+  
+  // Sync assignedTechnician if appointmentId and its technician exist
+  // This logic is now moved before the update to ensure workOrderData contains the correct technician
+  // if (updatedWorkOrderPopulated.appointmentId && updatedWorkOrderPopulated.appointmentId.technician) {
+  //   if (!updatedWorkOrderPopulated.assignedTechnician || 
+  //       updatedWorkOrderPopulated.assignedTechnician._id.toString() !== updatedWorkOrderPopulated.appointmentId.technician._id.toString()) {
+  //     updatedWorkOrderPopulated.assignedTechnician = updatedWorkOrderPopulated.appointmentId.technician._id;
+  //     // Re-save if we updated assignedTechnician after the initial update.
+  //     // This is not ideal. Better to include in the initial update.
+  //     // await updatedWorkOrderPopulated.save({ validateBeforeSave: false });
+  //   }
+  // }
   
   res.status(200).json({
     status: 'success',
     data: {
-      workOrder: updatedWorkOrder
+      workOrder: updatedWorkOrderPopulated
     }
   });
 });
@@ -385,9 +416,17 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   
   // Get populated work order
   const populatedWorkOrder = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name phone email communicationPreference')
-    .populate('vehicle', 'year make model')
-    .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
+    .populate('customer', 'name phone email') // Match getWorkOrder population
+    .populate('vehicle', 'year make model vin licensePlate') // Match getWorkOrder population
+    .populate('assignedTechnician', '_id name specialization') // Match getWorkOrder population
+    .populate({
+      path: 'appointmentId',
+      select: '_id technician startTime endTime status',
+      populate: {
+        path: 'technician',
+        select: '_id name specialization'
+      }
+    });
   
   // Send notification if customer has communication preference set
   if (populatedWorkOrder.customer && 
@@ -444,10 +483,24 @@ exports.addPart = catchAsync(async (req, res, next) => {
   
   await workOrder.save();
   
+  // Re-fetch and populate fully to ensure client receives consistent data
+  const populatedWorkOrderAfterAdd = await WorkOrder.findById(req.params.id)
+    .populate('customer', 'name phone email')
+    .populate('vehicle', 'year make model vin licensePlate')
+    .populate('assignedTechnician', '_id name specialization')
+    .populate({
+      path: 'appointmentId',
+      select: '_id technician startTime endTime status',
+      populate: {
+        path: 'technician',
+        select: '_id name specialization'
+      }
+    });
+
   res.status(200).json({
     status: 'success',
     data: {
-      workOrder
+      workOrder: populatedWorkOrderAfterAdd
     }
   });
 });
@@ -475,11 +528,25 @@ exports.addLabor = catchAsync(async (req, res, next) => {
   workOrder.totalEstimate = partsCost + laborCost;
   
   await workOrder.save();
+
+  // Re-fetch and populate fully to ensure client receives consistent data
+  const populatedWorkOrderAfterAddLabor = await WorkOrder.findById(req.params.id)
+    .populate('customer', 'name phone email')
+    .populate('vehicle', 'year make model vin licensePlate')
+    .populate('assignedTechnician', '_id name specialization')
+    .populate({
+      path: 'appointmentId',
+      select: '_id technician startTime endTime status',
+      populate: {
+        path: 'technician',
+        select: '_id name specialization'
+      }
+    });
   
   res.status(200).json({
     status: 'success',
     data: {
-      workOrder
+      workOrder: populatedWorkOrderAfterAddLabor
     }
   });
 });

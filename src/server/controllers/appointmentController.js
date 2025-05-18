@@ -99,44 +99,129 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     }
   }
   
-  const newAppointment = await Appointment.create(req.body);
+  const appointmentData = { ...req.body };
+
+  // If linking to an existing workOrderId, ensure createWorkOrder is not also true.
+  // Typically, UI would prevent this, but good to be safe.
+  if (appointmentData.workOrderId && appointmentData.createWorkOrder) {
+    // Prioritize linking to existing work order if both are somehow sent.
+    delete appointmentData.createWorkOrder;
+    // Or return an error:
+    // return next(new AppError('Cannot both link to an existing work order and create a new one simultaneously.', 400));
+  }
+
+  const newAppointment = await Appointment.create(appointmentData);
   
-  // Create a work order if specified
-  if (req.body.createWorkOrder) {
-    await newAppointment.createWorkOrder();
+  // Handle work order association
+  if (newAppointment.workOrder) { 
+    // This means appointmentData.workOrderId was provided and saved on newAppointment.
+    // This appointment is being linked to an EXISTING work order.
+    // We need to update that existing work order.
+    const workOrderToUpdate = await WorkOrder.findById(newAppointment.workOrder);
+    if (workOrderToUpdate) {
+      let woNeedsSave = false;
+      if (workOrderToUpdate.appointmentId?.toString() !== newAppointment._id.toString()) {
+        workOrderToUpdate.appointmentId = newAppointment._id;
+        woNeedsSave = true;
+      }
+      if (newAppointment.technician && workOrderToUpdate.assignedTechnician?.toString() !== newAppointment.technician.toString()) {
+        workOrderToUpdate.assignedTechnician = newAppointment.technician;
+        woNeedsSave = true;
+      }
+      // Optionally, update work order status if it's in a basic 'Created' state
+      if (workOrderToUpdate.status === 'Created') {
+        workOrderToUpdate.status = 'Scheduled'; 
+        woNeedsSave = true;
+      }
+      if (woNeedsSave) {
+        await workOrderToUpdate.save();
+        console.log('DEBUG: workOrderToUpdate after save in createAppointment:', workOrderToUpdate); // DEBUG LOG
+      }
+    }
+  } else if (appointmentData.createWorkOrder === true || appointmentData.createWorkOrder === 'true') { 
+    // No existing workOrderId provided, and createWorkOrder is true.
+    // This calls the model method which creates a NEW work order and links it.
+    // The newAppointment instance is updated and saved within createWorkOrder().
+    await newAppointment.createWorkOrder(); 
   }
   
   // Send confirmation based on customer preferences
-  if (customer.communicationPreference === 'SMS' && customer.phone) {
+  // Ensure customer is populated for communicationPreference
+  const populatedCustomerForNotif = await Customer.findById(newAppointment.customer);
+
+  if (populatedCustomerForNotif && populatedCustomerForNotif.communicationPreference === 'SMS' && populatedCustomerForNotif.phone) {
     try {
       await twilioService.sendAppointmentReminder(
-        newAppointment,
-        customer,
-        vehicle
+        newAppointment, // newAppointment should have times and serviceType
+        populatedCustomerForNotif,
+        vehicle // vehicle was fetched earlier
       );
     } catch (err) {
       console.error('Failed to send SMS confirmation:', err);
-      // Don't fail the appointment creation if notification fails
     }
-  } else if (customer.communicationPreference === 'Email' && customer.email) {
+  } else if (populatedCustomerForNotif && populatedCustomerForNotif.communicationPreference === 'Email' && populatedCustomerForNotif.email) {
     try {
       await emailService.sendAppointmentConfirmation(
         newAppointment,
-        customer,
+        populatedCustomerForNotif,
         vehicle
       );
     } catch (err) {
       console.error('Failed to send email confirmation:', err);
-      // Don't fail the appointment creation if notification fails
     }
   }
+  
+  // Repopulate newAppointment fully before sending the response
+  const fullyPopulatedAppointment = await Appointment.findById(newAppointment._id)
+    .populate('customer', 'name phone email')
+    .populate('vehicle', 'year make model vin') // Added vin
+    .populate('technician', 'name specialization')
+    .populate({ // Populate workOrder and its relevant fields
+      path: 'workOrder',
+      populate: [
+        { path: 'assignedTechnician', select: 'name specialization' },
+        { path: 'customer', select: 'name' }, // Example, add more as needed
+        { path: 'vehicle', select: 'year make model' } // Example
+      ]
+    });
   
   res.status(201).json({
     status: 'success',
     data: {
-      appointment: newAppointment
+      appointment: fullyPopulatedAppointment
     }
   });
+  // The following block was duplicated and caused an error.
+  // if (customer.communicationPreference === 'SMS' && customer.phone) {
+  //   try {
+  //     await twilioService.sendAppointmentReminder(
+  //       newAppointment,
+  //       customer,
+  //       vehicle
+  //     );
+  //   } catch (err) {
+  //     console.error('Failed to send SMS confirmation:', err);
+  //     // Don't fail the appointment creation if notification fails
+  //   }
+  // } else if (customer.communicationPreference === 'Email' && customer.email) {
+  //   try {
+  //     await emailService.sendAppointmentConfirmation(
+  //       newAppointment,
+  //       customer,
+  //       vehicle
+  //     );
+  //   } catch (err) {
+  //     console.error('Failed to send email confirmation:', err);
+  //     // Don't fail the appointment creation if notification fails
+  //   }
+  // }
+  
+  // res.status(201).json({
+  //   status: 'success',
+  //   data: {
+  //     appointment: newAppointment // This was sending the unpopulated appointment
+  //   }
+  // });
 });
 
 // Update an appointment
@@ -193,7 +278,23 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       await WorkOrder.findByIdAndUpdate(
         appointment.workOrder,
         { status: 'Cancelled' },
-        { new: true }
+        { new: true, runValidators: true } // Added runValidators
+      );
+    }
+  }
+
+  // If appointment status is 'Scheduled' or 'Confirmed', ensure linked WorkOrder is 'Scheduled'
+  if (
+    (req.body.status === 'Scheduled' || req.body.status === 'Confirmed') &&
+    appointment.workOrder
+  ) {
+    const workOrder = await WorkOrder.findById(appointment.workOrder);
+    // Only update if work order exists and is in a more preliminary state
+    if (workOrder && (workOrder.status === 'Created' || workOrder.status === 'On Hold')) {
+      await WorkOrder.findByIdAndUpdate(
+        appointment.workOrder,
+        { status: 'Scheduled' },
+        { new: true, runValidators: true } // Added runValidators
       );
     }
   }
@@ -208,6 +309,21 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
   ).populate('customer', 'name phone email communicationPreference')
    .populate('vehicle', 'year make model')
    .populate('technician', 'name specialization'); // Populate technician
+
+  // If technician was changed and there's an associated work order, update it
+  if (req.body.technician && updatedAppointment.workOrder) {
+    // Check if the technician actually changed to avoid unnecessary updates
+    const oldTechnicianId = appointment.technician ? appointment.technician.toString() : null;
+    const newTechnicianId = req.body.technician;
+
+    if (oldTechnicianId !== newTechnicianId) {
+      await WorkOrder.findByIdAndUpdate(
+        updatedAppointment.workOrder,
+        { assignedTechnician: newTechnicianId },
+        { new: true, runValidators: true } // Added runValidators
+      );
+    }
+  }
   
   // Send notification if status changed and customer has communication preference
   if (req.body.status && 
