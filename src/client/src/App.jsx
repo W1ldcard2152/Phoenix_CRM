@@ -26,6 +26,11 @@ import InvoiceGenerator from './pages/Invoices/InvoiceGenerator';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 
+// New Pages for Sidebar
+import TechniciansPage from './pages/Technicians/TechniciansPage';
+import AdminPage from './pages/Admin/AdminPage';
+import SettingsPage from './pages/Settings/SettingsPage';
+
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 
@@ -88,6 +93,15 @@ const App = () => {
                       <Route path="/invoices/new" element={<InvoiceGenerator />} />
                       <Route path="/invoices/new/:id" element={<InvoiceGenerator />} />
                       <Route path="/invoices/generate" element={<InvoiceGenerator />} />
+
+                      {/* Technician Routes */}
+                      <Route path="/technicians" element={<TechniciansPage />} />
+                      
+                      {/* Admin Routes */}
+                      <Route path="/admin" element={<AdminPage />} />
+
+                      {/* Settings Routes */}
+                      <Route path="/settings" element={<SettingsPage />} />
                       
                       {/* Fallback - Redirect to Dashboard */}
                       <Route path="*" element={<Navigate to="/" replace />} />

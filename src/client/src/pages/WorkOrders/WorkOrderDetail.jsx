@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
 import WorkOrderService from '../../services/workOrderService';
+// technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
   const { id } = useParams();
@@ -12,6 +13,9 @@ const WorkOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
+  // const [technicians, setTechnicians] = useState([]); // State for technicians - REMOVED
+  // const [selectedTechnician, setSelectedTechnician] = useState(''); // State for selected technician - REMOVED
+  // const [technicianUpdateLoading, setTechnicianUpdateLoading] = useState(false); // REMOVED
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [partModalOpen, setPartModalOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
@@ -32,20 +36,22 @@ const WorkOrderDetail = () => {
   });
 
   useEffect(() => {
-    const fetchWorkOrder = async () => {
+    const fetchWorkOrderData = async () => { // Renamed function
       try {
         setLoading(true);
-        const response = await WorkOrderService.getWorkOrder(id);
-        setWorkOrder(response.data.workOrder);
+        const workOrderResponse = await WorkOrderService.getWorkOrder(id);
+        const fetchedWorkOrder = workOrderResponse.data.workOrder;
+        setWorkOrder(fetchedWorkOrder);
+        // setSelectedTechnician, technicianService.getAllTechnicians, and setTechnicians calls removed.
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching work order:', err);
-        setError('Failed to load work order. Please try again later.');
+        console.error('Error fetching work order details:', err); // Updated error message
+        setError('Failed to load work order details. Please try again later.');
         setLoading(false);
       }
     };
 
-    fetchWorkOrder();
+    fetchWorkOrderData(); // Call renamed function
   }, [id]);
 
   const handleStatusChange = async (e) => {
@@ -54,8 +60,11 @@ const WorkOrderDetail = () => {
 
     try {
       setStatusUpdateLoading(true);
-      const response = await WorkOrderService.updateStatus(id, newStatus);
-      setWorkOrder(response.data.workOrder);
+      // Ensure we send the full work order object if other fields might be affected by status change
+      // For now, assuming updateStatus endpoint only handles status.
+      // If not, might need to send { ...workOrder, status: newStatus } to a general update endpoint.
+      const response = await WorkOrderService.updateStatus(id, newStatus); 
+      setWorkOrder(response.data.workOrder); // Assuming response returns the updated work order
       setStatusUpdateLoading(false);
     } catch (err) {
       console.error('Error updating status:', err);
@@ -63,6 +72,8 @@ const WorkOrderDetail = () => {
       setStatusUpdateLoading(false);
     }
   };
+
+  // handleTechnicianChange function removed as technician is view-only here.
 
   const handleDeleteWorkOrder = async () => {
     try {
@@ -267,6 +278,8 @@ const WorkOrderDetail = () => {
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
+  // technicianOptions constant removed.
+
   if (loading) {
     return (
       <div className="container mx-auto flex justify-center items-center h-48">
@@ -357,6 +370,12 @@ const WorkOrderDetail = () => {
                 <p className="text-sm text-gray-600">License: {workOrder.vehicle.licensePlate}</p>
               )}
             </div>
+            <div className="pt-2">
+              <p className="text-sm text-gray-500">Assigned Technician</p>
+              <p className="font-medium mt-1 text-gray-700">
+                {workOrder && workOrder.assignedTechnician ? workOrder.assignedTechnician.name : 'Unassigned'}
+              </p>
+            </div>
           </div>
         </Card>
 
@@ -410,10 +429,43 @@ const WorkOrderDetail = () => {
                 />
               </div>
             </div>
+            {/* Appointment Link Section */}
+            <div className="pt-2">
+              <p className="text-sm text-gray-500">Associated Appointment</p>
+              {workOrder.appointmentId && workOrder.appointmentId._id ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate(`/appointments/${workOrder.appointmentId._id}`)}
+                  className="mt-1"
+                >
+                  View Appointment
+                </Button>
+              ) : workOrder.appointmentId && typeof workOrder.appointmentId === 'object' && workOrder.appointmentId.startTime ? (
+                // Fallback if _id is not present but it's a populated object from controller
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => navigate(`/appointments/${workOrder.appointmentId._id}`)} // Assuming _id will be there if populated
+                  className="mt-1"
+                >
+                  View Appointment
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                  className="mt-1"
+                >
+                  Schedule Work Order
+                </Button>
+              )}
+            </div>
           </div>
         </Card>
 
-        <Card 
+        <Card
           title="Totals" 
           headerActions={
             <div className="flex space-x-2">

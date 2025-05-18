@@ -32,6 +32,7 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
   const appointments = await Appointment.find(query)
     .populate('customer', 'name phone email')
     .populate('vehicle', 'year make model')
+    .populate('technician', 'name specialization') // Populate technician
     .sort({ startTime: 1 });
   
   res.status(200).json({
@@ -48,7 +49,8 @@ exports.getAppointment = catchAsync(async (req, res, next) => {
   const appointment = await Appointment.findById(req.params.id)
     .populate('customer', 'name phone email')
     .populate('vehicle', 'year make model vin')
-    .populate('workOrder');
+    .populate('workOrder')
+    .populate('technician', 'name specialization'); // Populate technician
   
   if (!appointment) {
     return next(new AppError('No appointment found with that ID', 404));
@@ -204,7 +206,8 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       runValidators: true
     }
   ).populate('customer', 'name phone email communicationPreference')
-   .populate('vehicle', 'year make model');
+   .populate('vehicle', 'year make model')
+   .populate('technician', 'name specialization'); // Populate technician
   
   // Send notification if status changed and customer has communication preference
   if (req.body.status && 
@@ -325,6 +328,7 @@ exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
   })
   .populate('customer', 'name phone email')
   .populate('vehicle', 'year make model')
+  .populate('technician', 'name specialization') // Populate technician
   .sort({ startTime: 1 });
   
   res.status(200).json({
@@ -438,6 +442,7 @@ exports.getTodayAppointments = catchAsync(async (req, res, next) => {
   })
   .populate('customer', 'name phone email')
   .populate('vehicle', 'year make model')
+  .populate('technician', 'name specialization') // Populate technician
   .sort({ startTime: 1 });
   
   res.status(200).json({
@@ -461,6 +466,7 @@ exports.getCustomerAppointments = catchAsync(async (req, res, next) => {
   
   const appointments = await Appointment.find({ customer: customerId })
     .populate('vehicle', 'year make model')
+    .populate('technician', 'name specialization') // Populate technician
     .sort({ startTime: -1 });
   
   res.status(200).json({
@@ -484,6 +490,7 @@ exports.getVehicleAppointments = catchAsync(async (req, res, next) => {
   }
   
   const appointments = await Appointment.find({ vehicle: vehicleId })
+    .populate('technician', 'name specialization') // Populate technician
     .sort({ startTime: -1 });
   
   res.status(200).json({

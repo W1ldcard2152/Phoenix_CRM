@@ -85,20 +85,9 @@ const AppointmentCalendar = () => {
     return moment(dateTimeString).format('h:mm A');
   };
 
-  // Get appropriate status color class
-  const getStatusColorClass = (status) => {
-    switch (status) {
-      case 'Confirmed':
-        return 'bg-green-100 text-green-800';
-      case 'Cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'Completed':
-        return 'bg-blue-100 text-blue-800';
-      case 'No-Show':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  // Get a consistent display class for the technician name
+  const getTechnicianDisplayClass = () => {
+    return 'bg-indigo-100 text-indigo-800'; // Consistent style for technician
   };
 
   if (loading && appointments.length === 0) {
@@ -179,9 +168,9 @@ const AppointmentCalendar = () => {
                             {formatTime(appointment.startTime)}
                           </span>
                           <span 
-                            className={`text-xs px-1.5 py-0.5 rounded-full ${getStatusColorClass(appointment.status)}`}
+                            className={`text-xs px-1.5 py-0.5 rounded-full ${getTechnicianDisplayClass()}`}
                           >
-                            {appointment.status}
+                            {appointment.technician && appointment.technician.name ? appointment.technician.name : 'Unassigned'}
                           </span>
                         </div>
                         
@@ -193,11 +182,7 @@ const AppointmentCalendar = () => {
                           {appointment.serviceType}
                         </p>
                         
-                        {appointment.technician && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            <span className="font-medium">Tech:</span> {appointment.technician}
-                          </p>
-                        )}
+                        {/* Technician is now shown where status was */}
                       </div>
                     ))}
                   </div>

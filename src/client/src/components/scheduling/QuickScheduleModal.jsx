@@ -6,6 +6,7 @@ import Input from '../common/Input';
 import SelectInput from '../common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
+import technicianService from '../../services/technicianService'; // Import technician service
 
 /**
  * Quick Schedule Modal Component
@@ -23,6 +24,7 @@ const QuickScheduleModal = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [workOrder, setWorkOrder] = useState(null);
+  const [technicianOptionsList, setTechnicianOptionsList] = useState([{ value: '', label: 'Loading Technicians...' }]);
   const [scheduleData, setScheduleData] = useState({
     date: initialDate || new Date().toISOString().split('T')[0],
     startTime: '09:00',
@@ -30,14 +32,28 @@ const QuickScheduleModal = ({
     technician: '',
     notes: ''
   });
-  
-  // Get the tech options (in a real app, these would come from a service or context)
-  const technicianOptions = [
-    { value: '', label: 'Select Technician' },
-    { value: 'Mike', label: 'Mike' },
-    { value: 'Sarah', label: 'Sarah' },
-    { value: 'John', label: 'John' }
-  ];
+
+  useEffect(() => {
+    const fetchTechnicians = async () => {
+      if (isOpen) {
+        try {
+          const response = await technicianService.getAllTechnicians(true); // Fetch active technicians
+          const fetchedTechnicians = response.data.data.technicians || [];
+          const options = [
+            { value: '', label: 'Select Technician' },
+            ...fetchedTechnicians.map(tech => ({ value: tech._id, label: tech.name }))
+          ];
+          setTechnicianOptionsList(options);
+        } catch (err) {
+          console.error('Error fetching technicians:', err);
+          setTechnicianOptionsList([{ value: '', label: 'Error loading technicians' }]);
+          // Optionally set an error state to display to the user
+        }
+      }
+    };
+
+    fetchTechnicians();
+  }, [isOpen]);
 
   useEffect(() => {
     const loadWorkOrder = async () => {
@@ -227,7 +243,7 @@ const QuickScheduleModal = ({
                 <SelectInput
                   label="Technician"
                   name="technician"
-                  options={technicianOptions}
+                  options={technicianOptionsList}
                   value={scheduleData.technician}
                   onChange={handleInputChange}
                 />

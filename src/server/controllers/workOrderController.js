@@ -29,6 +29,7 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   const workOrders = await WorkOrder.find(query)
     .populate('customer', 'name phone email')
     .populate('vehicle', 'year make model vin licensePlate')
+    .populate('assignedTechnician', 'name specialization') // Populate assignedTechnician
     .sort({ date: -1 });
   
   res.status(200).json({
@@ -51,25 +52,19 @@ exports.getWorkOrder = catchAsync(async (req, res, next) => {
     const workOrder = await WorkOrder.findById(req.params.id)
       .populate('customer', 'name phone email')
       .populate('vehicle', 'year make model vin licensePlate')
-      .populate('appointmentId');
+      .populate({
+        path: 'appointmentId',
+        select: 'technician startTime endTime status' // Specify fields to populate
+      })
+      .populate('assignedTechnician', 'name specialization');
     
     if (!workOrder) {
       return next(new AppError('No work order found with that ID', 404));
     }
     
-    // Check if the appointment reference is valid
-    if (workOrder.appointmentId && typeof workOrder.appointmentId === 'string') {
-      // If the appointment ID is just a string (not populated), try to populate it manually
-      const Appointment = require('../models/Appointment');
-      try {
-        const appointment = await Appointment.findById(workOrder.appointmentId);
-        workOrder.appointmentId = appointment;
-      } catch (err) {
-        console.log('Unable to populate appointment:', err.message);
-        // Don't fail if we can't populate the appointment
-      }
-    }
-    
+    // The explicit check and manual population for appointmentId can be removed
+    // as Mongoose's populate should handle this correctly with the specified path and select.
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -306,19 +301,29 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   }
   
-  const workOrder = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
+  const oldWorkOrder = await WorkOrder.findById(req.params.id); // Get current state for comparison
+
+  const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
     new: true,
     runValidators: true
-  });
-  
-  if (!workOrder) {
+  }).populate('customer', 'name phone email')
+    .populate('vehicle', 'year make model vin licensePlate')
+    .populate('assignedTechnician', 'name specialization')
+    .populate('appointmentId', 'technician startTime endTime'); // Populate appointmentId with specific fields
+
+  if (!updatedWorkOrder) {
     return next(new AppError('No work order found with that ID', 404));
   }
+
+  // Technician on WorkOrder is now primarily set via Appointment.
+  // If direct update to WorkOrder.assignedTechnician is still allowed by other means (not this UI flow),
+  // the responsibility of syncing to Appointment would be elsewhere or handled manually.
+  // For this simplified flow, we remove the automatic Appointment technician update from here.
   
   res.status(200).json({
     status: 'success',
     data: {
-      workOrder
+      workOrder: updatedWorkOrder
     }
   });
 });
@@ -381,7 +386,8 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   // Get populated work order
   const populatedWorkOrder = await WorkOrder.findById(req.params.id)
     .populate('customer', 'name phone email communicationPreference')
-    .populate('vehicle', 'year make model');
+    .populate('vehicle', 'year make model')
+    .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
   
   // Send notification if customer has communication preference set
   if (populatedWorkOrder.customer && 
@@ -485,6 +491,7 @@ exports.getWorkOrdersByStatus = catchAsync(async (req, res, next) => {
   const workOrders = await WorkOrder.find({ status })
     .populate('customer', 'name phone email')
     .populate('vehicle', 'year make model vin licensePlate')
+    .populate('assignedTechnician', 'name specialization') // Populate assignedTechnician
     .sort({ date: -1 });
   
   res.status(200).json({
@@ -500,7 +507,8 @@ exports.getWorkOrdersByStatus = catchAsync(async (req, res, next) => {
 exports.generateInvoice = catchAsync(async (req, res, next) => {
   const workOrder = await WorkOrder.findById(req.params.id)
     .populate('customer', 'name email phone address')
-    .populate('vehicle', 'year make model vin');
+    .populate('vehicle', 'year make model vin')
+    .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
   
   if (!workOrder) {
     return next(new AppError('No work order found with that ID', 404));
@@ -527,6 +535,7 @@ exports.generateInvoice = catchAsync(async (req, res, next) => {
         workOrderId: workOrder._id,
         customer: workOrder.customer,
         vehicle: workOrder.vehicle,
+        assignedTechnician: workOrder.assignedTechnician, // Include technician in invoice data
         date: workOrder.date,
         parts: workOrder.parts,
         labor: workOrder.labor,
@@ -557,7 +566,8 @@ exports.searchWorkOrders = catchAsync(async (req, res, next) => {
     ]
   })
   .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model vin licensePlate');
+  .populate('vehicle', 'year make model vin licensePlate')
+  .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
   
   res.status(200).json({
     status: 'success',

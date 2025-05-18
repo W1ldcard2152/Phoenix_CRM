@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
@@ -14,10 +14,12 @@ const WorkOrderList = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   
   // Get filter parameters from URL
   const customerParam = searchParams.get('customer');
   const vehicleParam = searchParams.get('vehicle');
+  const needsSchedulingParam = searchParams.get('needsScheduling') === 'true';
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
@@ -289,6 +291,15 @@ const WorkOrderList = () => {
                         >
                           Edit
                         </Button>
+                        {needsSchedulingParam && (
+                          <Button
+                            onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                            variant="primary"
+                            size="sm"
+                          >
+                            Schedule
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

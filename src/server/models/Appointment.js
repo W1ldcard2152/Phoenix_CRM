@@ -27,8 +27,9 @@ const AppointmentSchema = new Schema(
       required: true
     },
     technician: {
-      type: String,
-      trim: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Technician',
+      // required: false // A technician might not be assigned immediately
     },
     notes: {
       type: String,
@@ -68,7 +69,8 @@ AppointmentSchema.index({ startTime: 1, endTime: 1 });
 AppointmentSchema.index({ customer: 1 });
 AppointmentSchema.index({ vehicle: 1 });
 AppointmentSchema.index({ status: 1 });
-AppointmentSchema.index({ technician: 1 });
+// Technician index might need to be re-evaluated or removed if not frequently queried directly
+// AppointmentSchema.index({ technician: 1 }); 
 
 // Virtual for duration in hours
 AppointmentSchema.virtual('durationHours').get(function() {
@@ -113,15 +115,20 @@ AppointmentSchema.statics.checkConflicts = async function(startTime, endTime, te
 AppointmentSchema.methods.createWorkOrder = async function() {
   const WorkOrder = mongoose.model('WorkOrder');
   
-  const workOrder = new WorkOrder({
+  const workOrderData = {
     vehicle: this.vehicle,
     customer: this.customer,
     date: this.startTime,
     serviceRequested: this.serviceType,
-    status: 'Scheduled',
-    appointmentId: this._id
-  });
+    status: 'Scheduled', // Or derive from appointment status if needed
+    appointmentId: this._id,
+  };
+
+  if (this.technician) {
+    workOrderData.assignedTechnician = this.technician; // Pass technician to WorkOrder
+  }
   
+  const workOrder = new WorkOrder(workOrderData);
   const savedWorkOrder = await workOrder.save();
   this.workOrder = savedWorkOrder._id;
   

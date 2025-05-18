@@ -109,15 +109,9 @@ const WorkflowSummary = () => {
                           {formatTime(appointment.startTime)}
                         </span>
                         <span 
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            appointment.status === 'Confirmed' 
-                              ? 'bg-green-100 text-green-800' 
-                              : appointment.status === 'Cancelled'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-blue-100 text-blue-800'
-                          }`}
+                          className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800" // Adjusted styling for technician name
                         >
-                          {appointment.status}
+                          {appointment.technician && appointment.technician.name ? appointment.technician.name : 'Unassigned'}
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 mt-1">
@@ -126,11 +120,7 @@ const WorkflowSummary = () => {
                       <p className="text-sm text-gray-600">
                         {appointment.serviceType}
                       </p>
-                      {appointment.technician && (
-                        <p className="text-xs text-gray-500">
-                          Tech: {appointment.technician}
-                        </p>
-                      )}
+                      {/* Technician is now shown where status was */}
                     </div>
                     <div className="flex space-x-2">
                       <Button

@@ -22,6 +22,7 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
+const technicianRoutes = require('./routes/technicianRoutes'); // Import technician routes
 
 // Load environment variables
 dotenv.config();
@@ -89,6 +90,7 @@ app.use('/api/workorders', workOrderRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/technicians', technicianRoutes); // Use technician routes
 
 // Basic route for testing API status
 app.get('/', (req, res) => {

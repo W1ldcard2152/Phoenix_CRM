@@ -7,6 +7,7 @@ import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
+import technicianService from '../../services/technicianService'; // Import technician service
 
 const AppointmentList = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const AppointmentList = () => {
   });
   const [statusFilter, setStatusFilter] = useState('');
   const [technicianFilter, setTechnicianFilter] = useState('');
+  const [technicianFilterOptions, setTechnicianFilterOptions] = useState([{ value: '', label: 'Loading Technicians...' }]);
   const [searchParams] = useSearchParams();
   const [appointmentActionModal, setAppointmentActionModal] = useState(false);
   
@@ -27,6 +29,24 @@ const AppointmentList = () => {
   const customerParam = searchParams.get('customer');
   const vehicleParam = searchParams.get('vehicle');
   const workOrderParam = searchParams.get('workOrder');
+
+  useEffect(() => {
+    const fetchTechOptions = async () => {
+      try {
+        const response = await technicianService.getAllTechnicians(true); // Fetch active
+        const fetchedTechnicians = response.data.data.technicians || [];
+        const options = [
+          { value: '', label: 'All Technicians' },
+          ...fetchedTechnicians.map(tech => ({ value: tech._id, label: tech.name }))
+        ];
+        setTechnicianFilterOptions(options);
+      } catch (err) {
+        console.error('Error fetching technicians for filter:', err);
+        setTechnicianFilterOptions([{ value: '', label: 'Error loading techs' }]);
+      }
+    };
+    fetchTechOptions();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -119,14 +139,6 @@ const AppointmentList = () => {
     { value: 'Completed', label: 'Completed' },
     { value: 'Cancelled', label: 'Cancelled' },
     { value: 'No-Show', label: 'No-Show' }
-  ];
-
-  // Technician options (should come from settings in real app)
-  const technicianOptions = [
-    { value: '', label: 'All Technicians' },
-    { value: 'Mike', label: 'Mike' },
-    { value: 'Sarah', label: 'Sarah' },
-    { value: 'John', label: 'John' }
   ];
 
   return (
@@ -253,7 +265,7 @@ const AppointmentList = () => {
             <SelectInput
               label="Technician"
               name="technician"
-              options={technicianOptions}
+              options={technicianFilterOptions}
               value={technicianFilter}
               onChange={handleFilterChange}
             />
@@ -322,7 +334,7 @@ const AppointmentList = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {appointment.technician || 'Not Assigned'}
+                        {appointment.technician?.name || 'Not Assigned'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

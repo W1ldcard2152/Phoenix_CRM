@@ -177,7 +177,7 @@ const AppointmentDetail = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Technician</p>
-              <p className="font-medium">{appointment.technician || 'Not Assigned'}</p>
+              <p className="font-medium">{appointment.technician?.name || 'Not Assigned'}</p>
             </div>
           </div>
         </Card>

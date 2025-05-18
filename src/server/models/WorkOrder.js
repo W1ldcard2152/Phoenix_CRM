@@ -150,6 +150,10 @@ const WorkOrderSchema = new Schema(
     appointmentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Appointment'
+    },
+    assignedTechnician: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Technician'
     }
   },
   {

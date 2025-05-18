@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 
 const Sidebar = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth(); // Assuming user object is available in AuthContext
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
 
@@ -18,7 +18,7 @@ const Sidebar = () => {
     return null;
   }
 
-  const navigationItems = [
+  const primaryNavigationItems = [
     { name: 'Dashboard', path: '/', icon: 'fas fa-tachometer-alt' },
     { name: 'Customers', path: '/customers', icon: 'fas fa-users' },
     { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car' },
@@ -27,11 +27,22 @@ const Sidebar = () => {
     { name: 'Invoices', path: '/invoices/generate', icon: 'fas fa-file-invoice-dollar' },
   ];
 
+  const secondaryNavigationItems = [
+    { name: 'Technicians', path: '/technicians', icon: 'fas fa-hard-hat' },
+    { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt' },
+    { name: 'Settings', path: '/settings', icon: 'fas fa-sliders-h' },
+  ];
+
+  // Get user initial - using a placeholder if user or user.name is not available
+  const userInitial = user && user.name ? user.name.charAt(0).toUpperCase() : (user && user.email ? user.email.charAt(0).toUpperCase() : 'U');
+  const userName = user && user.name ? user.name : (user && user.email ? user.email : 'User');
+
+
   return (
     <div
       className={`${
         collapsed ? 'w-16' : 'w-64'
-      } bg-primary-800 text-white transition-all duration-300 ease-in-out min-h-screen`}
+      } bg-primary-800 text-white transition-all duration-300 ease-in-out min-h-screen flex flex-col`}
     >
       <div className="flex items-center justify-between p-4 border-b border-primary-700">
         {!collapsed && (
@@ -47,27 +58,63 @@ const Sidebar = () => {
         </button>
       </div>
 
-      <nav className="mt-6">
-        <ul>
-          {navigationItems.map((item) => (
-            <li key={item.name} className="mb-2">
+      <nav className="mt-6 flex-grow">
+        {/* Primary Navigation */}
+        <ul className="mb-4">
+          {primaryNavigationItems.map((item) => (
+            <li key={item.name} className="mb-1">
               <Link
                 to={item.path}
-                className={`flex items-center p-4 ${
+                className={`flex items-center py-3 px-4 ${
                   collapsed ? 'justify-center' : 'justify-start'
                 } ${
-                  location.pathname === item.path
-                    ? 'bg-primary-700 border-l-4 border-white'
-                    : 'hover:bg-primary-700'
-                }`}
+                  location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                    ? 'bg-primary-700 border-l-4 border-accent-500'
+                    : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
+                } transition-colors duration-150`}
               >
-                <i className={`${item.icon} ${collapsed ? 'text-xl' : 'mr-3'}`}></i>
-                {!collapsed && <span>{item.name}</span>}
+                <i className={`${item.icon} ${collapsed ? 'text-lg' : 'mr-3 w-5 text-center'}`}></i>
+                {!collapsed && <span className="text-sm font-medium">{item.name}</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        {/* Divider */}
+        {!collapsed && <hr className="my-3 mx-4 border-primary-600" />}
+
+        {/* Secondary Navigation */}
+        <ul>
+          {secondaryNavigationItems.map((item) => (
+            <li key={item.name} className="mb-1">
+              <Link
+                to={item.path}
+                className={`flex items-center py-3 px-4 ${
+                  collapsed ? 'justify-center' : 'justify-start'
+                } ${
+                  location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                    ? 'bg-primary-700 border-l-4 border-accent-500'
+                    : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
+                } transition-colors duration-150`}
+              >
+                <i className={`${item.icon} ${collapsed ? 'text-lg' : 'mr-3 w-5 text-center'}`}></i>
+                {!collapsed && <span className="text-sm font-medium">{item.name}</span>}
               </Link>
             </li>
           ))}
         </ul>
       </nav>
+
+      {/* User Management Section - at the bottom */}
+      <div className="p-3 border-t border-primary-700 mt-auto"> {/* mt-auto pushes this section to the bottom */}
+        {/* TODO: Implement user dropdown menu functionality */}
+        <div className={`flex items-center ${collapsed ? 'justify-center' : ''} cursor-pointer group p-1 rounded hover:bg-primary-700`}>
+          <div className={`flex items-center justify-center h-8 w-8 ${collapsed ? '' : 'mr-2'} bg-accent-500 rounded-full text-white font-semibold text-sm group-hover:bg-accent-600 transition-colors duration-150`}>
+            {userInitial}
+          </div>
+          {!collapsed && <span className="text-sm font-medium group-hover:text-accent-300 truncate">{userName}</span>}
+        </div>
+      </div>
     </div>
   );
 };

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button';
 import AppointmentService from '../../services/appointmentService';
 import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
+import technicianService from '../../services/technicianService'; // Import technician service
 
 // Validation schema
 const AppointmentSchema = Yup.object().shape({
@@ -31,6 +32,7 @@ const AppointmentForm = () => {
   const [searchParams] = useSearchParams();
   const [customers, setCustomers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [technicians, setTechnicians] = useState([]); // State for technicians
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hasConflicts, setHasConflicts] = useState(false);
@@ -107,6 +109,10 @@ const AppointmentForm = () => {
         // Fetch customers for dropdown
         const customersResponse = await CustomerService.getAllCustomers();
         setCustomers(customersResponse.data.customers || []);
+
+        // Fetch active technicians for dropdown
+        const techniciansResponse = await technicianService.getAllTechnicians(true); // Fetch only active
+        setTechnicians(techniciansResponse.data.data.technicians || []);
         
         // If editing existing appointment, fetch appointment data
         if (id) {
@@ -130,7 +136,7 @@ const AppointmentForm = () => {
             startTime: formatTime(startDateTime),
             endDate: formatDate(endDateTime),
             endTime: formatTime(endDateTime),
-            technician: appointmentData.technician || '',
+            technician: appointmentData.technician?._id || appointmentData.technician || '', // Handle populated or ID
             status: appointmentData.status || 'Scheduled',
             notes: appointmentData.notes || '',
             workOrder: appointmentData.workOrder 
@@ -199,12 +205,19 @@ const AppointmentForm = () => {
       await fetchVehiclesForCustomer(customerId);
       
       // Update form values
+      // Ensure vehicles are loaded before setting the vehicle in initialValues
+      await fetchVehiclesForCustomer(customerId); 
+
       setInitialValues(prev => ({
         ...prev,
         customer: customerId,
-        vehicle: vehicleId,
-        serviceType: workOrderData.serviceRequested || prev.serviceType,
-        workOrder: workOrderId
+        vehicle: vehicleId, // This should now be available if fetchVehiclesForCustomer populates `vehicles` state correctly
+        serviceType: workOrderData.services && workOrderData.services.length > 0 
+          ? workOrderData.services.map(s => s.description).join(', ') 
+          : workOrderData.serviceRequested || prev.serviceType,
+        notes: workOrderData.diagnosticNotes || prev.notes, // Pre-fill notes from diagnostic notes
+        workOrder: workOrderData._id, // Ensure we use the actual ID
+        technician: workOrderData.assignedTechnician?._id || workOrderData.assignedTechnician || prev.technician, // Pre-fill technician
       }));
       
     } catch (err) {
@@ -352,12 +365,13 @@ const AppointmentForm = () => {
     { value: 'No-Show', label: 'No-Show' }
   ];
 
-  // Technician options (should come from settings in real app)
+  // Create technician options for dropdown
   const technicianOptions = [
-    { value: '', label: 'Select Technician' },
-    { value: 'Mike', label: 'Mike' },
-    { value: 'Sarah', label: 'Sarah' },
-    { value: 'John', label: 'John' }
+    { value: '', label: 'Select Technician (Optional)' },
+    ...technicians.map(tech => ({
+      value: tech._id,
+      label: `${tech.name}${tech.specialization ? ` (${tech.specialization})` : ''}`
+    }))
   ];
 
   // Function to validate if start time is before end time
