@@ -117,6 +117,7 @@ const WorkOrderSchema = new Schema(
         'Parts Received',
         'Repair In Progress',
         'Completed - Need Payment',
+        'Invoiced', // Added Invoiced status
         'Completed - Paid',
         'On Hold',
         'Cancelled'
