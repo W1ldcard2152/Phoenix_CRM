@@ -79,31 +79,33 @@ const Sidebar = () => {
             </li>
           ))}
         </ul>
-
-        {/* Divider */}
-        {!collapsed && <hr className="my-3 mx-4 border-primary-600" />}
-
-        {/* Secondary Navigation */}
-        <ul>
-          {secondaryNavigationItems.map((item) => (
-            <li key={item.name} className="mb-1">
-              <Link
-                to={item.path}
-                className={`flex items-center py-3 px-4 ${
-                  collapsed ? 'justify-center' : 'justify-start'
-                } ${
-                  location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
-                    ? 'bg-primary-700 border-l-4 border-accent-500'
-                    : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
-                } transition-colors duration-150`}
-              >
-                <i className={`${item.icon} ${collapsed ? 'text-lg' : 'mr-3 w-5 text-center'}`}></i>
-                {!collapsed && <span className="text-sm font-medium">{item.name}</span>}
-              </Link>
-            </li>
-          ))}
-        </ul>
       </nav>
+
+      {/* Secondary Navigation - Moved to bottom */}
+      <div>
+        {!collapsed && <hr className="my-3 mx-4 border-primary-600" />}
+        <nav className="pb-2"> {/* Added pb-2 for spacing */}
+          <ul>
+            {secondaryNavigationItems.map((item) => (
+              <li key={item.name} className="mb-1">
+                <Link
+                  to={item.path}
+                  className={`flex items-center py-3 px-4 ${
+                    collapsed ? 'justify-center' : 'justify-start'
+                  } ${
+                    location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                      ? 'bg-primary-700 border-l-4 border-accent-500'
+                      : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
+                  } transition-colors duration-150`}
+                >
+                  <i className={`${item.icon} ${collapsed ? 'text-lg' : 'mr-3 w-5 text-center'}`}></i>
+                  {!collapsed && <span className="text-sm font-medium">{item.name}</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
 
       {/* User Management Section - at the bottom */}
       <div className="p-3 border-t border-primary-700 mt-auto"> {/* mt-auto pushes this section to the bottom */}

@@ -27,7 +27,9 @@ const WorkOrderDetail = () => {
     quantity: 1,
     price: 0,
     ordered: false,
-    received: false
+    received: false,
+    vendor: '',
+    purchaseOrderNumber: ''
   });
   const [newLabor, setNewLabor] = useState({
     description: '',
@@ -94,7 +96,9 @@ const WorkOrderDetail = () => {
       quantity: 1,
       price: 0,
       ordered: false,
-      received: false
+      received: false,
+      vendor: '',
+      purchaseOrderNumber: ''
     });
     setPartModalOpen(true);
   };
@@ -107,7 +111,9 @@ const WorkOrderDetail = () => {
       quantity: part.quantity || 1,
       price: part.price || 0,
       ordered: part.ordered || false,
-      received: part.received || false
+      received: part.received || false,
+      vendor: part.vendor || '',
+      purchaseOrderNumber: part.purchaseOrderNumber || ''
     });
     setPartModalOpen(true);
   };
@@ -143,7 +149,9 @@ const WorkOrderDetail = () => {
         quantity: 1,
         price: 0,
         ordered: false,
-        received: false
+        received: false,
+        vendor: '',
+        purchaseOrderNumber: ''
       });
     } catch (err) {
       console.error('Error adding part:', err);
@@ -173,7 +181,9 @@ const WorkOrderDetail = () => {
         quantity: 1,
         price: 0,
         ordered: false,
-        received: false
+        received: false,
+        vendor: '',
+        purchaseOrderNumber: ''
       });
     } catch (err) {
       console.error('Error updating part:', err);
@@ -521,14 +531,14 @@ const WorkOrderDetail = () => {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Diagnostic Notes, Parts, and Labor Section */}
+      <div className="space-y-6"> 
         <Card 
-          title="Diagnostic Notes" 
-          className="md:col-span-2"
+          title="Diagnostic Notes"
         >
-          <p className="text-gray-700">
+          <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>
             {workOrder.diagnosticNotes || 'No diagnostic notes available.'}
-          </p>
+          </div>
         </Card>
 
         <Card 
@@ -562,6 +572,12 @@ const WorkOrderDetail = () => {
                       Price
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Vendor
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      PO/Order #
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -578,7 +594,7 @@ const WorkOrderDetail = () => {
                         </div>
                         {part.partNumber && (
                           <div className="text-xs text-gray-500">
-                            {part.partNumber}
+                            PN: {part.partNumber}
                           </div>
                         )}
                       </td>
@@ -590,6 +606,16 @@ const WorkOrderDetail = () => {
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {formatCurrency(part.price)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {part.vendor}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {part.purchaseOrderNumber}
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
@@ -770,6 +796,28 @@ const WorkOrderDetail = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                   value={newPart.partNumber}
                   onChange={(e) => setNewPart({ ...newPart, partNumber: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Vendor / Purchase Location
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.vendor}
+                  onChange={(e) => setNewPart({ ...newPart, vendor: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PO / Order Number
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.purchaseOrderNumber}
+                  onChange={(e) => setNewPart({ ...newPart, purchaseOrderNumber: e.target.value })}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

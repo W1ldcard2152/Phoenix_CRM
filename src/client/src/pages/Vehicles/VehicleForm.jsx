@@ -21,7 +21,6 @@ const VehicleSchema = Yup.object().shape({
   make: Yup.string().required('Make is required'),
   model: Yup.string().required('Model is required'),
   vin: Yup.string()
-    .required('VIN is required')
     .min(11, 'VIN must be at least 11 characters')
     .max(17, 'VIN cannot exceed 17 characters'),
   licensePlate: Yup.string(),
@@ -215,10 +214,16 @@ const VehicleForm = () => {
                 </div>
                 
                 <div>
-                  <Input
+                  <SelectInput
                     label="Year"
                     name="year"
-                    type="number"
+                    options={Array.from(
+                      new Array(new Date().getFullYear() + 1 - 1900 + 1),
+                      (val, index) => {
+                        const yearValue = new Date().getFullYear() + 1 - index;
+                        return { value: yearValue, label: yearValue.toString() };
+                      }
+                    )}
                     value={values.year}
                     onChange={handleChange}
                     onBlur={handleBlur}
@@ -263,7 +268,6 @@ const VehicleForm = () => {
                     onBlur={handleBlur}
                     error={errors.vin}
                     touched={touched.vin}
-                    required
                   />
                 </div>
                 

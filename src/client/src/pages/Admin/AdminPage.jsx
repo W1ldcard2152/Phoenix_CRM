@@ -1,14 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom'; // Added useNavigate
-import invoiceService from '../../services/invoiceService'; 
+import { Link, useNavigate } from 'react-router-dom';
+import invoiceService from '../../services/invoiceService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import SelectInput from '../../components/common/SelectInput'; // Added SelectInput
 
 const AdminPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate(); // Added useNavigate hook
+  const navigate = useNavigate();
+
+  const invoiceStatuses = [
+    { value: 'Draft', label: 'Draft' },
+    { value: 'Issued', label: 'Issued' },
+    { value: 'Paid', label: 'Paid' },
+    { value: 'Partial', label: 'Partial' },
+    { value: 'Overdue', label: 'Overdue' },
+    { value: 'Cancelled', label: 'Cancelled' },
+    { value: 'Refunded', label: 'Refunded' },
+  ];
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -41,6 +52,29 @@ const AdminPage = () => {
   const handlePrintInvoice = (invoiceId) => {
     // Navigate to the InvoiceDetail page, which has the print functionality
     navigate(`/invoices/${invoiceId}`);
+  };
+
+  const handleStatusChange = async (invoiceId, newStatus) => {
+    try {
+      // Optimistically update UI
+      setInvoices(prevInvoices =>
+        prevInvoices.map(inv =>
+          inv._id === invoiceId ? { ...inv, status: newStatus } : inv
+        )
+      );
+      await invoiceService.updateInvoiceStatus(invoiceId, { status: newStatus });
+      // Optionally, re-fetch or show a success message
+    } catch (err) {
+      console.error("Error updating invoice status:", err);
+      setError(err.message || 'Failed to update status.');
+      // Revert optimistic update if necessary or re-fetch
+      // For simplicity, we'll rely on a potential re-fetch or user refresh for now
+      // Or, you could store the original state and revert on error.
+      const originalInvoices = await invoiceService.getAllInvoices();
+      if (originalInvoices && originalInvoices.data && Array.isArray(originalInvoices.data.invoices)) {
+        setInvoices(originalInvoices.data.invoices);
+      }
+    }
   };
 
   return (
@@ -78,7 +112,14 @@ const AdminPage = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.customer?.name || 'N/A'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(invoice.invoiceDate).toLocaleDateString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${invoice.total?.toFixed(2) || '0.00'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invoice.status || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <SelectInput
+                        value={invoice.status || ''}
+                        onChange={(e) => handleStatusChange(invoice._id, e.target.value)}
+                        options={invoiceStatuses}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       <Link to={`/invoices/${invoice._id}`} className="text-indigo-600 hover:text-indigo-900">
                         View

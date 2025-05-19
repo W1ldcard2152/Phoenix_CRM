@@ -17,6 +17,9 @@ router.post('/:id/payment', invoiceController.addPayment);
 // Send invoice via email
 router.post('/:id/send', invoiceController.sendInvoiceViaEmail);
 
+// Update invoice status
+router.patch('/:id/status', invoiceController.updateInvoiceStatus);
+
 // Basic CRUD routes
 router
   .route('/')

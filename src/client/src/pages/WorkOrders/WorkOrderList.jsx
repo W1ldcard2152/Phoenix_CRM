@@ -33,7 +33,8 @@ const WorkOrderList = () => {
         if (statusFilter) filters.status = statusFilter;
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
-        setWorkOrders(response.data.workOrders);
+        const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setWorkOrders(sortedWorkOrders);
         
         setLoading(false);
       } catch (err) {
@@ -58,7 +59,8 @@ const WorkOrderList = () => {
         if (statusFilter) filters.status = statusFilter;
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
-        setWorkOrders(response.data.workOrders);
+        const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setWorkOrders(sortedWorkOrders);
         
         setIsSearching(false);
       } catch (err) {
@@ -72,7 +74,8 @@ const WorkOrderList = () => {
     try {
       setIsSearching(true);
       const response = await WorkOrderService.searchWorkOrders(searchQuery);
-      setWorkOrders(response.data.workOrders);
+      const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setWorkOrders(sortedWorkOrders);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching work orders:', err);
@@ -107,6 +110,36 @@ const WorkOrderList = () => {
       style: 'currency',
       currency: 'USD'
     }).format(amount || 0);
+  };
+
+  // Helper function to get status color
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Created':
+        return 'bg-gray-100 text-gray-800';
+      case 'Scheduled':
+        return 'bg-blue-100 text-blue-800';
+      case 'In Progress':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'Inspected - Need Parts Ordered':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'Parts Ordered':
+        return 'bg-orange-100 text-orange-800'; // Using orange for parts ordered
+      case 'Parts Received':
+        return 'bg-lime-100 text-lime-800'; // Using lime for parts received
+      case 'Repair In Progress':
+        return 'bg-purple-100 text-purple-800';
+      case 'Completed - Need Payment':
+        return 'bg-teal-100 text-teal-800'; // Using teal for need payment
+      case 'Completed - Paid':
+        return 'bg-green-100 text-green-800';
+      case 'On Hold':
+        return 'bg-pink-100 text-pink-800';
+      case 'Cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
   // Helper function to display service description, handling both the new
@@ -249,16 +282,8 @@ const WorkOrderList = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span 
-                        className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          workOrder.status.includes('Completed') 
-                            ? 'bg-green-100 text-green-800' 
-                            : workOrder.status === 'Cancelled'
-                              ? 'bg-red-100 text-red-800'
-                              : workOrder.status.includes('Parts')
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-blue-100 text-blue-800'
-                        }`}
+                      <span
+                        className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}
                       >
                         {workOrder.status}
                       </span>

@@ -30,6 +30,14 @@ const PartSchema = new Schema({
   received: {
     type: Boolean,
     default: false
+  },
+  vendor: { // Or purchaseLocation
+    type: String,
+    trim: true
+  },
+  purchaseOrderNumber: { // Or orderNumber
+    type: String,
+    trim: true
   }
 });
 

@@ -112,7 +112,7 @@ const InvoiceSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['Draft', 'Issued', 'Paid', 'Partial', 'Cancelled', 'Overdue'],
+      enum: ['Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'], // Added 'Refunded'
       default: 'Draft'
     },
     paymentTerms: {

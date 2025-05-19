@@ -363,6 +363,38 @@ exports.sendInvoiceViaEmail = catchAsync(async (req, res, next) => {
   });
 });
 
+// Update invoice status
+exports.updateInvoiceStatus = catchAsync(async (req, res, next) => {
+  const { status } = req.body;
+  const invoice = await Invoice.findById(req.params.id);
+
+  if (!invoice) {
+    return next(new AppError('No invoice found with that ID', 404));
+  }
+
+  // Validate status if necessary (e.g., ensure it's one of the allowed values)
+  const allowedStatuses = ['Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'];
+  if (!allowedStatuses.includes(status)) {
+    return next(new AppError(`Invalid status: ${status}`, 400));
+  }
+
+  invoice.status = status;
+  // Add updatedBy field
+  if (req.user) {
+    invoice.updatedBy = req.user.name;
+    invoice.updatedAt = Date.now();
+  }
+  await invoice.save({ validateBeforeSave: false }); // Bypassing full validation if only status changes
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      invoice,
+    },
+  });
+});
+
+
 // Mark invoice as paid
 exports.markAsPaid = catchAsync(async (req, res, next) => {
   const invoice = await Invoice.findById(req.params.id);

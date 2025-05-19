@@ -102,6 +102,17 @@ const InvoiceService = {
     }
   },
 
+  // Update invoice status
+  updateInvoiceStatus: async (id, statusData) => {
+    try {
+      const response = await API.patch(`/invoices/${id}/status`, statusData);
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating status for invoice ${id}:`, error);
+      throw error;
+    }
+  },
+
   // Send invoice via email
   sendViaEmail: async (id, emailData) => {
     try {

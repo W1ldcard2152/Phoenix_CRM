@@ -13,7 +13,7 @@ import CustomerService from '../../services/customerService';
 const CustomerSchema = Yup.object().shape({
   name: Yup.string().required('Name is required'),
   phone: Yup.string().required('Phone number is required'),
-  email: Yup.string().email('Invalid email').required('Email is required'),
+  email: Yup.string().email('Invalid email'),
   'address.street': Yup.string(),
   'address.city': Yup.string(),
   'address.state': Yup.string(),
@@ -185,7 +185,6 @@ const CustomerForm = () => {
                     onBlur={handleBlur}
                     error={errors.email}
                     touched={touched.email}
-                    required
                   />
                 </div>
                 
