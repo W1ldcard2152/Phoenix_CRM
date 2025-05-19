@@ -2,14 +2,18 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 
 // Configure AWS SDK
+/*
 AWS.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   region: process.env.AWS_REGION
 });
+*/
 
-const s3 = new AWS.S3();
-const bucketName = process.env.S3_BUCKET_NAME;
+// const s3 = new AWS.S3();
+// const bucketName = process.env.S3_BUCKET_NAME;
+const s3 = null; // S3 not configured
+const bucketName = null; // S3 not configured
 
 /**
  * Upload a file to S3
@@ -19,6 +23,11 @@ const bucketName = process.env.S3_BUCKET_NAME;
  * @returns {Promise<Object>} Upload result with file URL
  */
 exports.uploadFile = async (fileBuffer, fileName, mimeType) => {
+  if (!s3) {
+    console.warn('S3 service is not configured. File upload skipped.');
+    // Return a mock response or throw an error, depending on desired behavior
+    return { fileUrl: null, key: null }; 
+  }
   // Generate a unique file name to prevent conflicts
   const uniqueFileName = `${uuidv4()}-${fileName}`;
   
@@ -45,6 +54,10 @@ exports.uploadFile = async (fileBuffer, fileName, mimeType) => {
  * @returns {String} Signed URL
  */
 exports.getSignedUrl = (key, expiresIn = 3600) => {
+  if (!s3) {
+    console.warn('S3 service is not configured. Cannot generate signed URL.');
+    return null; 
+  }
   try {
     if (!key) {
       throw new Error('S3 key is required to generate a signed URL');
@@ -69,6 +82,10 @@ exports.getSignedUrl = (key, expiresIn = 3600) => {
  * @returns {Promise} Delete result
  */
 exports.deleteFile = async (key) => {
+  if (!s3) {
+    console.warn('S3 service is not configured. File deletion skipped.');
+    return Promise.resolve(); 
+  }
   const params = {
     Bucket: bucketName,
     Key: key
@@ -84,6 +101,10 @@ exports.deleteFile = async (key) => {
  * @returns {Promise} Copy result
  */
 exports.copyFile = async (sourceKey, destinationKey) => {
+  if (!s3) {
+    console.warn('S3 service is not configured. File copy skipped.');
+    return Promise.resolve();
+  }
   const params = {
     Bucket: bucketName,
     CopySource: `${bucketName}/${sourceKey}`,
