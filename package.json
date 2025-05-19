@@ -4,7 +4,7 @@
   "description": "CRM system for auto repair shop",
   "main": "server.js",
   "scripts": {
-    "start": "node src/server/app.js",
+    "start": "node server.js",
     "dev:server": "nodemon src/server/app.js",
     "dev:client": "cd src/client && npm start",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
