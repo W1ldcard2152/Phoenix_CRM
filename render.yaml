@@ -27,6 +27,8 @@ services:
         sync: false # Set this in the Render dashboard if you use Twilio
       - key: TWILIO_PHONE_NUMBER
         sync: false # Set this in the Render dashboard if you use Twilio
+      - key: SENDGRID_API_KEY
+        sync: false # Set this in the Render dashboard
       # Add any other necessary environment variables here
       # For example, if you have specific API keys for other services:
       # - key: SOME_API_KEY
