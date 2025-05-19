@@ -3,7 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const morgan = require('morgan');
+const path = require('path'); // Import path module
+const morgan = 'morgan';
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
@@ -92,16 +93,27 @@ app.use('/api/media', mediaRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/technicians', technicianRoutes); // Use technician routes
 
-// Basic route for testing API status
-app.get('/', (req, res) => {
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  // Serve the static files from the React app
+  app.use(express.static(path.join(__dirname, '../client/build')));
+
+  // Handles any requests that don't match the ones above
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
+  });
+} else {
+  // Basic route for testing API status in development
+  app.get('/', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'Auto Repair CRM API is running'
   });
 });
+} // Add missing closing brace for the else block
 
-// Handle undefined routes
-app.all('*', (req, res, next) => {
+// Handle undefined API routes (all other non-API GET requests are handled by serving index.html in production)
+app.all('/api/*', (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
 

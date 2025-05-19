@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: phoenix-crm
+    env: node
+    nodeVersion: "18" # Specify Node.js version
+    region: oregon # You can change this to your preferred region
+    plan: free # Or your preferred plan
+    branch: main # Or your default deployment branch
+    healthCheckPath: / # Or your API health check endpoint like /api
+    buildCommand: npm run install:all && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false # Set this in the Render dashboard
+      - key: JWT_SECRET
+        generateValue: true # Render can generate a secure secret
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: phoenix-crm # Refers to this service itself
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: TWILIO_ACCOUNT_SID
+        sync: false # Set this in the Render dashboard if you use Twilio
+      - key: TWILIO_AUTH_TOKEN
+        sync: false # Set this in the Render dashboard if you use Twilio
+      - key: TWILIO_PHONE_NUMBER
+        sync: false # Set this in the Render dashboard if you use Twilio
+      # Add any other necessary environment variables here
+      # For example, if you have specific API keys for other services:
+      # - key: SOME_API_KEY
+      #   sync: false
