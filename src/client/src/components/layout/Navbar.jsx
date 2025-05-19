@@ -16,7 +16,7 @@ const Navbar = () => {
           <div className="flex items-center">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-xl font-bold text-primary-600">
-                Auto Repair CRM
+                Phoenix Automotive Group, Inc.
               </Link>
             </div>
           </div>

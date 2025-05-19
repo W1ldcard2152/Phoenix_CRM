@@ -44,12 +44,7 @@ const Sidebar = () => {
         collapsed ? 'w-16' : 'w-64'
       } bg-primary-800 text-white transition-all duration-300 ease-in-out min-h-screen flex flex-col`}
     >
-      <div className="flex items-center justify-between p-4 border-b border-primary-700">
-        {!collapsed && (
-          <h2 className="text-xl font-bold">
-            Auto CRM
-          </h2>
-        )}
+      <div className="flex items-center justify-end p-4 border-b border-primary-700 h-[60px]"> {/* Adjusted to justify-end and set a fixed height similar to Navbar for alignment */}
         <button
           onClick={toggleSidebar}
           className="p-1 rounded hover:bg-primary-700 focus:outline-none"
@@ -58,7 +53,7 @@ const Sidebar = () => {
         </button>
       </div>
 
-      <nav className="mt-6 flex-grow">
+      <nav className="mt-0 flex-grow"> {/* Removed mt-6 to move Dashboard up */}
         {/* Primary Navigation */}
         <ul className="mb-4">
           {primaryNavigationItems.map((item) => (
