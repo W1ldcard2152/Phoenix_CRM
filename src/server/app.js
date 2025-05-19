@@ -20,7 +20,7 @@ const customerRoutes = require('./routes/customerRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
 const workOrderRoutes = require('./routes/workOrderRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
-const mediaRoutes = require('./routes/mediaRoutes');
+// const mediaRoutes = require('./routes/mediaRoutes'); // Media routes disabled
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 const technicianRoutes = require('./routes/technicianRoutes'); // Import technician routes
@@ -89,7 +89,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/workorders', workOrderRoutes);
 app.use('/api/appointments', appointmentRoutes);
-app.use('/api/media', mediaRoutes);
+// app.use('/api/media', mediaRoutes); // Media routes disabled
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/technicians', technicianRoutes); // Use technician routes
 

@@ -19,6 +19,10 @@ exports.uploadMedia = upload.single('file');
 
 // Upload a file to S3 and create a media record
 exports.createMedia = catchAsync(async (req, res, next) => {
+  // Media service is disabled as S3 is not configured
+  return next(new AppError('Media upload service is currently unavailable.', 503));
+
+  /* Original code:
   if (!req.file) {
     return next(new AppError('Please upload a file', 400));
   }
@@ -50,6 +54,7 @@ exports.createMedia = catchAsync(async (req, res, next) => {
       media: newMedia
     }
   });
+  */
 });
 
 // Get all media
@@ -99,6 +104,18 @@ exports.deleteMedia = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
+  // S3 is not configured, so we only delete the database record.
+  // Any existing fileUrl will remain, but new uploads are disabled.
+  await Media.findByIdAndDelete(req.params.id);
+  
+  console.warn(`Media record ${req.params.id} deleted from DB. S3 file (if any) was not deleted as S3 is not configured.`);
+
+  res.status(204).json({
+    status: 'success',
+    data: null
+  });
+
+  /* Original code:
   // Extract the key from the fileUrl with error handling
   if (!media.fileUrl) {
     // If no fileUrl, just delete the database record
@@ -132,6 +149,7 @@ exports.deleteMedia = catchAsync(async (req, res, next) => {
     console.error('Error deleting media file:', err);
     return next(new AppError('Failed to delete media file from storage', 500));
   }
+  */
 });
 
 // Get a signed URL for a media item
@@ -142,6 +160,22 @@ exports.getSignedUrl = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
+  // Extract the key from the fileUrl - Handle the case when fileUrl might be undefined or malformatted
+  if (!media.fileUrl) {
+    return next(new AppError('Media file URL is missing', 400));
+  }
+  
+  const urlParts = media.fileUrl.split('/');
+  if (urlParts.length === 0) {
+    return next(new AppError('Invalid file URL format', 400));
+  }
+  
+  const key = urlParts[urlParts.length - 1];
+  
+  // Media service is disabled as S3 is not configured
+  return next(new AppError('Media service for generating signed URLs is currently unavailable.', 503));
+
+  /* Original code:
   // Extract the key from the fileUrl - Handle the case when fileUrl might be undefined or malformatted
   if (!media.fileUrl) {
     return next(new AppError('Media file URL is missing', 400));
@@ -169,6 +203,7 @@ exports.getSignedUrl = catchAsync(async (req, res, next) => {
     console.error('Error generating signed URL:', err);
     return next(new AppError('Failed to generate signed URL for media file', 500));
   }
+  */
 });
 
 // Share media with a customer via email
@@ -185,6 +220,22 @@ exports.shareMediaViaEmail = catchAsync(async (req, res, next) => {
     return next(new AppError('No media found with that ID', 404));
   }
   
+  // Extract the key from the fileUrl with error handling
+  if (!media.fileUrl) {
+    return next(new AppError('Media file URL is missing', 400));
+  }
+  
+  const urlParts = media.fileUrl.split('/');
+  if (urlParts.length === 0) {
+    return next(new AppError('Invalid file URL format', 400));
+  }
+  
+  const key = urlParts[urlParts.length - 1];
+  
+  // Media service is disabled as S3 is not configured
+  return next(new AppError('Media sharing service is currently unavailable.', 503));
+
+  /* Original code:
   // Extract the key from the fileUrl with error handling
   if (!media.fileUrl) {
     return next(new AppError('Media file URL is missing', 400));
@@ -238,4 +289,5 @@ exports.shareMediaViaEmail = catchAsync(async (req, res, next) => {
       media
     }
   });
+  */
 });
