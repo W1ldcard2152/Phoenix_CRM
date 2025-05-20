@@ -49,8 +49,6 @@ const VehicleSchema = new Schema(
     vin: {
       type: String,
       trim: true,
-      minlength: [11, 'VIN must be at least 11 characters'],
-      maxlength: [17, 'VIN cannot exceed 17 characters']
     },
     licensePlate: {
       type: String,

@@ -20,9 +20,7 @@ const VehicleSchema = Yup.object().shape({
     .max(new Date().getFullYear() + 1, 'Year cannot be in the future'),
   make: Yup.string().required('Make is required'),
   model: Yup.string().required('Model is required'),
-  vin: Yup.string()
-    .min(11, 'VIN must be at least 11 characters')
-    .max(17, 'VIN cannot exceed 17 characters'),
+  vin: Yup.string(),
   licensePlate: Yup.string(),
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
@@ -53,7 +51,7 @@ const VehicleForm = () => {
     year: new Date().getFullYear(),
     make: '',
     model: '',
-    vin: '',
+    vin: 'N/A',
     licensePlate: '',
     currentMileage: '',
     mileageHistory: [],

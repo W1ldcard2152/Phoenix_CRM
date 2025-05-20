@@ -46,6 +46,7 @@ const VehicleService = {
       return response.data;
     } catch (error) {
       console.error('Error creating vehicle:', error);
+      console.log('Full error object:', error); // Added console.log
       throw error;
     }
   },

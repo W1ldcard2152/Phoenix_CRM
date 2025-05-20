@@ -49,7 +49,7 @@ async function createAdminUser() {
     
     console.log('Admin user created successfully!');
     console.log('Email:', adminUser.email);
-    console.log('Password: admin123456');
+    console.log('Password: Test123!');
     console.log('Please change this password after first login');
     
     // Disconnect from MongoDB
