@@ -105,6 +105,10 @@ const WorkOrderSchema = new Schema(
       ref: 'Customer',
       required: true
     },
+    currentMileage: { // Added currentMileage
+      type: Number,
+      min: 0
+    },
     date: {
       type: Date,
       default: Date.now

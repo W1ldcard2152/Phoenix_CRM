@@ -16,8 +16,8 @@ const InvoiceDetail = () => {
     businessName: 'Phoenix Automotive Group, Inc.',
     businessAddressLine1: '201 Ford St',
     businessAddressLine2: 'Newark NY 14513',
-    businessPhone: '315.830.0008',
-    businessEmail: 'phxautosalvage@@gmail.com',
+    businessPhone: '315-830-0008',
+    businessEmail: 'phxautosalvage@gmail.com',
     businessWebsite: 'www.phxautogroup.com',
     businessLogo: '/phxLogo.svg' // This path needs to be updated if used differently
   };

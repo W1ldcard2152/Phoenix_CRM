@@ -74,10 +74,13 @@ const AppointmentCalendar = () => {
 
   // Filter appointments for a specific day
   const getAppointmentsForDay = (day) => {
-    return appointments.filter(appointment => {
-      const appointmentDate = moment(appointment.startTime).format('YYYY-MM-DD');
-      return appointmentDate === day.format('YYYY-MM-DD');
-    }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    return appointments
+      .filter(appointment => {
+        const appointmentDate = moment(appointment.startTime).format('YYYY-MM-DD');
+        // Filter out appointments linked to "Invoiced" work orders
+        return appointmentDate === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Invoiced';
+      })
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
   };
 
   // Format time for display

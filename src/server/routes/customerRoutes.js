@@ -5,6 +5,9 @@ const router = express.Router();
 // Search customers
 router.get('/search', customerController.searchCustomers);
 
+// Check if customer exists by phone
+router.get('/check-phone', customerController.checkExistingCustomerByPhone);
+
 // Get customer vehicles
 router.get('/:id/vehicles', customerController.getCustomerVehicles);
 

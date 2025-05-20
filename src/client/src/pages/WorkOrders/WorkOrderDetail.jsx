@@ -284,6 +284,7 @@ const WorkOrderDetail = () => {
     { value: 'Repair In Progress', label: 'Repair In Progress' },
     { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
     { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'Invoiced', label: 'Invoiced' }, // Added Invoiced status
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];

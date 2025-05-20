@@ -50,7 +50,7 @@
 }
 
 .border-table th {
-  background-color: #f8fafc;
+  background-color: #696969; /* Even darker grey for better print visibility */
   font-weight: 600;
 }
 

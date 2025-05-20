@@ -164,6 +164,20 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   
   // Add the work order to the vehicle's service history
   vehicle.serviceHistory.push(newWorkOrder._id);
+  
+  // Update vehicle mileage if currentMileage is provided
+  if (workOrderData.currentMileage && !isNaN(parseFloat(workOrderData.currentMileage))) {
+    const mileageValue = parseFloat(workOrderData.currentMileage);
+    // Add to mileage history
+    vehicle.mileageHistory.push({
+      date: workOrderData.date ? new Date(workOrderData.date) : new Date(), // Use WO date or current date
+      mileage: mileageValue,
+      source: `Work Order #${newWorkOrder.id}` // Optional: add source
+    });
+    // Update vehicle's main currentMileage
+    vehicle.currentMileage = mileageValue;
+  }
+  
   await vehicle.save({ validateBeforeSave: false });
   
   res.status(201).json({
@@ -251,6 +265,34 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
             }, 0);
             
         workOrderData.totalEstimate = partsCost + laborCost;
+      }
+    }
+  }
+  
+  
+  // Handle currentMileage update for the vehicle
+  if (workOrderData.currentMileage && !isNaN(parseFloat(workOrderData.currentMileage))) {
+    const mileageValue = parseFloat(workOrderData.currentMileage);
+    const workOrderForVehicle = await WorkOrder.findById(req.params.id).populate('vehicle');
+    if (workOrderForVehicle && workOrderForVehicle.vehicle) {
+      const vehicleToUpdate = await Vehicle.findById(workOrderForVehicle.vehicle._id);
+      if (vehicleToUpdate) {
+        // Check if this mileage entry already exists to avoid duplicates from simple re-saves
+        const existingMileageEntry = vehicleToUpdate.mileageHistory.find(
+          entry => entry.mileage === mileageValue && 
+                   new Date(entry.date).toDateString() === new Date(workOrderData.date || new Date()).toDateString() &&
+                   (entry.source || '').includes(`Work Order #${req.params.id}`)
+        );
+
+        if (!existingMileageEntry) {
+           vehicleToUpdate.mileageHistory.push({
+            date: workOrderData.date ? new Date(workOrderData.date) : new Date(),
+            mileage: mileageValue,
+            source: `Work Order #${req.params.id}`
+          });
+        }
+        vehicleToUpdate.currentMileage = mileageValue;
+        await vehicleToUpdate.save({ validateBeforeSave: false });
       }
     }
   }

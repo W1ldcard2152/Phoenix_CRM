@@ -118,6 +118,33 @@ exports.searchCustomers = catchAsync(async (req, res, next) => {
   });
 });
 
+// Check if customer exists by phone
+exports.checkExistingCustomerByPhone = catchAsync(async (req, res, next) => {
+  const { phone } = req.query;
+
+  if (!phone) {
+    return next(new AppError('Please provide a phone number', 400));
+  }
+
+  const customer = await Customer.findOne({ phone });
+
+  if (!customer) {
+    return res.status(200).json({
+      status: 'success',
+      exists: false,
+      message: 'No customer found with this phone number.'
+    });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    exists: true,
+    data: {
+      customer
+    }
+  });
+});
+
 // Get customer vehicles
 exports.getCustomerVehicles = catchAsync(async (req, res, next) => {
   const customer = await Customer.findById(req.params.id);

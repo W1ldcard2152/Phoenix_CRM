@@ -76,6 +76,17 @@ const CustomerService = {
       console.error(`Error fetching vehicles for customer with ID ${id}:`, error);
       throw error;
     }
+  },
+
+  // Check if customer exists by phone
+  checkExistingCustomerByPhone: async (phone) => {
+    try {
+      const response = await API.get(`/customers/check-phone?phone=${encodeURIComponent(phone)}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error checking customer by phone ${phone}:`, error);
+      throw error;
+    }
   }
 };
 

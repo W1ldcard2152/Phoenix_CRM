@@ -33,6 +33,9 @@ const CustomerForm = () => {
   const [error, setError] = useState(null);
   const [showAddVehiclePrompt, setShowAddVehiclePrompt] = useState(false);
   const [newCustomerId, setNewCustomerId] = useState(null);
+  const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState(null);
+  const [existingCustomerId, setExistingCustomerId] = useState(null);
+  const [allowSubmitDespiteDuplicate, setAllowSubmitDespiteDuplicate] = useState(false);
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
@@ -84,6 +87,16 @@ const CustomerForm = () => {
   }, [id]);
 
   const handleSubmit = async (values, { setSubmitting }) => {
+    setSubmitting(true);
+    setError(null); // Clear previous errors
+
+    // If creating a new customer and a duplicate warning exists but not allowed to submit
+    if (!id && duplicatePhoneWarning && !allowSubmitDespiteDuplicate) {
+      setError('Please resolve the duplicate phone number warning before saving.');
+      setSubmitting(false);
+      return;
+    }
+
     try {
       if (id) {
         // Update existing customer
@@ -92,21 +105,67 @@ const CustomerForm = () => {
       } else {
         // Create new customer
         const response = await CustomerService.createCustomer(values);
-        // Assuming the response contains the new customer's data including ID
-        // Adjust based on actual API response structure
+        setDuplicatePhoneWarning(null);
+        setExistingCustomerId(null);
+        setAllowSubmitDespiteDuplicate(false);
         if (response.data && response.data.customer && response.data.customer._id) {
           setNewCustomerId(response.data.customer._id);
           setShowAddVehiclePrompt(true);
         } else {
-          // Fallback if ID is not returned as expected
           console.warn('New customer ID not found in response, navigating to customer list.');
           navigate('/customers');
         }
       }
     } catch (err) {
       console.error('Error saving customer:', err);
-      setError('Failed to save customer. Please try again later.');
+      const errorMessage = err.response?.data?.message || 'Failed to save customer. Please try again later.';
+      setError(errorMessage);
+    } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePhoneBlur = async (e, currentValues) => {
+    const phoneNumber = e.target.value;
+    // Only check if it's a new customer form and phone number is present
+    if (!id && phoneNumber) {
+      try {
+        const response = await CustomerService.checkExistingCustomerByPhone(phoneNumber);
+        if (response.exists) {
+          // Do not show warning if the existing customer is the one being edited (though this check is for new customers)
+          // Or if the phone number matches the initial phone number (for edit mode, to avoid self-warning on blur without change)
+          if (id && response.data.customer._id === id) {
+            setDuplicatePhoneWarning(null);
+            setExistingCustomerId(null);
+            setAllowSubmitDespiteDuplicate(false);
+          } else if (id && initialValues.phone === phoneNumber) {
+            setDuplicatePhoneWarning(null);
+            setExistingCustomerId(null);
+            setAllowSubmitDespiteDuplicate(false);
+          }
+          else {
+            setDuplicatePhoneWarning(
+              `A customer with phone number ${phoneNumber} already exists: ${response.data.customer.name}.`
+            );
+            setExistingCustomerId(response.data.customer._id);
+            setAllowSubmitDespiteDuplicate(false); // Require user action
+          }
+        } else {
+          setDuplicatePhoneWarning(null);
+          setExistingCustomerId(null);
+          setAllowSubmitDespiteDuplicate(false); // Reset if phone number is now unique
+        }
+      } catch (error) {
+        console.error('Error checking phone number:', error);
+        // Optionally set an error state here to inform the user about the check failure
+        setDuplicatePhoneWarning(null); // Clear warning on error to avoid blocking
+        setExistingCustomerId(null);
+        setAllowSubmitDespiteDuplicate(false);
+      }
+    } else if (!phoneNumber) { // Clear warning if phone number is erased
+        setDuplicatePhoneWarning(null);
+        setExistingCustomerId(null);
+        setAllowSubmitDespiteDuplicate(false);
     }
   };
 
@@ -236,12 +295,51 @@ const CustomerForm = () => {
                     label="Phone"
                     name="phone"
                     value={values.phone}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
+                    onChange={(e) => {
+                      handleChange(e);
+                      // Optimistically clear warning when user types, will re-check on blur
+                      if (duplicatePhoneWarning) {
+                        setDuplicatePhoneWarning(null);
+                        setExistingCustomerId(null);
+                        // setAllowSubmitDespiteDuplicate(false); // Keep this false until explicit action
+                      }
+                    }}
+                    onBlur={(e) => {
+                      handleBlur(e); // Formik's default blur
+                      handlePhoneBlur(e, values); // Custom blur for phone check
+                    }}
                     error={errors.phone}
                     touched={touched.phone}
                     required
                   />
+                  {duplicatePhoneWarning && !id && (
+                    <div className="mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+                      <p>{duplicatePhoneWarning}</p>
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => navigate(`/customers/${existingCustomerId}`)}
+                          className="mr-2"
+                        >
+                          View Existing Customer
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="warning"
+                          size="sm"
+                          onClick={() => {
+                            setAllowSubmitDespiteDuplicate(true);
+                            setDuplicatePhoneWarning(null); // Clear warning as user chose to proceed
+                            setExistingCustomerId(null);
+                          }}
+                        >
+                          Add Anyway
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="md:col-span-2">

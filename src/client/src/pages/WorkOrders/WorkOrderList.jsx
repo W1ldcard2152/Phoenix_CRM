@@ -13,6 +13,7 @@ const WorkOrderList = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -137,6 +138,8 @@ const WorkOrderList = () => {
         return 'bg-pink-100 text-pink-800';
       case 'Cancelled':
         return 'bg-red-100 text-red-800';
+      case 'Invoiced': // Added status for Invoiced
+        return 'bg-slate-100 text-slate-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -177,6 +180,10 @@ const WorkOrderList = () => {
       return workOrder.serviceRequested || 'No service specified';
     }
   };
+
+  // Filter work orders into active and invoiced
+  const activeWorkOrders = workOrders.filter(wo => wo.status !== 'Invoiced');
+  const invoicedWorkOrders = workOrders.filter(wo => wo.status === 'Invoiced');
 
   return (
     <div className="container mx-auto">
@@ -231,11 +238,15 @@ const WorkOrderList = () => {
           <div className="flex justify-center items-center h-48">
             <p>Loading work orders...</p>
           </div>
-        ) : workOrders.length === 0 ? (
+        ) : activeWorkOrders.length === 0 && !statusFilter && !searchQuery && invoicedWorkOrders.length === 0 ? ( // Adjusted condition for initial empty state
           <div className="text-center py-6 text-gray-500">
             <p>No work orders found.</p>
           </div>
-        ) : (
+        ) : activeWorkOrders.length === 0 && (statusFilter || searchQuery) ? ( // Adjusted condition for empty state after filter/search
+            <div className="text-center py-6 text-gray-500">
+              <p>No active work orders match your criteria.</p>
+            </div>
+        ) : activeWorkOrders.length > 0 ? ( // Render table if active work orders exist
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -261,7 +272,7 @@ const WorkOrderList = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {workOrders.map((workOrder) => (
+                {activeWorkOrders.map((workOrder) => (
                   <tr key={workOrder._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -332,8 +343,106 @@ const WorkOrderList = () => {
               </tbody>
             </table>
           </div>
+        ) : (
+          // Show this if activeWorkOrders is empty but it's not the initial load and not due to filters
+          // This case might not be hit if the above conditions are comprehensive
+          !loading && activeWorkOrders.length === 0 && invoicedWorkOrders.length > 0 && <div className="text-center py-6 text-gray-500"><p>No active work orders.</p></div>
         )}
       </Card>
+
+      {/* Collapsible Table for Invoiced Work Orders */}
+      {invoicedWorkOrders.length > 0 || showInvoicedTable ? ( // Render this section if there are invoiced orders or if it's manually toggled open (even if empty after a filter)
+        <Card className="mt-6">
+          <div 
+            className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
+            onClick={() => setShowInvoicedTable(!showInvoicedTable)}
+          >
+            <h2 className="text-xl font-semibold text-gray-700">
+              Invoiced Work Orders ({invoicedWorkOrders.length})
+            </h2>
+            <span className="text-sm font-medium text-primary-600">
+              {showInvoicedTable ? 'Collapse' : 'Expand'}
+              {showInvoicedTable ? 
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg> :
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+              }
+            </span>
+          </div>
+          {showInvoicedTable && (
+            loading ? (
+              <div className="flex justify-center items-center h-48 p-4">
+                <p>Loading...</p> {/* Should ideally not show if main table is already loaded */}
+              </div>
+            ) : invoicedWorkOrders.length === 0 ? (
+              <div className="text-center py-6 text-gray-500 p-4">
+                <p>No invoiced work orders found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto p-4">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Vehicle</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {invoicedWorkOrders.map((workOrder) => (
+                      <tr key={workOrder._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-medium text-gray-900">{workOrder.customer?.name || 'Unknown Customer'}</div>
+                          <div className="text-sm text-gray-500">{workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}>{workOrder.status}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {workOrder.status.includes('Completed') || workOrder.status === 'Invoiced' // Assuming Invoiced also shows final amount
+                              ? formatCurrency(workOrder.totalActual)
+                              : formatCurrency(workOrder.totalEstimate)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {workOrder.status.includes('Completed') || workOrder.status === 'Invoiced'
+                              ? 'Final'
+                              : 'Estimate'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end space-x-2">
+                            <Button to={`/work-orders/${workOrder._id}`} variant="outline" size="sm">View</Button>
+                            <Button to={`/work-orders/${workOrder._id}/edit`} variant="outline" size="sm">Edit</Button>
+                            {/* Schedule button likely not needed for Invoiced WOs, but keeping for "same style" consistency for now */}
+                            {needsSchedulingParam && ( 
+                              <Button
+                                onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                                variant="primary"
+                                size="sm"
+                              >
+                                Schedule
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 };

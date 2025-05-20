@@ -30,10 +30,11 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
   }
   
   const appointments = await Appointment.find(query)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model')
-    .populate('technician', 'name specialization') // Populate technician
-    .sort({ startTime: 1 });
+  .populate('customer', 'name phone email')
+  .populate('vehicle', 'year make model')
+  .populate('technician', 'name specialization') // Populate technician
+  .populate({ path: 'workOrder', select: 'status' }) // Populate workOrder status
+  .sort({ startTime: 1 });
   
   res.status(200).json({
     status: 'success',
@@ -445,6 +446,7 @@ exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
   .populate('customer', 'name phone email')
   .populate('vehicle', 'year make model')
   .populate('technician', 'name specialization') // Populate technician
+  .populate({ path: 'workOrder', select: 'status' }) // Populate workOrder status
   .sort({ startTime: 1 });
   
   res.status(200).json({

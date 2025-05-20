@@ -13,6 +13,10 @@ const MileageRecordSchema = new Schema({
     required: [true, 'Mileage reading is required'],
     min: [0, 'Mileage cannot be negative']
   },
+  source: { // Added source to track where the mileage entry came from
+    type: String,
+    trim: true
+  },
   notes: {
     type: String,
     trim: true
@@ -110,11 +114,12 @@ VehicleSchema.methods.getLatestWorkOrder = async function() {
 };
 
 // Method to add a mileage record
-VehicleSchema.methods.addMileageRecord = function(mileage, date = new Date(), notes = '') {
+VehicleSchema.methods.addMileageRecord = function(mileage, date = new Date(), notes = '', source = '') {
   this.mileageHistory.push({
     date,
     mileage,
-    notes
+    notes,
+    source // Added source
   });
   
   // Update current mileage if the new reading is higher

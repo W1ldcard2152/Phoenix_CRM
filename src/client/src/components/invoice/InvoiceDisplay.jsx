@@ -11,8 +11,6 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
   const {
     invoiceNumber,
     invoiceDate,
-    invoiceDueDate,
-    paymentTerms,
     customerNotes,
     terms,
     taxRate = 0,
@@ -84,16 +82,14 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           )}
           <p className="text-sm leading-tight">{businessSettings.businessAddressLine1}</p>
           <p className="text-sm leading-tight">{businessSettings.businessAddressLine2}</p>
-          <p className="text-sm leading-tight">Phone: {businessSettings.businessPhone}</p>
-          {businessSettings.businessEmail && <p className="text-sm leading-tight">Email: {businessSettings.businessEmail}</p>}
-          {businessSettings.businessWebsite && <p className="text-sm leading-tight">Web: {businessSettings.businessWebsite}</p>}
+          <p className="text-sm leading-tight">{businessSettings.businessPhone}</p>
+          {businessSettings.businessEmail && <p className="text-sm leading-tight">{businessSettings.businessEmail}</p>}
+          {businessSettings.businessWebsite && <p className="text-sm leading-tight">{businessSettings.businessWebsite}</p>}
         </div>
         <div className="text-right">
           <h2 className="text-3xl font-bold text-gray-800">INVOICE</h2>
           <p className="text-md"><span className="font-semibold">Invoice #: </span>{invoiceNumber}</p>
           <p><span className="font-semibold">Date: </span>{new Date(invoiceDate).toLocaleDateString()}</p>
-          {invoiceDueDate && <p><span className="font-semibold">Due Date: </span>{new Date(invoiceDueDate).toLocaleDateString()}</p>}
-          {paymentTerms && <p><span className="font-semibold">Payment Terms: </span>{paymentTerms}</p>}
           {/* Work Order # removed as per request */}
         </div>
       </div>
@@ -101,10 +97,10 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       {/* Customer and Vehicle Info */}
       <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
         <div className="border border-gray-300 p-3 rounded-md">
-          <h3 className="font-semibold text-md mb-2 text-gray-700">Bill To:</h3>
+          <h3 className="font-semibold text-md mb-2 text-gray-700">Customer Information:</h3>
           <p className="font-bold">{customer?.name || 'N/A'}</p>
-          {custAddr && <p>{custAddr.street}</p>}
-          {custAddr && <p>{custAddr.city}, {custAddr.state} {custAddr.zip}</p>}
+          {custAddr && custAddr.street && <p>{custAddr.street}</p>}
+          {custAddr && custAddr.city && custAddr.state && custAddr.zip && <p>{custAddr.city}, {custAddr.state} {custAddr.zip}</p>}
           <p>{customer?.phone || 'N/A'}</p>
           <p>{customer?.email || 'N/A'}</p>
         </div>

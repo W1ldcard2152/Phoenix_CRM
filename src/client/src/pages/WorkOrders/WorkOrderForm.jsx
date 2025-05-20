@@ -9,12 +9,17 @@ import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
-// No need to import VehicleService as it's not used
+import VehicleService from '../../services/vehicleService'; // Added VehicleService
 
 // Validation schema - updated for services array
 const WorkOrderSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   vehicle: Yup.string().required('Vehicle is required'),
+  currentMileage: Yup.number()
+    .typeError('Mileage must be a number')
+    .nullable()
+    .positive('Mileage must be a positive number')
+    .integer('Mileage must be an integer'),
   services: Yup.array().of(
     Yup.object().shape({
       description: Yup.string().required('Service description is required')
@@ -43,6 +48,7 @@ const WorkOrderForm = () => {
     customer: customerIdParam || '',
     vehicle: vehicleIdParam || '',
     date: new Date().toISOString().split('T')[0],
+    currentMileage: '', // Added currentMileage
     services: [{ description: '' }], // Initialize with one empty service item
     priority: 'Normal',
     status: 'Created',
@@ -85,34 +91,45 @@ const WorkOrderForm = () => {
           }
           
           // Set initial form values
+          const loadedVehicleId = typeof workOrderData.vehicle === 'object' 
+            ? workOrderData.vehicle._id 
+            : workOrderData.vehicle;
+
           setInitialValues({
             customer: typeof workOrderData.customer === 'object' 
               ? workOrderData.customer._id 
               : workOrderData.customer,
-            vehicle: typeof workOrderData.vehicle === 'object' 
-              ? workOrderData.vehicle._id 
-              : workOrderData.vehicle,
+            vehicle: loadedVehicleId,
+            currentMileage: workOrderData.currentMileage || '', // Load current mileage if exists
             date: new Date(workOrderData.date).toISOString().split('T')[0],
             services: servicesArray,
             priority: workOrderData.priority || 'Normal',
             status: workOrderData.status || 'Created',
             diagnosticNotes: workOrderData.diagnosticNotes || '',
-            // Additional fields if needed
             parts: workOrderData.parts || [],
             labor: workOrderData.labor || []
           });
           
-          // Load vehicles for the selected customer
           if (workOrderData.customer) {
-            await fetchVehiclesForCustomer(
-              typeof workOrderData.customer === 'object' 
-                ? workOrderData.customer._id 
-                : workOrderData.customer
-            );
+            const customerIdToFetch = typeof workOrderData.customer === 'object' 
+              ? workOrderData.customer._id 
+              : workOrderData.customer;
+            await fetchVehiclesForCustomer(customerIdToFetch);
+            if (loadedVehicleId && !workOrderData.currentMileage) { // If not pre-filled by WO, try to get from vehicle
+              await fetchAndSetLatestMileage(loadedVehicleId, (mileage) => {
+                setInitialValues(prev => ({ ...prev, currentMileage: mileage }));
+              });
+            }
           }
-        } else if (customerIdParam) {
-          // If customer is specified in URL params, fetch their vehicles
-          await fetchVehiclesForCustomer(customerIdParam);
+        } else { // Creating new work order
+          if (customerIdParam) {
+            await fetchVehiclesForCustomer(customerIdParam);
+            if (vehicleIdParam) {
+               await fetchAndSetLatestMileage(vehicleIdParam, (mileage) => {
+                setInitialValues(prev => ({ ...prev, vehicle: vehicleIdParam, currentMileage: mileage }));
+              });
+            }
+          }
         }
         
         setLoading(false);
@@ -138,26 +155,60 @@ const WorkOrderForm = () => {
     }
   };
 
+  const fetchAndSetLatestMileage = async (vehicleId, setMileageCallback) => {
+    if (!vehicleId) {
+      setMileageCallback('');
+      return;
+    }
+    try {
+      const response = await VehicleService.getVehicle(vehicleId);
+      const vehicleData = response.data.vehicle;
+      if (vehicleData && vehicleData.mileageHistory && vehicleData.mileageHistory.length > 0) {
+        // Sort by date descending to get the latest entry
+        const latestEntry = vehicleData.mileageHistory.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+        setMileageCallback(latestEntry.mileage || '');
+      } else if (vehicleData && vehicleData.currentMileage) { // Fallback to currentMileage if no history
+        setMileageCallback(vehicleData.currentMileage || '');
+      } else {
+        setMileageCallback('');
+      }
+    } catch (error) {
+      console.error('Error fetching vehicle details for mileage:', error);
+      // Don't set error state here not to overwrite form-level errors, but clear mileage
+      setMileageCallback('');
+    }
+  };
+
   const handleCustomerChange = async (e, setFieldValue) => {
     const customerId = e.target.value;
     setFieldValue('customer', customerId);
-    setFieldValue('vehicle', ''); // Reset vehicle when customer changes
+    setFieldValue('vehicle', ''); 
+    setFieldValue('currentMileage', ''); // Reset mileage when customer changes
     
     if (customerId) {
       try {
-        const vehiclesResponse = await fetchVehiclesForCustomer(customerId);
-        
-        // Automatically select the first vehicle if available
-        if (vehiclesResponse && vehiclesResponse.length > 0) {
-          setFieldValue('vehicle', vehiclesResponse[0]._id);
+        const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
+        if (fetchedVehicles && fetchedVehicles.length > 0) {
+          const firstVehicleId = fetchedVehicles[0]._id;
+          setFieldValue('vehicle', firstVehicleId);
+          await fetchAndSetLatestMileage(firstVehicleId, (mileage) => setFieldValue('currentMileage', mileage));
+        } else {
+          setVehicles([]);
         }
       } catch (err) {
         console.error('Error fetching vehicles for customer:', err);
         setError('Failed to load vehicles for the selected customer.');
+        setVehicles([]);
       }
     } else {
-      setVehicles([]); // Clear vehicles if no customer selected
+      setVehicles([]); 
     }
+  };
+
+  const handleVehicleChange = async (e, setFieldValue) => {
+    const vehicleId = e.target.value;
+    setFieldValue('vehicle', vehicleId);
+    await fetchAndSetLatestMileage(vehicleId, (mileage) => setFieldValue('currentMileage', mileage));
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
@@ -217,6 +268,7 @@ const WorkOrderForm = () => {
     { value: 'Repair In Progress', label: 'Repair In Progress' },
     { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
     { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'Invoiced', label: 'Invoiced' }, // Added Invoiced status
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
@@ -273,12 +325,26 @@ const WorkOrderForm = () => {
                     name="vehicle"
                     options={vehicleOptions}
                     value={values.vehicle}
-                    onChange={handleChange}
+                    onChange={(e) => handleVehicleChange(e, setFieldValue)}
                     onBlur={handleBlur}
                     error={errors.vehicle}
                     touched={touched.vehicle}
                     disabled={!values.customer}
                     required
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Current Mileage"
+                    name="currentMileage"
+                    type="number"
+                    value={values.currentMileage}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.currentMileage}
+                    touched={touched.currentMileage}
+                    placeholder="e.g., 12345"
                   />
                 </div>
                 

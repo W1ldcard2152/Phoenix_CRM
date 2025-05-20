@@ -33,8 +33,6 @@ const InvoiceGenerator = () => {
   const [invoiceData, setInvoiceData] = useState({
     invoiceNumber: '',
     invoiceDate: new Date().toISOString().split('T')[0],
-    invoiceDueDate: '',
-    paymentTerms: 'Due on Receipt',
     customerNotes: '',
     terms: 'All services and repairs are guaranteed for 90 days or 3,000 miles, whichever comes first. Payment is due upon receipt unless other arrangements are made.',
     taxRate: 8.0,
@@ -52,8 +50,8 @@ const InvoiceGenerator = () => {
     businessName: 'Phoenix Automotive Group, Inc.',
     businessAddressLine1: '201 Ford St',
     businessAddressLine2: 'Newark NY 14513',
-    businessPhone: '315.830.0008',
-    businessEmail: 'phxautosalvage@@gmail.com',
+    businessPhone: '315-830-0008',
+    businessEmail: 'phxautosalvage@gmail.com',
     businessWebsite: 'www.phxautogroup.com',
     businessLogo: '/phxLogo.svg' // This path needs to be updated
   };
@@ -181,11 +179,6 @@ const InvoiceGenerator = () => {
 
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 30);
-        setInvoiceData(prev => ({
-          ...prev,
-          invoiceDueDate: dueDate.toISOString().split('T')[0]
-        }));
-
         const woToLoad = id || workOrderIdParam;
         if (woToLoad) {
           await loadWorkOrder(woToLoad);
@@ -509,8 +502,6 @@ const InvoiceGenerator = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <Input label="Invoice Number" name="invoiceNumber" value={invoiceData.invoiceNumber} onChange={handleInputChange} required />
                 <Input label="Invoice Date" name="invoiceDate" type="date" value={invoiceData.invoiceDate} onChange={handleInputChange} required />
-                <Input label="Due Date" name="invoiceDueDate" type="date" value={invoiceData.invoiceDueDate} onChange={handleInputChange} required />
-                <SelectInput label="Payment Terms" name="paymentTerms" value={invoiceData.paymentTerms} onChange={handleInputChange} options={[{ value: 'Due on Receipt', label: 'Due on Receipt' }, { value: 'Net 15', label: 'Net 15 Days' }, { value: 'Net 30', label: 'Net 30 Days' }, { value: 'Net 60', label: 'Net 60 Days' }]} className="mt-1 block w-full" />
               </div>
             </div>
 
