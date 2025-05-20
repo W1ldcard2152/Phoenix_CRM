@@ -46,7 +46,7 @@ const VehicleForm = () => {
   const [error, setError] = useState(null);
   
   // Get customer ID from URL query parameter if present
-  const customerIdParam = searchParams.get('customer');
+  const customerIdParam = searchParams.get('customerId'); // Changed 'customer' to 'customerId'
   
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',

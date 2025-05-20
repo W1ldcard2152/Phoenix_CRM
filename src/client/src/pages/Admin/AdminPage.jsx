@@ -13,7 +13,7 @@ const AdminPage = () => {
 
   const invoiceStatuses = [
     { value: 'Draft', label: 'Draft' },
-    { value: 'Issued', label: 'Issued' },
+    { value: 'Issued', label: 'Payment Due' },
     { value: 'Paid', label: 'Paid' },
     { value: 'Partial', label: 'Partial' },
     { value: 'Overdue', label: 'Overdue' },

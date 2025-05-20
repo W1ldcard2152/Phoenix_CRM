@@ -4,7 +4,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path'); // Import path module
-const morgan = 'morgan';
+
+// Load environment variables FIRST
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
+
+const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
@@ -24,9 +28,6 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 const technicianRoutes = require('./routes/technicianRoutes'); // Import technician routes
-
-// Load environment variables
-dotenv.config();
 
 // Initialize Express app
 const app = express();

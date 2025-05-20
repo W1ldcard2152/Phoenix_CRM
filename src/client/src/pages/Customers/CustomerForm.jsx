@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Formik, Form } from 'formik';
+import { Formik, Form, getIn } from 'formik';
+// Import a modal component if available, or use window.confirm for simplicity
+// For now, let's assume a simple window.confirm
 import * as Yup from 'yup';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -14,10 +16,12 @@ const CustomerSchema = Yup.object().shape({
   name: Yup.string().required('Name is required'),
   phone: Yup.string().required('Phone number is required'),
   email: Yup.string().email('Invalid email'),
-  'address.street': Yup.string(),
-  'address.city': Yup.string(),
-  'address.state': Yup.string(),
-  'address.zip': Yup.string(),
+  address: Yup.object().shape({
+    street: Yup.string(),
+    city: Yup.string(),
+    state: Yup.string(),
+    zip: Yup.string(),
+  }),
   communicationPreference: Yup.string().required('Communication preference is required'),
   notes: Yup.string()
 });
@@ -25,17 +29,20 @@ const CustomerSchema = Yup.object().shape({
 const CustomerForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  // No need to store customer state since we use initialValues
-  const [loading, setLoading] = useState(id ? true : false);
+  const [loading, setLoading] = useState(!!id);
   const [error, setError] = useState(null);
+  const [showAddVehiclePrompt, setShowAddVehiclePrompt] = useState(false);
+  const [newCustomerId, setNewCustomerId] = useState(null);
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
     email: '',
-    'address.street': '',
-    'address.city': '',
-    'address.state': '',
-    'address.zip': '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zip: ''
+    },
     communicationPreference: 'SMS',
     notes: ''
   });
@@ -55,10 +62,12 @@ const CustomerForm = () => {
           name: customerData.name || '',
           phone: customerData.phone || '',
           email: customerData.email || '',
-          'address.street': customerData.address?.street || '',
-          'address.city': customerData.address?.city || '',
-          'address.state': customerData.address?.state || '',
-          'address.zip': customerData.address?.zip || '',
+          address: {
+            street: customerData.address?.street || '',
+            city: customerData.address?.city || '',
+            state: customerData.address?.state || '',
+            zip: customerData.address?.zip || ''
+          },
           communicationPreference: customerData.communicationPreference || 'SMS',
           notes: customerData.notes || ''
         });
@@ -75,34 +84,25 @@ const CustomerForm = () => {
   }, [id]);
 
   const handleSubmit = async (values, { setSubmitting }) => {
-    // Transform the address fields back into an object
-    const formattedValues = {
-      ...values,
-      address: {
-        street: values['address.street'],
-        city: values['address.city'],
-        state: values['address.state'],
-        zip: values['address.zip']
-      }
-    };
-
-    // Remove the flattened address fields
-    delete formattedValues['address.street'];
-    delete formattedValues['address.city'];
-    delete formattedValues['address.state'];
-    delete formattedValues['address.zip'];
-
     try {
       if (id) {
         // Update existing customer
-        await CustomerService.updateCustomer(id, formattedValues);
+        await CustomerService.updateCustomer(id, values);
+        navigate('/customers'); // Or to customer detail page
       } else {
         // Create new customer
-        await CustomerService.createCustomer(formattedValues);
+        const response = await CustomerService.createCustomer(values);
+        // Assuming the response contains the new customer's data including ID
+        // Adjust based on actual API response structure
+        if (response.data && response.data.customer && response.data.customer._id) {
+          setNewCustomerId(response.data.customer._id);
+          setShowAddVehiclePrompt(true);
+        } else {
+          // Fallback if ID is not returned as expected
+          console.warn('New customer ID not found in response, navigating to customer list.');
+          navigate('/customers');
+        }
       }
-      
-      // Redirect to customer list
-      navigate('/customers');
     } catch (err) {
       console.error('Error saving customer:', err);
       setError('Failed to save customer. Please try again later.');
@@ -116,6 +116,75 @@ const CustomerForm = () => {
     { value: 'Phone', label: 'Phone' },
     { value: 'None', label: 'None' }
   ];
+
+  const usStates = [
+    { value: '', label: 'Select State' },
+    { value: 'AL', label: 'Alabama' },
+    { value: 'AK', label: 'Alaska' },
+    { value: 'AZ', label: 'Arizona' },
+    { value: 'AR', label: 'Arkansas' },
+    { value: 'CA', label: 'California' },
+    { value: 'CO', label: 'Colorado' },
+    { value: 'CT', label: 'Connecticut' },
+    { value: 'DE', label: 'Delaware' },
+    { value: 'FL', label: 'Florida' },
+    { value: 'GA', label: 'Georgia' },
+    { value: 'HI', label: 'Hawaii' },
+    { value: 'ID', label: 'Idaho' },
+    { value: 'IL', label: 'Illinois' },
+    { value: 'IN', label: 'Indiana' },
+    { value: 'IA', label: 'Iowa' },
+    { value: 'KS', label: 'Kansas' },
+    { value: 'KY', label: 'Kentucky' },
+    { value: 'LA', label: 'Louisiana' },
+    { value: 'ME', label: 'Maine' },
+    { value: 'MD', label: 'Maryland' },
+    { value: 'MA', label: 'Massachusetts' },
+    { value: 'MI', label: 'Michigan' },
+    { value: 'MN', label: 'Minnesota' },
+    { value: 'MS', label: 'Mississippi' },
+    { value: 'MO', label: 'Missouri' },
+    { value: 'MT', label: 'Montana' },
+    { value: 'NE', label: 'Nebraska' },
+    { value: 'NV', label: 'Nevada' },
+    { value: 'NH', label: 'New Hampshire' },
+    { value: 'NJ', label: 'New Jersey' },
+    { value: 'NM', label: 'New Mexico' },
+    { value: 'NY', label: 'New York' },
+    { value: 'NC', label: 'North Carolina' },
+    { value: 'ND', label: 'North Dakota' },
+    { value: 'OH', label: 'Ohio' },
+    { value: 'OK', label: 'Oklahoma' },
+    { value: 'OR', label: 'Oregon' },
+    { value: 'PA', label: 'Pennsylvania' },
+    { value: 'RI', label: 'Rhode Island' },
+    { value: 'SC', label: 'South Carolina' },
+    { value: 'SD', label: 'South Dakota' },
+    { value: 'TN', label: 'Tennessee' },
+    { value: 'TX', label: 'Texas' },
+    { value: 'UT', label: 'Utah' },
+    { value: 'VT', label: 'Vermont' },
+    { value: 'VA', label: 'Virginia' },
+    { value: 'WA', label: 'Washington' },
+    { value: 'WV', label: 'West Virginia' },
+    { value: 'WI', label: 'Wisconsin' },
+    { value: 'WY', label: 'Wyoming' }
+  ];
+
+  // New useEffect to handle the prompt after state update
+  // Moved before the loading check to ensure hooks are called in the same order
+  useEffect(() => {
+    if (showAddVehiclePrompt && newCustomerId) {
+      if (window.confirm('Customer created successfully. Would you like to add a vehicle for this customer?')) {
+        navigate(`/vehicles/new?customerId=${newCustomerId}`);
+      } else {
+        navigate('/customers');
+      }
+      // Reset prompt state
+      setShowAddVehiclePrompt(false);
+      setNewCustomerId(null);
+    }
+  }, [showAddVehiclePrompt, newCustomerId, navigate]);
 
   if (loading) {
     return (
@@ -146,7 +215,7 @@ const CustomerForm = () => {
           onSubmit={handleSubmit}
           enableReinitialize
         >
-          {({ isSubmitting, touched, errors, values, handleChange, handleBlur }) => (
+          {({ isSubmitting, touched, errors, values, handleChange, handleBlur, setFieldValue }) => (
             <Form>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -192,11 +261,11 @@ const CustomerForm = () => {
                   <Input
                     label="Street Address"
                     name="address.street"
-                    value={values['address.street']}
-                    onChange={handleChange}
+                    value={getIn(values, 'address.street')}
+                    onChange={(e) => setFieldValue('address.street', e.target.value)}
                     onBlur={handleBlur}
-                    error={errors['address.street']}
-                    touched={touched['address.street']}
+                    error={getIn(errors, 'address.street')}
+                    touched={getIn(touched, 'address.street')}
                   />
                 </div>
                 
@@ -204,24 +273,25 @@ const CustomerForm = () => {
                   <Input
                     label="City"
                     name="address.city"
-                    value={values['address.city']}
-                    onChange={handleChange}
+                    value={getIn(values, 'address.city')}
+                    onChange={(e) => setFieldValue('address.city', e.target.value)}
                     onBlur={handleBlur}
-                    error={errors['address.city']}
-                    touched={touched['address.city']}
+                    error={getIn(errors, 'address.city')}
+                    touched={getIn(touched, 'address.city')}
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Input
+                    <SelectInput
                       label="State"
                       name="address.state"
-                      value={values['address.state']}
-                      onChange={handleChange}
+                      options={usStates}
+                      value={getIn(values, 'address.state')}
+                      onChange={(e) => setFieldValue('address.state', e.target.value)}
                       onBlur={handleBlur}
-                      error={errors['address.state']}
-                      touched={touched['address.state']}
+                      error={getIn(errors, 'address.state')}
+                      touched={getIn(touched, 'address.state')}
                     />
                   </div>
                   
@@ -229,11 +299,11 @@ const CustomerForm = () => {
                     <Input
                       label="ZIP Code"
                       name="address.zip"
-                      value={values['address.zip']}
-                      onChange={handleChange}
+                      value={getIn(values, 'address.zip')}
+                      onChange={(e) => setFieldValue('address.zip', e.target.value)}
                       onBlur={handleBlur}
-                      error={errors['address.zip']}
-                      touched={touched['address.zip']}
+                      error={getIn(errors, 'address.zip')}
+                      touched={getIn(touched, 'address.zip')}
                     />
                   </div>
                 </div>
