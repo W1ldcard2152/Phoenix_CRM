@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import moment from 'moment-timezone';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import AppointmentService from '../../services/appointmentService';
+import { formatDateTimeToET } from '../../utils/formatters';
 
 const AppointmentDetail = () => {
   const { id } = useParams();
@@ -71,22 +73,18 @@ const AppointmentDetail = () => {
     }
   };
 
-  // Format date and time for display
-  const formatDateTime = (dateTimeString) => {
-    if (!dateTimeString) return '';
-    const date = new Date(dateTimeString);
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  };
-
-  // Calculate appointment duration in hours and minutes
+  // Calculate appointment duration in hours and minutes, considering ET
   const calculateDuration = (startTime, endTime) => {
     if (!startTime || !endTime) return '';
     
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const diffMs = end - start;
-    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    // Convert UTC times from server to ET moment objects
+    const startET = moment.utc(startTime).tz('America/New_York');
+    const endET = moment.utc(endTime).tz('America/New_York');
+    
+    const diffMs = endET.diff(startET);
+    const duration = moment.duration(diffMs);
+    const diffHrs = Math.floor(duration.asHours());
+    const diffMins = duration.minutes();
     
     return `${diffHrs}h ${diffMins}m`;
   };
@@ -150,8 +148,8 @@ const AppointmentDetail = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Date & Time</p>
-              <p className="font-medium">{formatDateTime(appointment.startTime)}</p>
-              <p className="text-sm text-gray-600">to {formatDateTime(appointment.endTime).split(' ')[1]}</p>
+              <p className="font-medium">{formatDateTimeToET(appointment.startTime)}</p>
+              <p className="text-sm text-gray-600">to {formatDateTimeToET(appointment.endTime, 'h:mm A')}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Duration</p>
@@ -273,7 +271,7 @@ const AppointmentDetail = () => {
               <p className="text-sm text-gray-500">Reminder Status</p>
               <p className="font-medium">
                 {appointment.reminder?.sent ? 
-                  `Sent on ${new Date(appointment.reminder.sentAt).toLocaleString()}` : 
+                  `Sent on ${formatDateTimeToET(appointment.reminder.sentAt, 'MMM D, YYYY, h:mm:ss A z')}` :
                   'Not sent yet'}
               </p>
             </div>

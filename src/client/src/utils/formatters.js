@@ -1,4 +1,5 @@
 // src/utils/formatters.js
+import moment from 'moment-timezone';
 
 /**
  * Format a number as currency
@@ -35,6 +36,17 @@ export const formatCurrency = (amount, currencyCode = 'USD', locale = 'en-US') =
     const dateObj = typeof date === 'string' ? new Date(date) : date;
     return new Intl.DateTimeFormat(locale, { ...defaultOptions, ...options }).format(dateObj);
   };
+
+/**
+ * Format a UTC date string or Date object to a specified format in America/New_York timezone.
+ * @param {string|Date} utcDate - The UTC date to format.
+ * @param {string} formatString - The moment.js format string.
+ * @returns {string} Formatted date-time string in ET.
+ */
+export const formatDateTimeToET = (utcDate, formatString = 'MMM D, YYYY, h:mm A') => {
+  if (!utcDate) return '';
+  return moment.utc(utcDate).tz('America/New_York').format(formatString);
+};
   
   /**
    * Format a phone number as (XXX) XXX-XXXX

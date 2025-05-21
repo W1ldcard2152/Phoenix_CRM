@@ -41,6 +41,7 @@
     "jsonwebtoken": "^9.0.0",
     "jspdf": "^3.0.1",
     "moment": "^2.30.1",
+    "moment-timezone": "^0.5.48",
     "mongodb": "^6.16.0",
     "mongoose": "^7.0.3",
     "mongosh": "^2.5.0",

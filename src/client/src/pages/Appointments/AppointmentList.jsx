@@ -8,6 +8,7 @@ import SelectInput from '../../components/common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService'; // Import technician service
+import { formatDateTimeToET } from '../../utils/formatters';
 
 const AppointmentList = () => {
   const navigate = useNavigate();
@@ -124,11 +125,10 @@ const AppointmentList = () => {
     navigate(`/appointments/new?workOrder=${workOrderId}`);
   };
 
-  // Format date and time for display
-  const formatDateTime = (dateTimeString) => {
-    const date = new Date(dateTimeString);
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  };
+  // Format date and time for display (now uses formatDateTimeToET)
+  // The second parameter to formatDateTimeToET is optional and defaults to 'MMM D, YYYY, h:mm A'
+  // If a different format is needed here, it can be specified.
+  // For example, to get 'MM/DD/YYYY h:mm A': formatDateTimeToET(dateTimeString, 'MM/DD/YYYY h:mm A')
 
   // Status options for filter dropdown
   const statusOptions = [
@@ -313,10 +313,10 @@ const AppointmentList = () => {
                   <tr key={appointment._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {formatDateTime(appointment.startTime)}
+                        {formatDateTimeToET(appointment.startTime)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        to {formatDateTime(appointment.endTime).split(' ')[1]}
+                        to {formatDateTimeToET(appointment.endTime, 'h:mm A')}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

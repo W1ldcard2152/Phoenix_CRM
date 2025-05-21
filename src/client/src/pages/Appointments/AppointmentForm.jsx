@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
+import moment from 'moment-timezone';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
@@ -28,10 +29,8 @@ const AppointmentSchema = Yup.object().shape({
 const AppointmentForm = () => {
   const { id } = useParams(); 
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams(); // Get the searchParams object
+  const [searchParams] = useSearchParams();
 
-  // Log the raw searchParams object to see its state
-  console.log('AppointmentForm RENDER - searchParams object:', searchParams);
   // We will now get specific params *inside* useEffect
 
   const [customers, setCustomers] = useState([]);
@@ -41,27 +40,31 @@ const AppointmentForm = () => {
   const [error, setError] = useState(null);
   const [hasConflicts, setHasConflicts] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
-  const [workOrderContext, setWorkOrderContext] = useState(null); 
+  const [workOrderContext, setWorkOrderContext] = useState(null);
 
-  const now = new Date();
-  now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
-  const formatDate = (date) => date.toISOString().split('T')[0];
-  const formatTime = (date) => date.toTimeString().slice(0, 5);
-  const laterTime = new Date(now);
-  laterTime.setHours(now.getHours() + 1);
+  const AMERICA_NEW_YORK = 'America/New_York';
+
+  // Helper to format moment objects for form fields
+  const formatDateForField = (momentDate) => momentDate.format('YYYY-MM-DD');
+  const formatTimeForField = (momentDate) => momentDate.format('HH:mm');
+
+  const nowET = moment.tz(AMERICA_NEW_YORK);
+  nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
+  
+  const laterTimeET = nowET.clone().add(1, 'hour');
 
   const [initialValues, setInitialValues] = useState({
     customer: '',
     vehicle: '',
     serviceType: '',
-    startDate: formatDate(now),
-    startTime: formatTime(now),
-    endDate: formatDate(laterTime),
-    endTime: formatTime(laterTime),
+    startDate: formatDateForField(nowET),
+    startTime: formatTimeForField(nowET),
+    endDate: formatDateForField(laterTimeET),
+    endTime: formatTimeForField(laterTimeET),
     technician: '',
     status: 'Scheduled',
     notes: '',
-    workOrder: '', 
+    workOrder: '',
     createWorkOrder: false
   });
 
@@ -132,10 +135,10 @@ const AppointmentForm = () => {
             customer: '',
             vehicle: '',
             serviceType: '',
-            startDate: formatDate(now),
-            startTime: formatTime(now),
-            endDate: formatDate(laterTime),
-            endTime: formatTime(laterTime),
+            startDate: formatDateForField(nowET),
+            startTime: formatTimeForField(nowET),
+            endDate: formatDateForField(laterTimeET),
+            endTime: formatTimeForField(laterTimeET),
             technician: '',
             status: 'Scheduled',
             notes: '',
@@ -158,10 +161,10 @@ const AppointmentForm = () => {
             customer: apptCustomerId || '',
             vehicle: appt.vehicle?._id || appt.vehicle || '',
             serviceType: appt.serviceType || '',
-            startDate: formatDate(new Date(appt.startTime)),
-            startTime: formatTime(new Date(appt.startTime)),
-            endDate: formatDate(new Date(appt.endTime)),
-            endTime: formatTime(new Date(appt.endTime)),
+            startDate: formatDateForField(moment.utc(appt.startTime).tz(AMERICA_NEW_YORK)),
+            startTime: formatTimeForField(moment.utc(appt.startTime).tz(AMERICA_NEW_YORK)),
+            endDate: formatDateForField(moment.utc(appt.endTime).tz(AMERICA_NEW_YORK)),
+            endTime: formatTimeForField(moment.utc(appt.endTime).tz(AMERICA_NEW_YORK)),
             technician: appt.technician?._id || appt.technician || '',
             status: appt.status || 'Scheduled',
             notes: appt.notes || '',
@@ -227,9 +230,9 @@ const AppointmentForm = () => {
   };
 
   const checkForConflicts = async (values) => {
-    // ... (conflict checking logic remains the same)
-    const startDateTime = `${values.startDate}T${values.startTime}`;
-    const endDateTime = `${values.endDate}T${values.endTime}`;
+    const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+    const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+
     if (!values.startDate || !values.startTime || !values.endDate || !values.endTime || !values.technician) {
       setHasConflicts(false);
       setConflictMessage('');
@@ -251,19 +254,21 @@ const AppointmentForm = () => {
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
-    // ... (submit logic remains the same)
+    // Combine date and time, then format for server (server expects local time string it will parse as ET)
+    const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).format('YYYY-MM-DDTHH:mm:ss');
+    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).format('YYYY-MM-DDTHH:mm:ss');
+
     const formattedValues = {
       ...values,
-      startTime: `${values.startDate}T${values.startTime}`,
-      endTime: `${values.endDate}T${values.endTime}`,
+      startTime: startTimeForServer,
+      endTime: endTimeForServer,
     };
     delete formattedValues.startDate;
     delete formattedValues.endDate;
 
-    if (await checkForConflicts(values)) {
-      setSubmitting(false);
-      return;
-    }
+    // Call checkForConflicts to update the warning message, but don't block submission
+    await checkForConflicts(values); 
+
     try {
       if (id) {
         await AppointmentService.updateAppointment(id, formattedValues);
@@ -294,14 +299,11 @@ const AppointmentForm = () => {
   };
 
   const calculateEndTime = (startDate, startTime, durationHours) => {
-    const startDateTime = new Date(`${startDate}T${startTime}`);
-    const hours = Math.floor(durationHours);
-    const minutes = Math.round((durationHours - hours) * 60);
-    startDateTime.setHours(startDateTime.getHours() + hours);
-    startDateTime.setMinutes(startDateTime.getMinutes() + minutes);
+    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK);
+    const endMoment = startMoment.clone().add(durationHours, 'hours');
     return {
-      date: formatDate(startDateTime),
-      time: formatTime(startDateTime)
+      date: formatDateForField(endMoment),
+      time: formatTimeForField(endMoment)
     };
   };
 
@@ -406,7 +408,7 @@ const AppointmentForm = () => {
               
               <div className="mt-6 flex justify-end space-x-3">
                 <Button type="button" variant="light" onClick={() => navigate(id ? `/appointments/${id}` : '/appointments')}>Cancel</Button>
-                <Button type="submit" variant="primary" disabled={isSubmitting || hasConflicts || !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime)}>{isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}</Button>
+                <Button type="submit" variant="primary" disabled={isSubmitting || !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime)}>{isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}</Button>
               </div>
             </Form>
           )}

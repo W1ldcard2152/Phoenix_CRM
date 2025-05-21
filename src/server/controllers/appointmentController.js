@@ -2,10 +2,13 @@ const Appointment = require('../models/Appointment');
 const Customer = require('../models/Customer');
 const Vehicle = require('../models/Vehicle');
 const WorkOrder = require('../models/WorkOrder');
+const moment = require('moment-timezone');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
+
+const AMERICA_NEW_YORK = "America/New_York";
 
 // Get all appointments
 exports.getAllAppointments = catchAsync(async (req, res, next) => {
@@ -20,12 +23,12 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
   
   // Date range filter
   if (startDate || endDate) {
+    query.startTime = {};
     if (startDate) {
-      query.startTime = { $gte: new Date(startDate) };
+      query.startTime.$gte = moment.tz(startDate, AMERICA_NEW_YORK).startOf('day').utc().toDate();
     }
     if (endDate) {
-      if (!query.startTime) query.startTime = {};
-      query.startTime.$lte = new Date(endDate);
+      query.startTime.$lte = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
     }
   }
   
@@ -86,21 +89,31 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
   }
   
   // Check for scheduling conflicts
+  const newStartTime = moment.tz(req.body.startTime, AMERICA_NEW_YORK).utc().toDate();
+  const newEndTime = moment.tz(req.body.endTime, AMERICA_NEW_YORK).utc().toDate();
+
   if (req.body.technician) {
     const conflicts = await Appointment.checkConflicts(
-      new Date(req.body.startTime),
-      new Date(req.body.endTime),
+      newStartTime,
+      newEndTime,
       req.body.technician
     );
     
-    if (conflicts.length > 0) {
-      return next(
-        new AppError('There is a scheduling conflict with another appointment', 400)
-      );
-    }
+    // if (conflicts.length > 0) {
+    //   return next(
+    //     new AppError('There is a scheduling conflict with another appointment', 400)
+    //   );
+    // }
+    // TODO: Frontend should be updated to warn about conflicts.
+    // For now, backend will allow scheduling despite conflicts.
+    // Optionally, we could add conflict info to the response here.
   }
   
-  const appointmentData = { ...req.body };
+  const appointmentData = { 
+    ...req.body,
+    startTime: newStartTime,
+    endTime: newEndTime
+  };
 
   // If linking to an existing workOrderId, ensure createWorkOrder is not also true.
   // Typically, UI would prevent this, but good to be safe.
@@ -238,12 +251,12 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       appointment.status !== 'Cancelled' && 
       appointment.status !== 'Completed') {
     
-    const startTime = req.body.startTime 
-      ? new Date(req.body.startTime) 
+    const startTime = req.body.startTime
+      ? moment.tz(req.body.startTime, AMERICA_NEW_YORK).utc().toDate()
       : appointment.startTime;
       
-    const endTime = req.body.endTime 
-      ? new Date(req.body.endTime) 
+    const endTime = req.body.endTime
+      ? moment.tz(req.body.endTime, AMERICA_NEW_YORK).utc().toDate()
       : appointment.endTime;
       
     const technician = req.body.technician || appointment.technician;
@@ -255,11 +268,14 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       req.params.id // Exclude this appointment from conflict check
     );
     
-    if (conflicts.length > 0) {
-      return next(
-        new AppError('There is a scheduling conflict with another appointment', 400)
-      );
-    }
+    // if (conflicts.length > 0) {
+    //   return next(
+    //     new AppError('There is a scheduling conflict with another appointment', 400)
+    //   );
+    // }
+    // TODO: Frontend should be updated to warn about conflicts.
+    // For now, backend will allow scheduling despite conflicts.
+    // Optionally, we could add conflict info to the response here.
   }
   
   // If status is changing to 'Completed', check/update related work order
@@ -428,17 +444,14 @@ exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
     );
   }
   
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = moment.tz(startDate, AMERICA_NEW_YORK).startOf('day').utc().toDate();
+  const end = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
   
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+  if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
       new AppError('Please provide valid dates in ISO format (YYYY-MM-DD)', 400)
     );
   }
-  
-  // Set end date to end of day
-  end.setHours(23, 59, 59, 999);
   
   const appointments = await Appointment.find({
     startTime: { $gte: start, $lte: end }
@@ -518,10 +531,10 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
     );
   }
   
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const start = moment.tz(startTime, AMERICA_NEW_YORK).utc().toDate();
+  const end = moment.tz(endTime, AMERICA_NEW_YORK).utc().toDate();
   
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+  if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
       new AppError('Please provide valid dates in ISO format', 400)
     );
@@ -549,14 +562,11 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
 
 // Get today's appointments
 exports.getTodayAppointments = catchAsync(async (req, res, next) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayStart = moment.tz(AMERICA_NEW_YORK).startOf('day').utc().toDate();
+  const tomorrowStart = moment.tz(AMERICA_NEW_YORK).add(1, 'day').startOf('day').utc().toDate();
   
   const appointments = await Appointment.find({
-    startTime: { $gte: today, $lt: tomorrow }
+    startTime: { $gte: todayStart, $lt: tomorrowStart }
   })
   .populate('customer', 'name phone email')
   .populate('vehicle', 'year make model')

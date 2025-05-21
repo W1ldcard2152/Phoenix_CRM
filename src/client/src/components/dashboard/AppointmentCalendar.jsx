@@ -5,6 +5,7 @@ import moment from 'moment';
 import Card from '../common/Card';
 import Button from '../common/Button';
 import AppointmentService from '../../services/appointmentService';
+import { formatDateTimeToET } from '../../utils/formatters';
 
 const AppointmentCalendar = () => {
   const [appointments, setAppointments] = useState([]);
@@ -76,16 +77,17 @@ const AppointmentCalendar = () => {
   const getAppointmentsForDay = (day) => {
     return appointments
       .filter(appointment => {
-        const appointmentDate = moment(appointment.startTime).format('YYYY-MM-DD');
+        // Convert appointment.startTime (UTC) to ET for date comparison
+        const appointmentDateET = moment.utc(appointment.startTime).tz('America/New_York').format('YYYY-MM-DD');
         // Filter out appointments linked to "Invoiced" work orders
-        return appointmentDate === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Invoiced';
+        return appointmentDateET === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Invoiced';
       })
-      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+      .sort((a, b) => moment.utc(a.startTime).valueOf() - moment.utc(b.startTime).valueOf());
   };
 
-  // Format time for display
+  // Format time for display (now uses formatDateTimeToET)
   const formatTime = (dateTimeString) => {
-    return moment(dateTimeString).format('h:mm A');
+    return formatDateTimeToET(dateTimeString, 'h:mm A');
   };
 
   // Get a consistent display class for the technician name
