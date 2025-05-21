@@ -1,7 +1,7 @@
 // src/client/src/components/Dashboard/AppointmentCalendar.jsx - Fixed dependency issue
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import Card from '../common/Card';
 import Button from '../common/Button';
 import AppointmentService from '../../services/appointmentService';
