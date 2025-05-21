@@ -42,9 +42,18 @@ const Sidebar = () => {
     <div
       className={`${
         collapsed ? 'w-16' : 'w-64'
-      } bg-primary-800 text-white transition-all duration-300 ease-in-out min-h-screen flex flex-col`}
+      } text-white transition-all duration-300 ease-in-out min-h-screen flex flex-col relative`} // Removed bg-primary-800, added relative for potential pseudo-elements if needed later
+      style={{
+        backgroundImage: 'linear-gradient(to bottom, rgba(23, 37, 84, 0.85), rgba(17, 24, 39, 0.95)), url(/navbar.jpg)', // Dark blue/slate gradient
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
     >
-      <div className="flex items-center justify-end p-4 border-b border-primary-700 h-[60px]"> {/* Adjusted to justify-end and set a fixed height similar to Navbar for alignment */}
+      {/* Optional: Overlay div if more complex blending is needed, but linear-gradient in backgroundImage is usually sufficient */}
+      {/* <div className="absolute inset-0 bg-black opacity-50 z-0"></div> */}
+      
+      {/* Content needs to be on top of the background/overlay */}
+      <div className="relative z-10 flex items-center justify-end p-4 border-b border-primary-700 h-[60px]"> {/* Adjusted to justify-end and set a fixed height similar to Navbar for alignment */}
         <button
           onClick={toggleSidebar}
           className="p-1 rounded hover:bg-primary-700 focus:outline-none"
@@ -53,7 +62,8 @@ const Sidebar = () => {
         </button>
       </div>
 
-      <nav className="mt-0 flex-grow"> {/* Removed mt-6 to move Dashboard up */}
+      {/* All subsequent content should also be on top of the background */}
+      <nav className="mt-0 flex-grow relative z-10"> {/* Removed mt-6 to move Dashboard up */}
         {/* Primary Navigation */}
         <ul className="mb-4">
           {primaryNavigationItems.map((item) => (
@@ -77,7 +87,7 @@ const Sidebar = () => {
       </nav>
 
       {/* Secondary Navigation - Moved to bottom */}
-      <div>
+      <div className="relative z-10">
         {!collapsed && <hr className="my-3 mx-4 border-primary-600" />}
         <nav className="pb-2"> {/* Added pb-2 for spacing */}
           <ul>
@@ -103,9 +113,10 @@ const Sidebar = () => {
       </div>
 
       {/* User Management Section - at the bottom */}
-      <div className="p-3 border-t border-primary-700 mt-auto"> {/* mt-auto pushes this section to the bottom */}
+      <div className="p-3 border-t border-primary-700 mt-auto relative z-10"> {/* mt-auto pushes this section to the bottom */}
         {/* TODO: Implement user dropdown menu functionality */}
-        <div className={`flex items-center ${collapsed ? 'justify-center' : ''} cursor-pointer group p-1 rounded hover:bg-primary-700`}>
+        <div className={`flex items-center ${collapsed ? 'justify-center' : ''} cursor-pointer group p-1 rounded hover:bg-primary-700/50`}> 
+        {/* Adjusted hover to be less opaque if bg-primary-700 was dark */}
           <div className={`flex items-center justify-center h-8 w-8 ${collapsed ? '' : 'mr-2'} bg-accent-500 rounded-full text-white font-semibold text-sm group-hover:bg-accent-600 transition-colors duration-150`}>
             {userInitial}
           </div>

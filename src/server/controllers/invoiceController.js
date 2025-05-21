@@ -118,8 +118,20 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
       return next(new AppError('No work order found with that ID', 404));
     }
     
-    // Update work order status
+    // Update work order status and totalActual
     workOrder.status = 'Invoiced';
+    
+    // Calculate totalActual from the work order's parts and labor
+    const partsCost = workOrder.parts.reduce((total, part) => {
+      return total + (part.price * part.quantity);
+    }, 0);
+    
+    const laborCost = workOrder.labor.reduce((total, labor) => {
+      return total + (labor.hours * labor.rate);
+    }, 0);
+    
+    workOrder.totalActual = partsCost + laborCost;
+    
     await workOrder.save();
   }
   

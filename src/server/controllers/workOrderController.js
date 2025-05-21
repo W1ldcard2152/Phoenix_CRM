@@ -440,8 +440,8 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   // Update the status
   workOrder.status = status;
   
-  // If the status is "Completed - Paid", set the totalActual
-  if (status === 'Completed - Paid' && !workOrder.totalActual) {
+  // If the status is "Completed - Paid" or "Invoiced", set the totalActual
+  if (status === 'Completed - Paid' || status === 'Invoiced') {
     // Calculate total from parts and labor
     const partsCost = workOrder.parts.reduce((total, part) => {
       return total + (part.price * part.quantity);
