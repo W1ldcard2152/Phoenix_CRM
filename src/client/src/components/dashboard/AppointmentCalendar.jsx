@@ -17,33 +17,33 @@ const AppointmentCalendar = () => {
 
   // Make sure currentWeek is included in the dependency array
   useEffect(() => {
-    fetchWeekAppointments();
-  }, [currentWeek, fetchWeekAppointments]); // currentWeek is now properly included as a dependency
+    const fetchWeekAppointments = async () => {
+      try {
+        setLoading(true);
+        const startDate = currentWeek.clone().startOf('week').format('YYYY-MM-DD');
+        const endDate = currentWeek.clone().endOf('week').format('YYYY-MM-DD');
+        
+        const response = await AppointmentService.getAppointmentsByDateRange(startDate, endDate);
+        const weekAppointments = response.data.appointments || [];
+        setAppointments(weekAppointments);
+        
+        // Check if there are any weekend appointments
+        const hasWeekendAppointments = weekAppointments.some(appointment => {
+          const day = moment(appointment.startTime).day();
+          return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+        });
+        
+        setShowWeekends(hasWeekendAppointments);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching appointments:', err);
+        setError('Failed to load appointments');
+        setLoading(false);
+      }
+    };
 
-  const fetchWeekAppointments = async () => {
-    try {
-      setLoading(true);
-      const startDate = currentWeek.clone().startOf('week').format('YYYY-MM-DD');
-      const endDate = currentWeek.clone().endOf('week').format('YYYY-MM-DD');
-      
-      const response = await AppointmentService.getAppointmentsByDateRange(startDate, endDate);
-      const weekAppointments = response.data.appointments || [];
-      setAppointments(weekAppointments);
-      
-      // Check if there are any weekend appointments
-      const hasWeekendAppointments = weekAppointments.some(appointment => {
-        const day = moment(appointment.startTime).day();
-        return day === 0 || day === 6; // Sunday = 0, Saturday = 6
-      });
-      
-      setShowWeekends(hasWeekendAppointments);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching appointments:', err);
-      setError('Failed to load appointments');
-      setLoading(false);
-    }
-  };
+    fetchWeekAppointments();
+  }, [currentWeek]); // fetchWeekAppointments is now defined inside useEffect
 
   const navigateToPreviousWeek = () => {
     setCurrentWeek(currentWeek.clone().subtract(1, 'week'));

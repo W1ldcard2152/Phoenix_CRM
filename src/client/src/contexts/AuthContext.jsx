@@ -10,7 +10,28 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
+  // Logout function needs to be defined before fetchCurrentUser if called within it
+  const logout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setCurrentUser(null);
+    delete axios.defaults.headers.common['Authorization'];
+  };
+
   useEffect(() => {
+    // Fetch current user data
+    const fetchCurrentUser = async () => {
+      try {
+        const res = await axios.get('/api/users/me');
+        setCurrentUser(res.data.data.user);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching user:', err);
+        logout(); // logout is now defined
+        setLoading(false);
+      }
+    };
+
     // Set token in axios defaults
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -18,20 +39,7 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
-  }, [token, fetchCurrentUser]);
-
-  // Fetch current user data
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await axios.get('/api/users/me');
-      setCurrentUser(res.data.data.user);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching user:', err);
-      logout();
-      setLoading(false);
-    }
-  };
+  }, [token]);
 
   // Login function
   const login = async (email, password) => {
@@ -49,14 +57,6 @@ export const AuthProvider = ({ children }) => {
       console.error('Login error:', err);
       throw err;
     }
-  };
-
-  // Logout function
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setCurrentUser(null);
-    delete axios.defaults.headers.common['Authorization'];
   };
 
   // Register function
