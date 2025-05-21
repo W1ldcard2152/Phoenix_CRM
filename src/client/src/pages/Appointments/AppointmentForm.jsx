@@ -220,7 +220,7 @@ const AppointmentForm = () => {
     };
 
     loadInitialData();
-  }, [id, searchParams]); // Use searchParams object as dependency
+  }, [id, searchParams, nowET, laterTimeET]); // Use searchParams object as dependency
 
   const handleCustomerChange = async (e, setFieldValue) => {
     const customerId = e.target.value;

@@ -2,11 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Card from '../../components/common/Card';
-import Button from '../../components/common/Button';
 import AppointmentCalendar from '../../components/dashboard/AppointmentCalendar';
 import WorkflowSummary from '../../components/dashboard/WorkflowSummary';
 import WorkOrderService from '../../services/workOrderService';
-import AppointmentService from '../../services/appointmentService';
 
 const Dashboard = () => {
   const [activeWorkOrders, setActiveWorkOrders] = useState([]);

@@ -4,7 +4,6 @@ import invoiceService from '../../services/invoiceService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay'; // Import the new component
-import { formatCurrency } from '../../utils/formatters'; // Ensure this is used
 
 // formatCurrency is now imported, so local definition is removed.
 

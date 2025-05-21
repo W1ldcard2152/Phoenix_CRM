@@ -11,7 +11,6 @@ const VehicleDetail = () => {
   const [vehicle, setVehicle] = useState(null);
   const [customer, setCustomer] = useState(null);
   const [serviceHistory, setServiceHistory] = useState([]);
-  const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -42,12 +41,11 @@ const VehicleDetail = () => {
         
         // Fetch vehicle appointments
         try {
-          const appointmentsResponse = await AppointmentService.getVehicleAppointments(id);
-          setAppointments(appointmentsResponse.data.appointments || []);
+          await AppointmentService.getVehicleAppointments(id);
+          // setAppointments(appointmentsResponse.data.appointments || []); // Removed as appointments state is unused
         } catch (apptErr) {
           console.error('Error loading appointments:', apptErr);
           // Don't fail the entire load if just appointments fail
-          setAppointments([]);
         }
         
         setLoading(false);

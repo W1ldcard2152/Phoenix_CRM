@@ -29,7 +29,6 @@ const AppointmentList = () => {
   // Get filter parameters from URL
   const customerParam = searchParams.get('customer');
   const vehicleParam = searchParams.get('vehicle');
-  const workOrderParam = searchParams.get('workOrder');
 
   useEffect(() => {
     const fetchTechOptions = async () => {

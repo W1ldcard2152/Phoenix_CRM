@@ -18,7 +18,7 @@ const AppointmentCalendar = () => {
   // Make sure currentWeek is included in the dependency array
   useEffect(() => {
     fetchWeekAppointments();
-  }, [currentWeek]); // currentWeek is now properly included as a dependency
+  }, [currentWeek, fetchWeekAppointments]); // currentWeek is now properly included as a dependency
 
   const fetchWeekAppointments = async () => {
     try {
