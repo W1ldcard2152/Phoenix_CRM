@@ -256,9 +256,9 @@ const AppointmentForm = () => {
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
-    // Combine date and time, then format for server (server expects local time string it will parse as ET)
-    const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).format('YYYY-MM-DDTHH:mm:ss');
-    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).format('YYYY-MM-DDTHH:mm:ss');
+    // Combine date and time, then format as ISO string (UTC) for the server
+    const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
 
     const formattedValues = {
       ...values,
