@@ -77,6 +77,20 @@ const AdminPage = () => {
     }
   };
 
+  const handleDeleteInvoice = async (invoiceId) => {
+    if (window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+      try {
+        await invoiceService.deleteInvoice(invoiceId);
+        setInvoices(prevInvoices => prevInvoices.filter(inv => inv._id !== invoiceId));
+        // Optionally, show a success message
+      } catch (err) {
+        console.error("Error deleting invoice:", err);
+        setError(err.message || 'Failed to delete invoice.');
+        // Optionally, show an error message to the user
+      }
+    }
+  };
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-semibold text-gray-800 mb-6">Administration</h1>
@@ -130,6 +144,13 @@ const AdminPage = () => {
                         size="sm"
                       >
                         Print
+                      </Button>
+                      <Button
+                        onClick={() => handleDeleteInvoice(invoice._id)}
+                        variant="danger"
+                        size="sm"
+                      >
+                        Delete
                       </Button>
                     </td>
                   </tr>

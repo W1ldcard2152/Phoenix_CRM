@@ -48,19 +48,16 @@ const AppointmentForm = () => {
   const formatDateForField = (momentDate) => momentDate.format('YYYY-MM-DD');
   const formatTimeForField = (momentDate) => momentDate.format('HH:mm');
 
-  const nowET = moment.tz(AMERICA_NEW_YORK);
-  nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
-  
-  const laterTimeET = nowET.clone().add(1, 'hour');
+  // nowET and laterTimeET will be defined inside useEffect
 
   const [initialValues, setInitialValues] = useState({
     customer: '',
     vehicle: '',
     serviceType: '',
-    startDate: formatDateForField(nowET),
-    startTime: formatTimeForField(nowET),
-    endDate: formatDateForField(laterTimeET),
-    endTime: formatTimeForField(laterTimeET),
+    startDate: '', // Will be set in useEffect
+    startTime: '', // Will be set in useEffect
+    endDate: '',   // Will be set in useEffect
+    endTime: '',   // Will be set in useEffect
     technician: '',
     status: 'Scheduled',
     notes: '',
@@ -123,6 +120,11 @@ const AppointmentForm = () => {
       setLoading(true);
       setError(null);
 
+      // Define nowET and laterTimeET inside the effect
+      const nowET = moment.tz(AMERICA_NEW_YORK);
+      nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
+      const laterTimeET = nowET.clone().add(1, 'hour');
+
       try {
         const customerListResponse = await CustomerService.getAllCustomers();
         setCustomers(customerListResponse.data.customers || []);
@@ -135,10 +137,10 @@ const AppointmentForm = () => {
             customer: '',
             vehicle: '',
             serviceType: '',
-            startDate: formatDateForField(nowET),
-            startTime: formatTimeForField(nowET),
-            endDate: formatDateForField(laterTimeET),
-            endTime: formatTimeForField(laterTimeET),
+            startDate: formatDateForField(nowET), // Use nowET defined in effect
+            startTime: formatTimeForField(nowET), // Use nowET defined in effect
+            endDate: formatDateForField(laterTimeET),   // Use laterTimeET defined in effect
+            endTime: formatTimeForField(laterTimeET),   // Use laterTimeET defined in effect
             technician: '',
             status: 'Scheduled',
             notes: '',
@@ -220,7 +222,7 @@ const AppointmentForm = () => {
     };
 
     loadInitialData();
-  }, [id, searchParams, nowET, laterTimeET]); // Use searchParams object as dependency
+  }, [id, searchParams]); // Removed nowET and laterTimeET from dependencies
 
   const handleCustomerChange = async (e, setFieldValue) => {
     const customerId = e.target.value;
