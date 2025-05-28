@@ -70,22 +70,25 @@ exports.getAppointment = catchAsync(async (req, res, next) => {
 
 // Create a new appointment
 exports.createAppointment = catchAsync(async (req, res, next) => {
-  // Verify customer and vehicle exist and are related
+  // Verify customer exists
   const customer = await Customer.findById(req.body.customer);
   if (!customer) {
     return next(new AppError('No customer found with that ID', 404));
   }
-  
-  const vehicle = await Vehicle.findById(req.body.vehicle);
-  if (!vehicle) {
-    return next(new AppError('No vehicle found with that ID', 404));
-  }
-  
-  // Verify that the vehicle belongs to the customer
-  if (vehicle.customer.toString() !== customer._id.toString()) {
-    return next(
-      new AppError('The vehicle does not belong to this customer', 400)
-    );
+
+  let vehicle = null;
+  // Only attempt to find vehicle if a vehicle ID is provided and not empty
+  if (req.body.vehicle && req.body.vehicle !== '') {
+    vehicle = await Vehicle.findById(req.body.vehicle);
+    if (!vehicle) {
+      return next(new AppError('No vehicle found with that ID', 404));
+    }
+    // Verify that the vehicle belongs to the customer
+    if (vehicle.customer.toString() !== customer._id.toString()) {
+      return next(
+        new AppError('The vehicle does not belong to this customer', 400)
+      );
+    }
   }
   
   // Check for scheduling conflicts
@@ -98,7 +101,6 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       newEndTime,
       req.body.technician
     );
-    
     // if (conflicts.length > 0) {
     //   return next(
     //     new AppError('There is a scheduling conflict with another appointment', 400)
@@ -115,9 +117,19 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     endTime: newEndTime
   };
 
+  // If vehicle is null or empty string, ensure it's not passed to Mongoose as an empty string
+  if (!req.body.vehicle || req.body.vehicle === '') {
+    delete appointmentData.vehicle; // Remove vehicle field if not provided
+  }
+
+  // If workOrder is null or empty string, ensure it's not passed to Mongoose as an empty string
+  if (!req.body.workOrder || req.body.workOrder === '') {
+    delete appointmentData.workOrder; // Remove workOrder field if not provided
+  }
+
   // If linking to an existing workOrderId, ensure createWorkOrder is not also true.
   // Typically, UI would prevent this, but good to be safe.
-  if (appointmentData.workOrderId && appointmentData.createWorkOrder) {
+  if (appointmentData.workOrder && appointmentData.createWorkOrder) {
     // Prioritize linking to existing work order if both are somehow sent.
     delete appointmentData.createWorkOrder;
     // Or return an error:
@@ -149,7 +161,6 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       }
       if (woNeedsSave) {
         await workOrderToUpdate.save();
-        console.log('DEBUG: workOrderToUpdate after save in createAppointment:', workOrderToUpdate); // DEBUG LOG
       }
     }
   } else if (appointmentData.createWorkOrder === true || appointmentData.createWorkOrder === 'true') { 
@@ -168,7 +179,7 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       await twilioService.sendAppointmentReminder(
         newAppointment, // newAppointment should have times and serviceType
         populatedCustomerForNotif,
-        vehicle // vehicle was fetched earlier
+        vehicle // vehicle was fetched earlier, or is null
       );
     } catch (err) {
       console.error('Failed to send SMS confirmation:', err);
@@ -178,7 +189,7 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       await emailService.sendAppointmentConfirmation(
         newAppointment,
         populatedCustomerForNotif,
-        vehicle
+        vehicle // vehicle was fetched earlier, or is null
       );
     } catch (err) {
       console.error('Failed to send email confirmation:', err);
@@ -205,37 +216,6 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       appointment: fullyPopulatedAppointment
     }
   });
-  // The following block was duplicated and caused an error.
-  // if (customer.communicationPreference === 'SMS' && customer.phone) {
-  //   try {
-  //     await twilioService.sendAppointmentReminder(
-  //       newAppointment,
-  //       customer,
-  //       vehicle
-  //     );
-  //   } catch (err) {
-  //     console.error('Failed to send SMS confirmation:', err);
-  //     // Don't fail the appointment creation if notification fails
-  //   }
-  // } else if (customer.communicationPreference === 'Email' && customer.email) {
-  //   try {
-  //     await emailService.sendAppointmentConfirmation(
-  //       newAppointment,
-  //       customer,
-  //       vehicle
-  //     );
-  //   } catch (err) {
-  //     console.error('Failed to send email confirmation:', err);
-  //     // Don't fail the appointment creation if notification fails
-  //   }
-  // }
-  
-  // res.status(201).json({
-  //   status: 'success',
-  //   data: {
-  //     appointment: newAppointment // This was sending the unpopulated appointment
-  //   }
-  // });
 });
 
 // Update an appointment

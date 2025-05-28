@@ -16,7 +16,11 @@ import technicianService from '../../services/technicianService';
 
 const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
-  vehicle: Yup.string().required('Vehicle is required'),
+  vehicle: Yup.string().when('workOrder', {
+    is: (workOrder) => !workOrder || workOrder === '', // If workOrder is null, undefined, or empty string (standalone)
+    then: (schema) => schema.notRequired(), // Then vehicle is NOT required
+    otherwise: (schema) => schema.required('Vehicle is required'), // Otherwise (work order attached), vehicle IS required
+  }),
   serviceType: Yup.string().required('Service type is required'),
   startDate: Yup.string().required('Start date is required'),
   startTime: Yup.string().required('Start time is required'),
@@ -349,15 +353,11 @@ const AppointmentForm = () => {
           {({ isSubmitting, touched, errors, values, handleChange, handleBlur, setFieldValue }) => (
             <Form>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {!id && !workOrderContext && ( // Corrected condition: Not editing, and no WO loaded yet
-                  <div className="md:col-span-2 border rounded-lg p-4 mb-4"> {/* ... UI for linking WO ... */} </div>
-                )}
-                
                 <div>
                   <SelectInput label="Customer" name="customer" options={[{ value: '', label: 'Select Customer'}, ...customerOptions]} value={values.customer} onChange={(e) => handleCustomerChange(e, setFieldValue)} onBlur={handleBlur} error={errors.customer} touched={touched.customer} disabled={!!workOrderContext} required />
                 </div>
                 <div>
-                  <SelectInput label="Vehicle" name="vehicle" options={[{ value: '', label: 'Select Vehicle'}, ...vehicleOptions]} value={values.vehicle} onChange={handleChange} onBlur={handleBlur} error={errors.vehicle} touched={touched.vehicle} disabled={!values.customer || !!workOrderContext || vehicles.length === 0} required />
+                  <SelectInput label="Vehicle" name="vehicle" options={[{ value: '', label: 'Select Vehicle'}, ...vehicleOptions]} value={values.vehicle} onChange={handleChange} onBlur={handleBlur} error={errors.vehicle} touched={touched.vehicle} disabled={!values.customer || !!workOrderContext || vehicles.length === 0} required={!!values.workOrder} />
                 </div>
                 <div className="md:col-span-2">
                   <Input label="Service Type" name="serviceType" value={values.serviceType} onChange={handleChange} onBlur={handleBlur} error={errors.serviceType} touched={touched.serviceType} disabled={!!workOrderContext} required placeholder="Oil Change, Brake Service, etc." />

@@ -102,7 +102,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           {custAddr && custAddr.street && <p>{custAddr.street}</p>}
           {custAddr && custAddr.city && custAddr.state && custAddr.zip && <p>{custAddr.city}, {custAddr.state} {custAddr.zip}</p>}
           <p>{customer?.phone || 'N/A'}</p>
-          <p>{customer?.email || 'N/A'}</p>
+          {customer?.email && <p>{customer.email}</p>}
         </div>
         <div className="border border-gray-300 p-3 rounded-md">
           <h3 className="font-semibold text-md mb-2 text-gray-700">Vehicle Information:</h3>

@@ -11,7 +11,7 @@ const AppointmentSchema = new Schema(
     vehicle: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Vehicle',
-      required: true
+      required: false // Changed to false to allow appointments without a vehicle
     },
     serviceType: {
       type: String,

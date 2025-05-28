@@ -28,6 +28,7 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const authRoutes = require('./routes/authRoutes');
 const technicianRoutes = require('./routes/technicianRoutes'); // Import technician routes
+const feedbackRoutes = require('./routes/feedbackRoutes'); // Import feedback routes
 
 // Initialize Express app
 const app = express();
@@ -93,6 +94,7 @@ app.use('/api/appointments', appointmentRoutes);
 // app.use('/api/media', mediaRoutes); // Media routes disabled
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/technicians', technicianRoutes); // Use technician routes
+app.use('/api/feedback', feedbackRoutes); // Use feedback routes
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

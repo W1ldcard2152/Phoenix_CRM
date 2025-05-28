@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
+import TextArea from '../../components/common/TextArea';
 import WorkOrderService from '../../services/workOrderService';
 // technicianService import removed as it's no longer needed for a dropdown
 
@@ -13,14 +14,13 @@ const WorkOrderDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
-  // const [technicians, setTechnicians] = useState([]); // State for technicians - REMOVED
-  // const [selectedTechnician, setSelectedTechnician] = useState(''); // State for selected technician - REMOVED
-  // const [technicianUpdateLoading, setTechnicianUpdateLoading] = useState(false); // REMOVED
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [partModalOpen, setPartModalOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
+  const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
+  const [editingDiagnosticNotes, setEditingDiagnosticNotes] = useState('');
   const [newPart, setNewPart] = useState({
     name: '',
     partNumber: '',
@@ -116,6 +116,25 @@ const WorkOrderDetail = () => {
       purchaseOrderNumber: part.purchaseOrderNumber || ''
     });
     setPartModalOpen(true);
+  };
+
+  const openEditDiagnosticNotesModal = () => {
+    setEditingDiagnosticNotes(workOrder.diagnosticNotes || '');
+    setDiagnosticNotesModalOpen(true);
+  };
+
+  const handleUpdateDiagnosticNotes = async () => {
+    try {
+      const response = await WorkOrderService.updateWorkOrder(id, {
+        ...workOrder,
+        diagnosticNotes: editingDiagnosticNotes
+      });
+      setWorkOrder(response.data.workOrder);
+      setDiagnosticNotesModalOpen(false);
+    } catch (err) {
+      console.error('Error updating diagnostic notes:', err);
+      setError('Failed to update diagnostic notes. Please try again later.');
+    }
   };
 
   const openAddLaborModal = () => {
@@ -536,6 +555,15 @@ const WorkOrderDetail = () => {
       <div className="space-y-6"> 
         <Card 
           title="Diagnostic Notes"
+          headerActions={
+            <Button
+              onClick={openEditDiagnosticNotesModal}
+              variant="outline"
+              size="sm"
+            >
+              Edit Notes
+            </Button>
+          }
         >
           <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>
             {workOrder.diagnosticNotes || 'No diagnostic notes available.'}
@@ -972,6 +1000,43 @@ const WorkOrderDetail = () => {
                 disabled={!newLabor.description || !newLabor.hours || !newLabor.rate}
               >
                 {editingLabor ? 'Update Labor' : 'Add Labor'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostic Notes Modal (Edit) */}
+      {diagnosticNotesModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Edit Diagnostic Notes</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="diagnosticNotes" className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes
+                </label>
+                <TextArea
+                  id="diagnosticNotes"
+                  value={editingDiagnosticNotes}
+                  onChange={(e) => setEditingDiagnosticNotes(e.target.value)}
+                  rows="8"
+                  placeholder="Enter diagnostic notes here..."
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <Button
+                variant="light"
+                onClick={() => setDiagnosticNotesModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleUpdateDiagnosticNotes}
+              >
+                Save Notes
               </Button>
             </div>
           </div>

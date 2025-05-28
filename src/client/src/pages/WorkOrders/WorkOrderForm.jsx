@@ -62,9 +62,14 @@ const WorkOrderForm = () => {
       try {
         setLoading(true);
         
-        // Fetch customers for dropdown
+        // Fetch customers for dropdown and sort them alphabetically by name
         const customersResponse = await CustomerService.getAllCustomers();
-        setCustomers(customersResponse.data.customers || []);
+        const sortedCustomers = (customersResponse.data.customers || []).sort((a, b) => {
+          const lastNameA = a.name.split(' ').pop();
+          const lastNameB = b.name.split(' ').pop();
+          return lastNameA.localeCompare(lastNameB);
+        });
+        setCustomers(sortedCustomers);
         
         // If editing existing work order, fetch work order data
         if (id) {
@@ -245,11 +250,18 @@ const WorkOrderForm = () => {
     );
   }
 
-  // Create customer options for dropdown
-  const customerOptions = customers.map(customer => ({
-    value: customer._id,
-    label: customer.name
-  }));
+  // Create customer options for dropdown and ensure they are sorted alphabetically by last name
+  const customerOptions = customers
+    .map(customer => ({
+      value: customer._id,
+      label: customer.name
+    }))
+    .sort((a, b) => {
+      const lastNameA = a.label.split(' ').pop();
+      const lastNameB = b.label.split(' ').pop();
+      return lastNameA.localeCompare(lastNameB);
+    });
+
 
   // Create vehicle options for dropdown
   const vehicleOptions = vehicles.map(vehicle => ({

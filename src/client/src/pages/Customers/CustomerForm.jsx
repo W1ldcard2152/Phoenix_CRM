@@ -11,10 +11,25 @@ import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
 import CustomerService from '../../services/customerService';
 
+// Helper function to format phone number
+const formatPhoneNumber = (value) => {
+  if (!value) return value;
+  const phoneNumber = value.replace(/[^\d]/g, ''); // Remove non-digits
+  const phoneNumberLength = phoneNumber.length;
+
+  if (phoneNumberLength < 4) return phoneNumber;
+  if (phoneNumberLength < 7) {
+    return `${phoneNumber.slice(0, 3)}-${phoneNumber.slice(3)}`;
+  }
+  return `${phoneNumber.slice(0, 3)}-${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
+};
+
 // Validation schema
 const CustomerSchema = Yup.object().shape({
   name: Yup.string().required('Name is required'),
-  phone: Yup.string().required('Phone number is required'),
+  phone: Yup.string()
+    .required('Phone number is required')
+    .matches(/^\d{3}-\d{3}-\d{4}$/, 'Phone number must be in xxx-xxx-xxxx format'),
   email: Yup.string().email('Invalid email'),
   address: Yup.object().shape({
     street: Yup.string(),
@@ -90,6 +105,13 @@ const CustomerForm = () => {
     setSubmitting(true);
     setError(null); // Clear previous errors
 
+    // Create a mutable copy of values to modify phone number
+    const customerValues = { ...values };
+    // Unformat phone number before sending to backend
+    if (customerValues.phone) {
+      customerValues.phone = customerValues.phone.replace(/[^\d]/g, '');
+    }
+
     // If creating a new customer and a duplicate warning exists but not allowed to submit
     if (!id && duplicatePhoneWarning && !allowSubmitDespiteDuplicate) {
       setError('Please resolve the duplicate phone number warning before saving.');
@@ -100,11 +122,11 @@ const CustomerForm = () => {
     try {
       if (id) {
         // Update existing customer
-        await CustomerService.updateCustomer(id, values);
+        await CustomerService.updateCustomer(id, customerValues);
         navigate('/customers'); // Or to customer detail page
       } else {
         // Create new customer
-        const response = await CustomerService.createCustomer(values);
+        const response = await CustomerService.createCustomer(customerValues);
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
         setAllowSubmitDespiteDuplicate(false);
@@ -126,11 +148,11 @@ const CustomerForm = () => {
   };
 
   const handlePhoneBlur = async (e, currentValues) => {
-    const phoneNumber = e.target.value;
+    const rawPhoneNumber = e.target.value.replace(/[^\d]/g, ''); // Get raw digits for backend check
     // Only check if it's a new customer form and phone number is present
-    if (!id && phoneNumber) {
+    if (!id && rawPhoneNumber) {
       try {
-        const response = await CustomerService.checkExistingCustomerByPhone(phoneNumber);
+        const response = await CustomerService.checkExistingCustomerByPhone(rawPhoneNumber);
         if (response.exists) {
           // Do not show warning if the existing customer is the one being edited (though this check is for new customers)
           // Or if the phone number matches the initial phone number (for edit mode, to avoid self-warning on blur without change)
@@ -138,14 +160,14 @@ const CustomerForm = () => {
             setDuplicatePhoneWarning(null);
             setExistingCustomerId(null);
             setAllowSubmitDespiteDuplicate(false);
-          } else if (id && initialValues.phone === phoneNumber) {
+          } else if (id && initialValues.phone.replace(/[^\d]/g, '') === rawPhoneNumber) { // Compare raw numbers
             setDuplicatePhoneWarning(null);
             setExistingCustomerId(null);
             setAllowSubmitDespiteDuplicate(false);
           }
           else {
             setDuplicatePhoneWarning(
-              `A customer with phone number ${phoneNumber} already exists: ${response.data.customer.name}.`
+              `A customer with phone number ${formatPhoneNumber(rawPhoneNumber)} already exists: ${response.data.customer.name}.`
             );
             setExistingCustomerId(response.data.customer._id);
             setAllowSubmitDespiteDuplicate(false); // Require user action
@@ -162,7 +184,7 @@ const CustomerForm = () => {
         setExistingCustomerId(null);
         setAllowSubmitDespiteDuplicate(false);
       }
-    } else if (!phoneNumber) { // Clear warning if phone number is erased
+    } else if (!rawPhoneNumber) { // Clear warning if phone number is erased
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
         setAllowSubmitDespiteDuplicate(false);
@@ -294,14 +316,14 @@ const CustomerForm = () => {
                   <Input
                     label="Phone"
                     name="phone"
-                    value={values.phone}
+                    value={formatPhoneNumber(values.phone)} // Display formatted value
                     onChange={(e) => {
-                      handleChange(e);
+                      const formattedValue = formatPhoneNumber(e.target.value);
+                      setFieldValue('phone', formattedValue); // Update Formik state with formatted value
                       // Optimistically clear warning when user types, will re-check on blur
                       if (duplicatePhoneWarning) {
                         setDuplicatePhoneWarning(null);
                         setExistingCustomerId(null);
-                        // setAllowSubmitDespiteDuplicate(false); // Keep this false until explicit action
                       }
                     }}
                     onBlur={(e) => {
