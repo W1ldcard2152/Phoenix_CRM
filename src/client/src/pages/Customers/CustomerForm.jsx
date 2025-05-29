@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Formik, Form, getIn } from 'formik';
-// Import a modal component if available, or use window.confirm for simplicity
-// For now, let's assume a simple window.confirm
 import * as Yup from 'yup';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
+import Modal from '../../components/common/Modal'; // Import the new Modal component
 import CustomerService from '../../services/customerService';
+import { capitalizeWords } from '../../utils/formatters'; // Import capitalizeWords
 
 // Helper function to format phone number
 const formatPhoneNumber = (value) => {
@@ -50,7 +50,6 @@ const CustomerForm = () => {
   const [newCustomerId, setNewCustomerId] = useState(null);
   const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState(null);
   const [existingCustomerId, setExistingCustomerId] = useState(null);
-  const [allowSubmitDespiteDuplicate, setAllowSubmitDespiteDuplicate] = useState(false);
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
@@ -105,16 +104,9 @@ const CustomerForm = () => {
     setSubmitting(true);
     setError(null); // Clear previous errors
 
-    // Create a mutable copy of values to modify phone number
-    const customerValues = { ...values };
-    // Unformat phone number before sending to backend
-    if (customerValues.phone) {
-      customerValues.phone = customerValues.phone.replace(/[^\d]/g, '');
-    }
-
-    // If creating a new customer and a duplicate warning exists but not allowed to submit
-    if (!id && duplicatePhoneWarning && !allowSubmitDespiteDuplicate) {
-      setError('Please resolve the duplicate phone number warning before saving.');
+    // If creating a new customer and a duplicate warning exists, prevent submission
+    if (!id && duplicatePhoneWarning) {
+      setError('Phone numbers must be unique. Please resolve the duplicate phone number warning before saving.');
       setSubmitting(false);
       return;
     }
@@ -122,11 +114,11 @@ const CustomerForm = () => {
     try {
       if (id) {
         // Update existing customer
-        await CustomerService.updateCustomer(id, customerValues);
+        await CustomerService.updateCustomer(id, values); // Send values directly, phone is already formatted
         navigate('/customers'); // Or to customer detail page
       } else {
         // Create new customer
-        const response = await CustomerService.createCustomer(customerValues);
+        const response = await CustomerService.createCustomer(values); // Send values directly, phone is already formatted
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
         setAllowSubmitDespiteDuplicate(false);
@@ -148,46 +140,41 @@ const CustomerForm = () => {
   };
 
   const handlePhoneBlur = async (e, currentValues) => {
-    const rawPhoneNumber = e.target.value.replace(/[^\d]/g, ''); // Get raw digits for backend check
+    const formattedPhoneNumber = e.target.value; // Get formatted value for backend check
     // Only check if it's a new customer form and phone number is present
-    if (!id && rawPhoneNumber) {
+    if (!id && formattedPhoneNumber) {
       try {
-        const response = await CustomerService.checkExistingCustomerByPhone(rawPhoneNumber);
+        // Send the formatted phone number to the backend for the check
+        const response = await CustomerService.checkExistingCustomerByPhone(formattedPhoneNumber);
         if (response.exists) {
           // Do not show warning if the existing customer is the one being edited (though this check is for new customers)
           // Or if the phone number matches the initial phone number (for edit mode, to avoid self-warning on blur without change)
           if (id && response.data.customer._id === id) {
             setDuplicatePhoneWarning(null);
             setExistingCustomerId(null);
-            setAllowSubmitDespiteDuplicate(false);
-          } else if (id && initialValues.phone.replace(/[^\d]/g, '') === rawPhoneNumber) { // Compare raw numbers
+          } else if (id && initialValues.phone === formattedPhoneNumber) { // Compare formatted numbers
             setDuplicatePhoneWarning(null);
             setExistingCustomerId(null);
-            setAllowSubmitDespiteDuplicate(false);
           }
           else {
             setDuplicatePhoneWarning(
-              `A customer with phone number ${formatPhoneNumber(rawPhoneNumber)} already exists: ${response.data.customer.name}.`
+              `A customer with phone number ${formattedPhoneNumber} already exists: ${response.data.customer.name}.`
             );
             setExistingCustomerId(response.data.customer._id);
-            setAllowSubmitDespiteDuplicate(false); // Require user action
           }
         } else {
           setDuplicatePhoneWarning(null);
           setExistingCustomerId(null);
-          setAllowSubmitDespiteDuplicate(false); // Reset if phone number is now unique
         }
       } catch (error) {
         console.error('Error checking phone number:', error);
         // Optionally set an error state here to inform the user about the check failure
         setDuplicatePhoneWarning(null); // Clear warning on error to avoid blocking
         setExistingCustomerId(null);
-        setAllowSubmitDespiteDuplicate(false);
       }
-    } else if (!rawPhoneNumber) { // Clear warning if phone number is erased
+    } else if (!formattedPhoneNumber) { // Clear warning if phone number is erased
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
-        setAllowSubmitDespiteDuplicate(false);
     }
   };
 
@@ -252,19 +239,16 @@ const CustomerForm = () => {
     { value: 'WY', label: 'Wyoming' }
   ];
 
+  // Function to handle closing the vehicle prompt modal
+  const handleCloseAddVehiclePrompt = () => {
+    setShowAddVehiclePrompt(false);
+    setNewCustomerId(null);
+  };
+
   // New useEffect to handle the prompt after state update
-  // Moved before the loading check to ensure hooks are called in the same order
   useEffect(() => {
-    if (showAddVehiclePrompt && newCustomerId) {
-      if (window.confirm('Customer created successfully. Would you like to add a vehicle for this customer?')) {
-        navigate(`/vehicles/new?customerId=${newCustomerId}`);
-      } else {
-        navigate('/customers');
-      }
-      // Reset prompt state
-      setShowAddVehiclePrompt(false);
-      setNewCustomerId(null);
-    }
+    // This useEffect now only triggers the modal display, not the window.confirm
+    // The actual navigation logic is moved to the modal's action buttons
   }, [showAddVehiclePrompt, newCustomerId, navigate]);
 
   if (loading) {
@@ -282,6 +266,33 @@ const CustomerForm = () => {
           {id ? 'Edit Customer' : 'Add New Customer'}
         </h1>
       </div>
+
+      {/* Vehicle Add Prompt Modal */}
+      <Modal
+        isOpen={showAddVehiclePrompt}
+        onClose={handleCloseAddVehiclePrompt}
+        title="Customer Created Successfully!"
+        actions={[
+          {
+            label: 'Yes (Add New Vehicle)',
+            variant: 'primary',
+            onClick: () => {
+              navigate(`/vehicles/new?customerId=${newCustomerId}`);
+              handleCloseAddVehiclePrompt();
+            }
+          },
+          {
+            label: 'No (Return to Customers)',
+            variant: 'light',
+            onClick: () => {
+              navigate('/customers');
+              handleCloseAddVehiclePrompt();
+            }
+          }
+        ]}
+      >
+        <p className="text-gray-700">Would you like to add a vehicle for this new customer?</p>
+      </Modal>
 
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -305,7 +316,10 @@ const CustomerForm = () => {
                     name="name"
                     value={values.name}
                     onChange={handleChange}
-                    onBlur={handleBlur}
+                    onBlur={(e) => {
+                      handleBlur(e);
+                      setFieldValue('name', capitalizeWords(e.target.value));
+                    }}
                     error={errors.name}
                     touched={touched.name}
                     required
@@ -347,18 +361,6 @@ const CustomerForm = () => {
                         >
                           View Existing Customer
                         </Button>
-                        <Button
-                          type="button"
-                          variant="warning"
-                          size="sm"
-                          onClick={() => {
-                            setAllowSubmitDespiteDuplicate(true);
-                            setDuplicatePhoneWarning(null); // Clear warning as user chose to proceed
-                            setExistingCustomerId(null);
-                          }}
-                        >
-                          Add Anyway
-                        </Button>
                       </div>
                     </div>
                   )}
@@ -382,7 +384,7 @@ const CustomerForm = () => {
                     label="Street Address"
                     name="address.street"
                     value={getIn(values, 'address.street')}
-                    onChange={(e) => setFieldValue('address.street', e.target.value)}
+                    onChange={(e) => setFieldValue('address.street', capitalizeWords(e.target.value))}
                     onBlur={handleBlur}
                     error={getIn(errors, 'address.street')}
                     touched={getIn(touched, 'address.street')}
@@ -394,7 +396,7 @@ const CustomerForm = () => {
                     label="City"
                     name="address.city"
                     value={getIn(values, 'address.city')}
-                    onChange={(e) => setFieldValue('address.city', e.target.value)}
+                    onChange={(e) => setFieldValue('address.city', capitalizeWords(e.target.value))}
                     onBlur={handleBlur}
                     error={getIn(errors, 'address.city')}
                     touched={getIn(touched, 'address.city')}
@@ -408,7 +410,7 @@ const CustomerForm = () => {
                       name="address.state"
                       options={usStates}
                       value={getIn(values, 'address.state')}
-                      onChange={(e) => setFieldValue('address.state', e.target.value)}
+                      onChange={(e) => setFieldValue('address.state', capitalizeWords(e.target.value))}
                       onBlur={handleBlur}
                       error={getIn(errors, 'address.state')}
                       touched={getIn(touched, 'address.state')}

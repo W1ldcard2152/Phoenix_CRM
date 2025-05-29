@@ -347,7 +347,9 @@ const WorkOrderDetail = () => {
     return total + (labor.hours * labor.rate);
   }, 0);
   
-  const totalCost = partsCost + laborCost;
+  const subtotalWithoutTax = partsCost + laborCost;
+  const taxRate = 0.08; // 8% tax
+  const totalWithTax = subtotalWithoutTax * (1 + taxRate);
 
   // Determine if an appointment exists and get its ID for linking
   const appointmentExists = workOrder && workOrder.appointmentId;
@@ -523,23 +525,27 @@ const WorkOrderDetail = () => {
         >
           <div className="space-y-4">
             <div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between font-medium">
                 <span>Parts:</span>
                 <span>{formatCurrency(partsCost)}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between font-medium">
                 <span>Labor:</span>
                 <span>{formatCurrency(laborCost)}</span>
               </div>
               <div className="h-px bg-gray-200 my-2"></div>
               <div className="flex justify-between font-medium">
-                <span>Total:</span>
-                <span>{formatCurrency(totalCost)}</span>
+                <span>Subtotal:</span>
+                <span>{formatCurrency(subtotalWithoutTax)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Tax ({taxRate * 100}%):</span>
+                <span>{formatCurrency(subtotalWithoutTax * taxRate)}</span>
               </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Estimate</p>
-              <p className="font-medium">{formatCurrency(workOrder.totalEstimate)}</p>
+            <div className="flex justify-between font-medium">
+              <span>Total:</span>
+              <span>{formatCurrency(totalWithTax)}</span>
             </div>
             {workOrder.status.includes('Completed') && (
               <div>

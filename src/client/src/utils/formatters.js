@@ -67,3 +67,13 @@ export const formatDateTimeToET = (utcDate, formatString = 'MMM D, YYYY, h:mm A'
     // Return original if not 10 digits
     return phone;
   };
+
+/**
+ * Capitalize the first letter of each word in a string.
+ * @param {string} str - The input string.
+ * @returns {string} The string with the first letter of each word capitalized.
+ */
+export const capitalizeWords = (str) => {
+  if (!str) return '';
+  return str.replace(/\b\w/g, char => char.toUpperCase());
+};

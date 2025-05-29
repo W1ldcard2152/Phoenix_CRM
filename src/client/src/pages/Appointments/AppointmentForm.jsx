@@ -109,7 +109,7 @@ const AppointmentForm = () => {
   
   useEffect(() => {
     // Get params inside useEffect, using the searchParams object from the hook
-    const workOrderIdFromEffect = searchParams.get('workOrderId'); // Corrected: workOrderId
+    const workOrderIdFromEffect = searchParams.get('workOrder');
     const customerIdFromEffect = searchParams.get('customer');
     const vehicleIdFromEffect = searchParams.get('vehicle');
 
