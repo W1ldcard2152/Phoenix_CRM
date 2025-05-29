@@ -3,7 +3,6 @@ import feedbackService from '../../services/feedbackService';
 import technicianService from '../../services/technicianService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 

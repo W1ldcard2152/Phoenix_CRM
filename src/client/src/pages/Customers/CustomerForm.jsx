@@ -50,6 +50,7 @@ const CustomerForm = () => {
   const [newCustomerId, setNewCustomerId] = useState(null);
   const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState(null);
   const [existingCustomerId, setExistingCustomerId] = useState(null);
+  const [allowSubmitDespiteDuplicate, setAllowSubmitDespiteDuplicate] = useState(false);
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
