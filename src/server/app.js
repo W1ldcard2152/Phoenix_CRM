@@ -72,8 +72,6 @@ app.use(cookieParser());
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
 
-// Data sanitization against XSS
-app.use(xss());
 
 // CORS configuration
 app.use(cors({
