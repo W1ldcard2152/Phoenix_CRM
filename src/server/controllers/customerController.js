@@ -53,6 +53,44 @@ exports.createCustomer = catchAsync(async (req, res, next) => {
 
 // Update a customer
 exports.updateCustomer = catchAsync(async (req, res, next) => {
+  const { phone } = req.body;
+
+  // 1. Fetch the existing customer to get their current phone number
+  const existingCustomer = await Customer.findById(req.params.id);
+
+  if (!existingCustomer) {
+    return next(new AppError('No customer found with that ID', 404));
+  }
+
+  // 2. Normalize both the existing and new phone numbers
+  const normalizedExistingPhone = normalizePhoneNumber(existingCustomer.phone);
+  const normalizedNewPhone = normalizePhoneNumber(phone);
+
+  // 3. If the new phone number is different from the existing one, check for duplicates
+  if (normalizedNewPhone && normalizedNewPhone !== normalizedExistingPhone) {
+    // Create an array of phone number variations to check against
+    const phoneVariations = [phone];
+    // If the incoming phone number contains dashes, also check for the normalized version
+    if (phone.includes('-')) {
+      phoneVariations.push(normalizePhoneNumber(phone));
+    } else { // If it does not contain dashes, also check for the formatted version
+      const formattedPhone = `${phone.slice(0, 3)}-${phone.slice(3, 6)}-${phone.slice(6, 10)}`;
+      if (formattedPhone.length === 12) { // Ensure it's a valid 10-digit number formatted
+        phoneVariations.push(formattedPhone);
+      }
+    }
+
+    // Find a customer whose phone number matches any of the variations, excluding the current customer
+    const duplicateCustomer = await Customer.findOne({
+      _id: { $ne: req.params.id }, // Exclude the current customer
+      phone: { $in: phoneVariations }
+    });
+
+    if (duplicateCustomer) {
+      return next(new AppError('A customer with this phone number already exists.', 400));
+    }
+  }
+
   // Phone number will be updated as received from client (with dashes)
   const customer = await Customer.findByIdAndUpdate(req.params.id, req.body, {
     new: true,

@@ -140,24 +140,21 @@ const CustomerForm = () => {
     }
   };
 
-  const handlePhoneBlur = async (e, currentValues) => {
+  const handlePhoneBlur = async (e) => {
     const formattedPhoneNumber = e.target.value; // Get formatted value for backend check
-    // Only check if it's a new customer form and phone number is present
-    if (!id && formattedPhoneNumber) {
+    // Only check if phone number is present
+    if (formattedPhoneNumber) {
       try {
         // Send the formatted phone number to the backend for the check
         const response = await CustomerService.checkExistingCustomerByPhone(formattedPhoneNumber);
         if (response.exists) {
-          // Do not show warning if the existing customer is the one being edited (though this check is for new customers)
-          // Or if the phone number matches the initial phone number (for edit mode, to avoid self-warning on blur without change)
-          if (id && response.data.customer._id === id) {
+          // If in edit mode and the existing customer found is the current customer, or if the phone number
+          // is the same as the initial phone number, do not show a warning.
+          if (id && (response.data.customer._id === id || initialValues.phone === formattedPhoneNumber)) {
             setDuplicatePhoneWarning(null);
             setExistingCustomerId(null);
-          } else if (id && initialValues.phone === formattedPhoneNumber) { // Compare formatted numbers
-            setDuplicatePhoneWarning(null);
-            setExistingCustomerId(null);
-          }
-          else {
+          } else {
+            // Otherwise, it's a true duplicate
             setDuplicatePhoneWarning(
               `A customer with phone number ${formattedPhoneNumber} already exists: ${response.data.customer.name}.`
             );
@@ -173,7 +170,7 @@ const CustomerForm = () => {
         setDuplicatePhoneWarning(null); // Clear warning on error to avoid blocking
         setExistingCustomerId(null);
       }
-    } else if (!formattedPhoneNumber) { // Clear warning if phone number is erased
+    } else { // Clear warning if phone number is erased
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
     }
@@ -349,7 +346,7 @@ const CustomerForm = () => {
                     touched={touched.phone}
                     required
                   />
-                  {duplicatePhoneWarning && !id && (
+                  {duplicatePhoneWarning && (
                     <div className="mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
                       <p>{duplicatePhoneWarning}</p>
                       <div className="mt-2">
