@@ -1,0 +1,103 @@
+/* Service Request Wizard Styles */
+
+.wizard-modal {
+  backdrop-filter: blur(4px);
+}
+
+.wizard-step-indicator {
+  position: relative;
+}
+
+.wizard-step-indicator::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(to right, transparent 24px, #e5e7eb 24px, #e5e7eb calc(100% - 24px), transparent calc(100% - 24px));
+  z-index: 0;
+}
+
+.wizard-step-circle {
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s ease-in-out;
+}
+
+.wizard-step-circle.completed {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+}
+
+.wizard-step-circle.current {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3);
+}
+
+.wizard-content-area {
+  min-height: 400px;
+  overflow-y: auto;
+}
+
+.wizard-customer-card:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.wizard-vehicle-card:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Animation for step transitions */
+.wizard-step-content {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading spinner */
+.wizard-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wizard-loading .fa-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .wizard-modal {
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
+  }
+  
+  .wizard-step-indicator {
+    padding: 0 1rem;
+  }
+  
+  .wizard-step-circle {
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.75rem;
+  }
+  
+  .wizard-content-area {
+    min-height: 300px;
+  }
+}
