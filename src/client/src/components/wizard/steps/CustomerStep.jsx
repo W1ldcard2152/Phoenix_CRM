@@ -46,9 +46,10 @@ const CustomerStep = ({ onCustomerSelect, onError, setLoading, loading }) => {
         const customers = response.data.customers || [];
         setAllCustomers(customers);
         
-        // Show recent customers if no search
+        // Show recent customers if no search - sort by newest first
         if (!searchQuery) {
-          setSearchResults(customers.slice(0, 10));
+          const sortedCustomers = customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+          setSearchResults(sortedCustomers.slice(0, 20));
         }
       } catch (err) {
         console.error('Error fetching customers:', err);
@@ -64,7 +65,8 @@ const CustomerStep = ({ onCustomerSelect, onError, setLoading, loading }) => {
   // Search customers as user types
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults(allCustomers.slice(0, 10));
+      const sortedCustomers = allCustomers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+      setSearchResults(sortedCustomers.slice(0, 20));
       return;
     }
 

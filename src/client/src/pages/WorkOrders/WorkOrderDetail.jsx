@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
 import TextArea from '../../components/common/TextArea';
 import WorkOrderService from '../../services/workOrderService';
+import PartsSelector from '../../components/parts/PartsSelector';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -16,6 +17,7 @@ const WorkOrderDetail = () => {
   const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [partModalOpen, setPartModalOpen] = useState(false);
+  const [partsSelectorOpen, setPartsSelectorOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState(null);
@@ -100,6 +102,11 @@ const WorkOrderDetail = () => {
       vendor: '',
       purchaseOrderNumber: ''
     });
+    setPartModalOpen(true);
+  };
+
+  const handlePartFromInventory = (selectedPart) => {
+    setNewPart(selectedPart);
     setPartModalOpen(true);
   };
 
@@ -496,7 +503,7 @@ const WorkOrderDetail = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const targetUrl = `/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`;
+                    const targetUrl = `/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`;
                     console.log('Navigating to AppointmentForm with URL:', targetUrl);
                     navigate(targetUrl);
                   }}
@@ -579,13 +586,22 @@ const WorkOrderDetail = () => {
         <Card 
           title="Parts" 
           headerActions={
-            <Button
-              onClick={openAddPartModal}
-              variant="outline"
-              size="sm"
-            >
-              Add Part
-            </Button>
+            <div className="flex space-x-2">
+              <Button
+                onClick={() => setPartsSelectorOpen(true)}
+                variant="primary"
+                size="sm"
+              >
+                Select from Inventory
+              </Button>
+              <Button
+                onClick={openAddPartModal}
+                variant="outline"
+                size="sm"
+              >
+                Add Custom Part
+              </Button>
+            </div>
           }
         >
           {workOrder.parts.length === 0 ? (
@@ -1047,6 +1063,14 @@ const WorkOrderDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Parts Selector Modal */}
+      {partsSelectorOpen && (
+        <PartsSelector
+          onPartSelect={handlePartFromInventory}
+          onClose={() => setPartsSelectorOpen(false)}
+        />
       )}
     </div>
   );

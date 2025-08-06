@@ -10,6 +10,7 @@ import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
+import vinService from '../../services/vinService';
 
 // Validation schema - updated with mileage history
 const VehicleSchema = Yup.object().shape({
@@ -42,6 +43,8 @@ const VehicleForm = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [vinDecoding, setVinDecoding] = useState(false);
+  const [vinError, setVinError] = useState(null);
   
   // Get customer ID from URL query parameter if present
   const customerIdParam = searchParams.get('customerId'); // Changed 'customer' to 'customerId'
@@ -152,6 +155,49 @@ const VehicleForm = () => {
     }
   };
 
+  // VIN decode function
+  const handleVinDecode = async (vin, setFieldValue) => {
+    if (!vin || vin.trim().length !== 17) {
+      setVinError('Please enter a valid 17-character VIN');
+      return;
+    }
+
+    setVinDecoding(true);
+    setVinError(null);
+
+    try {
+      const result = await vinService.decodeVIN(vin);
+      
+      if (result.success) {
+        // Auto-populate the fields
+        if (result.data.year) {
+          setFieldValue('year', result.data.year);
+        }
+        if (result.data.make) {
+          setFieldValue('make', result.data.make);
+        }
+        if (result.data.model) {
+          setFieldValue('model', result.data.model);
+        }
+        
+        // Show success message
+        setVinError(null);
+        
+        // Optional: Show a success message
+        const vehicleName = vinService.getVehicleDisplayName(result.data);
+        console.log(`VIN decoded successfully: ${vehicleName}`);
+        
+      } else {
+        setVinError(result.error || 'Failed to decode VIN');
+      }
+    } catch (error) {
+      console.error('VIN decode error:', error);
+      setVinError('Failed to decode VIN. Please check the VIN and try again.');
+    } finally {
+      setVinDecoding(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto flex justify-center items-center h-48">
@@ -258,15 +304,47 @@ const VehicleForm = () => {
                 </div>
                 
                 <div>
-                  <Input
-                    label="VIN"
-                    name="vin"
-                    value={values.vin}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.vin}
-                    touched={touched.vin}
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    VIN
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      name="vin"
+                      value={values.vin}
+                      onChange={(e) => {
+                        handleChange(e);
+                        setVinError(null); // Clear error when user types
+                      }}
+                      onBlur={handleBlur}
+                      error={errors.vin || vinError}
+                      touched={touched.vin}
+                      placeholder="17-character VIN"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => handleVinDecode(values.vin, setFieldValue)}
+                      disabled={vinDecoding || !values.vin || values.vin.length !== 17}
+                      variant="secondary"
+                      size="sm"
+                      className="whitespace-nowrap"
+                    >
+                      {vinDecoding ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Decoding...
+                        </>
+                      ) : (
+                        'Decode VIN'
+                      )}
+                    </Button>
+                  </div>
+                  {vinError && (
+                    <p className="mt-1 text-sm text-red-600">{vinError}</p>
+                  )}
                 </div>
                 
                 <div>

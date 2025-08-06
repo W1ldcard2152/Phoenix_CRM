@@ -17,7 +17,7 @@ import technicianService from '../../services/technicianService';
 const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   vehicle: Yup.string().when('workOrder', {
-    is: (workOrder) => !workOrder || workOrder === '', // If workOrder is null, undefined, or empty string (standalone)
+    is: (workOrder) => !workOrder || workOrder.trim() === '', // If workOrder is null, undefined, or empty string (standalone)
     then: (schema) => schema.notRequired(), // Then vehicle is NOT required
     otherwise: (schema) => schema.required('Vehicle is required'), // Otherwise (work order attached), vehicle IS required
   }),

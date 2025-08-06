@@ -34,7 +34,18 @@ const WorkOrderList = () => {
         if (statusFilter) filters.status = statusFilter;
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
-        const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
+          // First sort by status priority
+          const statusPriorityA = getStatusPriority(a.status);
+          const statusPriorityB = getStatusPriority(b.status);
+          
+          if (statusPriorityA !== statusPriorityB) {
+            return statusPriorityA - statusPriorityB;
+          }
+          
+          // If status priority is the same, sort by date (newest first)
+          return new Date(b.date) - new Date(a.date);
+        });
         setWorkOrders(sortedWorkOrders);
         
         setLoading(false);
@@ -60,7 +71,18 @@ const WorkOrderList = () => {
         if (statusFilter) filters.status = statusFilter;
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
-        const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
+          // First sort by status priority
+          const statusPriorityA = getStatusPriority(a.status);
+          const statusPriorityB = getStatusPriority(b.status);
+          
+          if (statusPriorityA !== statusPriorityB) {
+            return statusPriorityA - statusPriorityB;
+          }
+          
+          // If status priority is the same, sort by date (newest first)
+          return new Date(b.date) - new Date(a.date);
+        });
         setWorkOrders(sortedWorkOrders);
         
         setIsSearching(false);
@@ -75,7 +97,18 @@ const WorkOrderList = () => {
     try {
       setIsSearching(true);
       const response = await WorkOrderService.searchWorkOrders(searchQuery);
-      const sortedWorkOrders = response.data.workOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+      const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
+        // First sort by status priority
+        const statusPriorityA = getStatusPriority(a.status);
+        const statusPriorityB = getStatusPriority(b.status);
+        
+        if (statusPriorityA !== statusPriorityB) {
+          return statusPriorityA - statusPriorityB;
+        }
+        
+        // If status priority is the same, sort by date (newest first)
+        return new Date(b.date) - new Date(a.date);
+      });
       setWorkOrders(sortedWorkOrders);
       setIsSearching(false);
     } catch (err) {
@@ -104,6 +137,25 @@ const WorkOrderList = () => {
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
+
+  // Status priority for sorting (lower number = higher priority)
+  const getStatusPriority = (status) => {
+    const priorities = {
+      'Created': 1,
+      'Scheduled': 2,
+      'In Progress': 3,
+      'Inspected - Need Parts Ordered': 4,
+      'Parts Ordered': 5,
+      'Parts Received': 6,
+      'Repair In Progress': 7,
+      'Completed - Need Payment': 8,
+      'Completed - Paid': 9,
+      'Invoiced': 10,
+      'On Hold': 11,
+      'Cancelled': 12
+    };
+    return priorities[status] || 99;
+  };
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -329,7 +381,7 @@ const WorkOrderList = () => {
                         </Button>
                         {needsSchedulingParam && (
                           <Button
-                            onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                            onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
                             variant="primary"
                             size="sm"
                           >
@@ -425,7 +477,7 @@ const WorkOrderList = () => {
                             {/* Schedule button likely not needed for Invoiced WOs, but keeping for "same style" consistency for now */}
                             {needsSchedulingParam && ( 
                               <Button
-                                onClick={() => navigate(`/appointments/new?workOrderId=${workOrder._id}&vehicleId=${workOrder.vehicle?._id}`)}
+                                onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
                                 variant="primary"
                                 size="sm"
                               >

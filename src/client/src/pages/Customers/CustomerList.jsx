@@ -16,7 +16,8 @@ const CustomerList = () => {
       try {
         setLoading(true);
         const response = await CustomerService.getAllCustomers();
-        setCustomers(response.data.customers);
+        const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+        setCustomers(sortedCustomers);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching customers:', err);
@@ -34,7 +35,8 @@ const CustomerList = () => {
       try {
         setIsSearching(true);
         const response = await CustomerService.getAllCustomers();
-        setCustomers(response.data.customers);
+        const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+        setCustomers(sortedCustomers);
         setIsSearching(false);
       } catch (err) {
         console.error('Error fetching all customers:', err);
@@ -47,7 +49,8 @@ const CustomerList = () => {
     try {
       setIsSearching(true);
       const response = await CustomerService.searchCustomers(searchQuery);
-      setCustomers(response.data.customers);
+      const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+      setCustomers(sortedCustomers);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching customers:', err);

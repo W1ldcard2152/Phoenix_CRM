@@ -28,14 +28,16 @@ import InvoiceDetail from './pages/Invoices/InvoiceDetail'; // Added InvoiceDeta
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 
-// Common Components
-import FeedbackButton from './components/common/FeedbackButton';
 
 // New Pages for Sidebar
 import TechniciansPage from './pages/Technicians/TechniciansPage';
 import AdminPage from './pages/Admin/AdminPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import new FeedbackAdminPage
+
+// Parts Pages
+import PartsList from './pages/Parts/PartsList';
+import PartsForm from './pages/Parts/PartsForm';
 
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -110,6 +112,11 @@ const App = () => {
                       {/* Feedback Admin Route */}
                       <Route path="/feedback" element={<FeedbackAdminPage />} />
 
+                      {/* Parts Routes */}
+                      <Route path="/parts" element={<PartsList />} />
+                      <Route path="/parts/new" element={<PartsForm />} />
+                      <Route path="/parts/:id/edit" element={<PartsForm />} />
+
                       {/* Settings Routes */}
                       <Route path="/settings" element={<SettingsPage />} />
                       
@@ -117,7 +124,6 @@ const App = () => {
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                   </main>
-                  <FeedbackButton /> {/* Add FeedbackButton here */}
                 </div>
               </div>
             </PrivateRoute>

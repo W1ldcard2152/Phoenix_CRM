@@ -66,18 +66,16 @@ const FeedbackButton = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105"
-        >
-          Feedback
-        </button>
-      )}
+    <div className="relative z-50">
+      <button
+        onClick={() => setIsOpen(true)}
+        className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-md transition duration-300 ease-in-out"
+      >
+        Feedback
+      </button>
 
       {isOpen && (
-        <div className="relative bg-white p-6 rounded-lg shadow-xl w-80">
+        <div className="absolute top-full right-0 mt-2 bg-white p-6 rounded-lg shadow-xl w-80 border">
           <button
             onClick={() => setIsOpen(false)}
             className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-xl"

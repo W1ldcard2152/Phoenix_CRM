@@ -68,6 +68,22 @@ const VehicleList = () => {
       });
       
       setCustomers(customerMap);
+      
+      // Re-sort vehicles based on customer creation dates now that we have customer data
+      const vehiclesWithCustomerDates = vehicleList.map(vehicle => {
+        const customerId = typeof vehicle.customer === 'object' ? vehicle.customer._id : vehicle.customer;
+        const customerData = customerMap[customerId];
+        return {
+          ...vehicle,
+          customerCreatedAt: customerData?.createdAt || customerData?._id || vehicle.createdAt || vehicle._id
+        };
+      });
+      
+      const sortedVehicles = vehiclesWithCustomerDates.sort((a, b) => 
+        new Date(b.customerCreatedAt) - new Date(a.customerCreatedAt)
+      );
+      
+      setVehicles(sortedVehicles);
     } catch (err) {
       console.error('Error fetching customers for vehicles:', err);
     }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import FeedbackButton from '../common/FeedbackButton';
 
 const Navbar = () => {
   const { currentUser, logout, isAuthenticated } = useAuth();
@@ -11,12 +12,12 @@ const Navbar = () => {
 
   return (
     <header className="bg-white shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-24"> {/* Further Increased navbar height */}
+      <div className="px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-24">
           <div className="flex items-center">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="text-xl font-bold text-primary-600">
-                <img src="/phxBanner.svg" alt="Phoenix Automotive Group Banner" className="h-14" /> {/* Further Increased logo height */}
+                <img src="/phxBanner.svg" alt="Phoenix Automotive Group Banner" className="h-14" />
               </Link>
             </div>
           </div>
@@ -27,6 +28,7 @@ const Navbar = () => {
                 <span className="text-sm text-gray-700">
                   Welcome, {currentUser?.name || 'User'}
                 </span>
+                <FeedbackButton />
                 <div className="relative">
                   <button
                     className="bg-primary-600 text-white rounded-md py-2 px-4 hover:bg-primary-700 transition"
