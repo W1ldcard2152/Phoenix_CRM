@@ -98,7 +98,7 @@ const WorkOrderSchema = new Schema(
     vehicle: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Vehicle',
-      required: true
+      required: false
     },
     customer: {
       type: mongoose.Schema.Types.ObjectId,

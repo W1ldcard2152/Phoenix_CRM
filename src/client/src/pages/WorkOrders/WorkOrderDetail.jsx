@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
@@ -286,6 +286,32 @@ const WorkOrderDetail = () => {
     }
   };
 
+  const handlePartStatusChange = async (partIndex, field, value) => {
+    try {
+      const updatedWorkOrder = { ...workOrder };
+      const updatedParts = [...updatedWorkOrder.parts];
+      
+      // Update the specific field
+      updatedParts[partIndex] = {
+        ...updatedParts[partIndex],
+        [field]: value
+      };
+
+      // If unchecking "ordered", also uncheck "received"
+      if (field === 'ordered' && !value) {
+        updatedParts[partIndex].received = false;
+      }
+
+      updatedWorkOrder.parts = updatedParts;
+
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+    } catch (err) {
+      console.error('Error updating part status:', err);
+      setError('Failed to update part status. Please try again later.');
+    }
+  };
+
   const generateInvoice = () => {
     // Navigate to the invoice generator with this work order ID as a search param
     navigate(`/invoices/generate?workOrder=${id}`);
@@ -405,9 +431,16 @@ const WorkOrderDetail = () => {
           <div className="space-y-2">
             <div>
               <p className="text-sm text-gray-500">Customer</p>
-              <p className="font-medium">
-                {workOrder.customer?.name || 'Unknown Customer'}
-              </p>
+              {workOrder.customer?._id ? (
+                <Link
+                  to={`/customers/${workOrder.customer._id}`}
+                  className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                >
+                  {workOrder.customer.name}
+                </Link>
+              ) : (
+                <p className="font-medium text-gray-400">Unknown Customer</p>
+              )}
               {workOrder.customer?.phone && (
                 <p className="text-sm text-gray-600">{workOrder.customer.phone}</p>
               )}
@@ -417,9 +450,16 @@ const WorkOrderDetail = () => {
             </div>
             <div className="pt-2">
               <p className="text-sm text-gray-500">Vehicle</p>
-              <p className="font-medium">
-                {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
-              </p>
+              {workOrder.vehicle?._id ? (
+                <Link
+                  to={`/vehicles/${workOrder.vehicle._id}`}
+                  className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                >
+                  {workOrder.vehicle.year} {workOrder.vehicle.make} {workOrder.vehicle.model}
+                </Link>
+              ) : (
+                <p className="font-medium text-gray-400">No Vehicle Assigned</p>
+              )}
               {workOrder.vehicle?.vin && (
                 <p className="text-sm text-gray-600">VIN: {workOrder.vehicle.vin}</p>
               )}
@@ -670,16 +710,30 @@ const WorkOrderDetail = () => {
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm">
-                          {part.ordered ? (
-                            part.received ? (
-                              <span className="text-green-600">Received</span>
-                            ) : (
-                              <span className="text-yellow-600">Ordered</span>
-                            )
-                          ) : (
-                            <span className="text-gray-500">Not Ordered</span>
-                          )}
+                        <div className="flex flex-col space-y-2">
+                          <label className="flex items-center text-sm">
+                            <input
+                              type="checkbox"
+                              checked={part.ordered || false}
+                              onChange={(e) => handlePartStatusChange(index, 'ordered', e.target.checked)}
+                              className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                            />
+                            <span className={part.ordered ? 'text-yellow-600' : 'text-gray-500'}>
+                              Ordered
+                            </span>
+                          </label>
+                          <label className="flex items-center text-sm">
+                            <input
+                              type="checkbox"
+                              checked={part.received || false}
+                              disabled={!part.ordered}
+                              onChange={(e) => handlePartStatusChange(index, 'received', e.target.checked)}
+                              className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <span className={part.received ? 'text-green-600' : (part.ordered ? 'text-gray-700' : 'text-gray-400')}>
+                              Received
+                            </span>
+                          </label>
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-right">

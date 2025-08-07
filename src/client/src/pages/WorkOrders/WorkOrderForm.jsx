@@ -14,7 +14,7 @@ import VehicleService from '../../services/vehicleService'; // Added VehicleServ
 // Validation schema - updated for services array
 const WorkOrderSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
-  vehicle: Yup.string().required('Vehicle is required'),
+  vehicle: Yup.string(),
   currentMileage: Yup.number()
     .typeError('Mileage must be a number')
     .nullable()
@@ -193,13 +193,8 @@ const WorkOrderForm = () => {
     if (customerId) {
       try {
         const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
-        if (fetchedVehicles && fetchedVehicles.length > 0) {
-          const firstVehicleId = fetchedVehicles[0]._id;
-          setFieldValue('vehicle', firstVehicleId);
-          await fetchAndSetLatestMileage(firstVehicleId, (mileage) => setFieldValue('currentMileage', mileage));
-        } else {
-          setVehicles([]);
-        }
+        // Don't auto-select a vehicle anymore since it's now optional
+        // Leave vehicle field empty so user can choose
       } catch (err) {
         console.error('Error fetching vehicles for customer:', err);
         setError('Failed to load vehicles for the selected customer.');
@@ -213,7 +208,11 @@ const WorkOrderForm = () => {
   const handleVehicleChange = async (e, setFieldValue) => {
     const vehicleId = e.target.value;
     setFieldValue('vehicle', vehicleId);
-    await fetchAndSetLatestMileage(vehicleId, (mileage) => setFieldValue('currentMileage', mileage));
+    if (vehicleId) {
+      await fetchAndSetLatestMileage(vehicleId, (mileage) => setFieldValue('currentMileage', mileage));
+    } else {
+      setFieldValue('currentMileage', ''); // Clear mileage when no vehicle selected
+    }
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
@@ -264,10 +263,13 @@ const WorkOrderForm = () => {
 
 
   // Create vehicle options for dropdown
-  const vehicleOptions = vehicles.map(vehicle => ({
-    value: vehicle._id,
-    label: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.licensePlate ? `(${vehicle.licensePlate})` : ''}`
-  }));
+  const vehicleOptions = [
+    { value: '', label: 'No Vehicle' },
+    ...vehicles.map(vehicle => ({
+      value: vehicle._id,
+      label: `${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.licensePlate ? `(${vehicle.licensePlate})` : ''}`
+    }))
+  ];
 
   // Status options for dropdown
   const statusOptions = [
@@ -333,7 +335,7 @@ const WorkOrderForm = () => {
                 
                 <div>
                   <SelectInput
-                    label="Vehicle"
+                    label="Vehicle (Optional)"
                     name="vehicle"
                     options={vehicleOptions}
                     value={values.vehicle}
@@ -342,7 +344,6 @@ const WorkOrderForm = () => {
                     error={errors.vehicle}
                     touched={touched.vehicle}
                     disabled={!values.customer}
-                    required
                   />
                 </div>
 

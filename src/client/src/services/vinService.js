@@ -30,7 +30,7 @@ class VinService {
     return { isValid: true, vin: cleanVin };
   }
 
-  // Decode VIN using NHTSA API
+  // Decode VIN using backend API (which proxies to NHTSA)
   async decodeVIN(vin) {
     try {
       const validation = this.validateVIN(vin);
@@ -39,75 +39,22 @@ class VinService {
       }
 
       const cleanVin = validation.vin;
-      const url = `${this.baseURL}/DecodeVin/${cleanVin}?format=json`;
+      const url = `/api/vin/decode/${cleanVin}`;
 
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status} ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
 
-      if (!data.Results || data.Results.length === 0) {
-        throw new Error('No vehicle information found for this VIN');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to decode VIN');
       }
 
-      // Extract relevant fields from NHTSA response
-      const results = data.Results;
-      const vehicleData = {};
-
-      // Map NHTSA fields to our vehicle data
-      results.forEach(item => {
-        switch (item.Variable) {
-          case 'Model Year':
-            vehicleData.year = item.Value && item.Value !== 'null' ? parseInt(item.Value) : null;
-            break;
-          case 'Make':
-            vehicleData.make = item.Value && item.Value !== 'null' ? this.formatMake(item.Value) : null;
-            break;
-          case 'Model':
-            vehicleData.model = item.Value && item.Value !== 'null' ? this.formatModel(item.Value) : null;
-            break;
-          case 'Vehicle Type':
-            vehicleData.vehicleType = item.Value && item.Value !== 'null' ? this.formatText(item.Value) : null;
-            break;
-          case 'Body Class':
-            vehicleData.bodyClass = item.Value && item.Value !== 'null' ? this.formatText(item.Value) : null;
-            break;
-          case 'Engine Number of Cylinders':
-            vehicleData.engineCylinders = item.Value && item.Value !== 'null' ? item.Value : null;
-            break;
-          case 'Engine Model':
-            vehicleData.engineModel = item.Value && item.Value !== 'null' ? item.Value : null;
-            break;
-          case 'Fuel Type - Primary':
-            vehicleData.fuelType = item.Value && item.Value !== 'null' ? this.formatText(item.Value) : null;
-            break;
-          case 'Transmission Style':
-            vehicleData.transmission = item.Value && item.Value !== 'null' ? this.formatText(item.Value) : null;
-            break;
-          case 'Drive Type':
-            vehicleData.driveType = item.Value && item.Value !== 'null' ? this.formatText(item.Value) : null;
-            break;
-        }
-      });
-
-      // Validate that we got the essential fields
-      if (!vehicleData.year || !vehicleData.make || !vehicleData.model) {
-        const missing = [];
-        if (!vehicleData.year) missing.push('year');
-        if (!vehicleData.make) missing.push('make');
-        if (!vehicleData.model) missing.push('model');
-        
-        throw new Error(`Unable to decode VIN: missing ${missing.join(', ')} information`);
-      }
-
-      return {
-        success: true,
-        data: vehicleData,
-        vin: cleanVin
-      };
+      return result;
 
     } catch (error) {
       console.error('VIN decode error:', error);

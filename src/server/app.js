@@ -30,6 +30,7 @@ const authRoutes = require('./routes/authRoutes');
 const technicianRoutes = require('./routes/technicianRoutes'); // Import technician routes
 const feedbackRoutes = require('./routes/feedbackRoutes'); // Import feedback routes
 const partRoutes = require('./routes/partRoutes'); // Import part routes
+const vinRoutes = require('./routes/vinRoutes'); // Import VIN routes
 
 // Initialize Express app
 const app = express();
@@ -95,6 +96,7 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/technicians', technicianRoutes); // Use technician routes
 app.use('/api/feedback', feedbackRoutes); // Use feedback routes
 app.use('/api/parts', partRoutes); // Use part routes
+app.use('/api/vin', vinRoutes); // Use VIN routes
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
