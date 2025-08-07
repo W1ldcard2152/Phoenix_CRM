@@ -4,6 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
+import ResponsiveTable, { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import WorkOrderService from '../../services/workOrderService';
 
 const WorkOrderList = () => {
@@ -253,7 +254,7 @@ const WorkOrderList = () => {
       )}
 
       <Card>
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="mb-4 space-y-4 md:space-y-0 md:grid md:grid-cols-3 md:gap-4">
           <div className="md:col-span-2">
             <Input
               placeholder="Search by service type, notes, or status..."
@@ -264,10 +265,10 @@ const WorkOrderList = () => {
                   handleSearch();
                 }
               }}
-              className="mt-1 block w-full"
+              className="w-full"
             />
           </div>
-          <div className="flex">
+          <div className="flex flex-col sm:flex-row gap-2">
             <SelectInput
               name="statusFilter"
               options={statusOptions}
@@ -278,8 +279,9 @@ const WorkOrderList = () => {
             <Button
               onClick={handleSearch}
               variant="secondary"
-              className="ml-2"
+              className="w-full sm:w-auto"
               disabled={isSearching}
+              size="md"
             >
               {isSearching ? 'Searching...' : 'Search'}
             </Button>
@@ -298,9 +300,10 @@ const WorkOrderList = () => {
             <div className="text-center py-6 text-gray-500">
               <p>No active work orders match your criteria.</p>
             </div>
-        ) : activeWorkOrders.length > 0 ? ( // Render table if active work orders exist
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+        ) : activeWorkOrders.length > 0 ? ( // Render responsive table/cards
+          <>
+            {/* Desktop Table */}
+            <ResponsiveTable>
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -393,8 +396,79 @@ const WorkOrderList = () => {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </ResponsiveTable>
+
+            {/* Mobile Cards */}
+            <MobileContainer>
+              {activeWorkOrders.map((workOrder) => (
+                <MobileCard key={workOrder._id} onClick={() => navigate(`/work-orders/${workOrder._id}`)}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <MobileSection label="Customer">
+                        <div className="font-medium">{workOrder.customer?.name || 'Unknown Customer'}</div>
+                        {(workOrder.vehicle?.year || workOrder.vehicle?.make || workOrder.vehicle?.model) ? (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500 mt-1">No Vehicle Assigned</div>
+                        )}
+                      </MobileSection>
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="text-xs text-gray-500 mb-1">
+                        {new Date(workOrder.date).toLocaleDateString()}
+                      </div>
+                      <span
+                        className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}
+                      >
+                        {workOrder.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <MobileSection label="Service">
+                    <div className="text-sm">{getServiceDisplay(workOrder)}</div>
+                  </MobileSection>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {workOrder.status.includes('Completed') 
+                          ? formatCurrency(workOrder.totalActual)
+                          : formatCurrency(workOrder.totalEstimate)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {workOrder.status.includes('Completed') ? 'Final' : 'Estimate'}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button
+                        to={`/work-orders/${workOrder._id}/edit`}
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Edit
+                      </Button>
+                      {needsSchedulingParam && (
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`);
+                          }}
+                          variant="primary"
+                          size="sm"
+                        >
+                          Schedule
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </MobileCard>
+              ))}
+            </MobileContainer>
+          </>
         ) : (
           // Show this if activeWorkOrders is empty but it's not the initial load and not due to filters
           // This case might not be hit if the above conditions are comprehensive

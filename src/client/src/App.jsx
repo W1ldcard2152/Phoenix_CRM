@@ -4,6 +4,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import './components/wizard/wizard.css';
+import './styles/mobile.css';
 
 // Layout components
 import Navbar from './components/layout/Navbar';
@@ -66,10 +67,11 @@ const App = () => {
           <Route path="/*" element={
             <PrivateRoute>
               <div className="flex h-screen bg-gray-100">
+                {/* Mobile: Sidebar overlay, Desktop: Fixed sidebar */}
                 <Sidebar />
-                <div className="flex flex-col flex-1 overflow-hidden">
+                <div className="flex flex-col flex-1 overflow-hidden min-w-0">
                   <Navbar />
-                  <main className="flex-1 overflow-y-auto p-4">
+                  <main className="flex-1 overflow-y-auto p-2 sm:p-4">
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       
