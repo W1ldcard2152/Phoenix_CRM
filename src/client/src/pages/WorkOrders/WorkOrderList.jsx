@@ -15,6 +15,7 @@ const WorkOrderList = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
+  const [statusUpdating, setStatusUpdating] = useState(null); // Track which work order status is being updated
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -123,6 +124,41 @@ const WorkOrderList = () => {
     setStatusFilter(e.target.value);
   };
 
+  // Handle inline status update for individual work orders
+  const handleWorkOrderStatusUpdate = async (workOrderId, newStatus) => {
+    try {
+      setStatusUpdating(workOrderId);
+      
+      // Update the work order status via API
+      await WorkOrderService.updateWorkOrder(workOrderId, { status: newStatus });
+      
+      // Update the local state
+      setWorkOrders(prevWorkOrders => {
+        const updatedWorkOrders = prevWorkOrders.map(wo => 
+          wo._id === workOrderId ? { ...wo, status: newStatus } : wo
+        );
+        
+        // Re-sort the work orders after status change
+        return updatedWorkOrders.sort((a, b) => {
+          const statusPriorityA = getStatusPriority(a.status);
+          const statusPriorityB = getStatusPriority(b.status);
+          
+          if (statusPriorityA !== statusPriorityB) {
+            return statusPriorityA - statusPriorityB;
+          }
+          
+          return new Date(b.date) - new Date(a.date);
+        });
+      });
+      
+    } catch (err) {
+      console.error('Error updating work order status:', err);
+      setError('Failed to update work order status. Please try again.');
+    } finally {
+      setStatusUpdating(null);
+    }
+  };
+
   // Status options for filter dropdown
   const statusOptions = [
     { value: '', label: 'All Statuses' },
@@ -135,6 +171,22 @@ const WorkOrderList = () => {
     { value: 'Repair In Progress', label: 'Repair In Progress' },
     { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
     { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'On Hold', label: 'On Hold' },
+    { value: 'Cancelled', label: 'Cancelled' }
+  ];
+
+  // Status options for inline status change (without "All Statuses")
+  const workOrderStatusOptions = [
+    { value: 'Created', label: 'Created' },
+    { value: 'Scheduled', label: 'Scheduled' },
+    { value: 'In Progress', label: 'In Progress' },
+    { value: 'Inspected - Need Parts Ordered', label: 'Inspected - Need Parts' },
+    { value: 'Parts Ordered', label: 'Parts Ordered' },
+    { value: 'Parts Received', label: 'Parts Received' },
+    { value: 'Repair In Progress', label: 'Repair In Progress' },
+    { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
+    { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'Invoiced', label: 'Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
@@ -288,22 +340,45 @@ const WorkOrderList = () => {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center h-48">
-            <p>Loading work orders...</p>
-          </div>
-        ) : activeWorkOrders.length === 0 && !statusFilter && !searchQuery && invoicedWorkOrders.length === 0 ? ( // Adjusted condition for initial empty state
-          <div className="text-center py-6 text-gray-500">
-            <p>No work orders found.</p>
-          </div>
-        ) : activeWorkOrders.length === 0 && (statusFilter || searchQuery) ? ( // Adjusted condition for empty state after filter/search
-            <div className="text-center py-6 text-gray-500">
-              <p>No active work orders match your criteria.</p>
-            </div>
-        ) : activeWorkOrders.length > 0 ? ( // Render responsive table/cards
+        {(() => {
+          if (loading) {
+            return (
+              <div className="flex justify-center items-center h-48">
+                <p>Loading work orders...</p>
+              </div>
+            );
+          }
+          
+          if (workOrders.length === 0) {
+            return (
+              <div className="text-center py-6 text-gray-500">
+                <p>No work orders found.</p>
+              </div>
+            );
+          }
+          
+          if (activeWorkOrders.length === 0 && (statusFilter || searchQuery)) {
+            return (
+              <div className="text-center py-6 text-gray-500">
+                <p>No active work orders match your criteria.</p>
+              </div>
+            );
+          }
+          
+          if (activeWorkOrders.length === 0 && invoicedWorkOrders.length > 0) {
+            return (
+              <div className="text-center py-6 text-gray-500">
+                <p>No active work orders. All current work orders are invoiced.</p>
+              </div>
+            );
+          }
+          
+          // Render main table when we have active work orders
+          return (
           <>
             {/* Desktop Table */}
-            <ResponsiveTable>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -348,11 +423,35 @@ const WorkOrderList = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}
-                      >
-                        {workOrder.status}
-                      </span>
+                      <div className="relative">
+                        <select
+                          value={workOrder.status}
+                          onChange={(e) => handleWorkOrderStatusUpdate(workOrder._id, e.target.value)}
+                          disabled={statusUpdating === workOrder._id}
+                          className={`
+                            text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
+                            ${getStatusColor(workOrder.status)}
+                            ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
+                          `}
+                          style={{ 
+                            backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                            backgroundPosition: 'right 4px center',
+                            backgroundRepeat: 'no-repeat',
+                            backgroundSize: '12px'
+                          }}
+                        >
+                          {workOrderStatusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {statusUpdating === workOrder._id && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                          </div>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -396,7 +495,8 @@ const WorkOrderList = () => {
                   </tr>
                 ))}
               </tbody>
-            </ResponsiveTable>
+              </table>
+            </div>
 
             {/* Mobile Cards */}
             <MobileContainer>
@@ -419,11 +519,39 @@ const WorkOrderList = () => {
                       <div className="text-xs text-gray-500 mb-1">
                         {new Date(workOrder.date).toLocaleDateString()}
                       </div>
-                      <span
-                        className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}
-                      >
-                        {workOrder.status}
-                      </span>
+                      <div className="relative">
+                        <select
+                          value={workOrder.status}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleWorkOrderStatusUpdate(workOrder._id, e.target.value);
+                          }}
+                          disabled={statusUpdating === workOrder._id}
+                          onClick={(e) => e.stopPropagation()}
+                          className={`
+                            text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
+                            ${getStatusColor(workOrder.status)}
+                            ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
+                          `}
+                          style={{ 
+                            backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                            backgroundPosition: 'right 4px center',
+                            backgroundRepeat: 'no-repeat',
+                            backgroundSize: '12px'
+                          }}
+                        >
+                          {workOrderStatusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {statusUpdating === workOrder._id && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -469,11 +597,8 @@ const WorkOrderList = () => {
               ))}
             </MobileContainer>
           </>
-        ) : (
-          // Show this if activeWorkOrders is empty but it's not the initial load and not due to filters
-          // This case might not be hit if the above conditions are comprehensive
-          !loading && activeWorkOrders.length === 0 && invoicedWorkOrders.length > 0 && <div className="text-center py-6 text-gray-500"><p>No active work orders.</p></div>
-        )}
+          );
+        })()}
       </Card>
 
       {/* Collapsible Table for Invoiced Work Orders */}
@@ -530,7 +655,35 @@ const WorkOrderList = () => {
                           <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-block px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}>{workOrder.status}</span>
+                          <div className="relative">
+                            <select
+                              value={workOrder.status}
+                              onChange={(e) => handleWorkOrderStatusUpdate(workOrder._id, e.target.value)}
+                              disabled={statusUpdating === workOrder._id}
+                              className={`
+                                text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
+                                ${getStatusColor(workOrder.status)}
+                                ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
+                              `}
+                              style={{ 
+                                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                                backgroundPosition: 'right 4px center',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundSize: '12px'
+                              }}
+                            >
+                              {workOrderStatusOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {statusUpdating === workOrder._id && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">

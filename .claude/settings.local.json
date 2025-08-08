@@ -4,7 +4,8 @@
       "Bash(mkdir:*)",
       "Bash(npm install:*)",
       "Bash(npm run dev:server:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }

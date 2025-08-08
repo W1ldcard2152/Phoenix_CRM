@@ -249,17 +249,13 @@ const WorkOrderForm = () => {
     );
   }
 
-  // Create customer options for dropdown and ensure they are sorted alphabetically by last name
+  // Create customer options for dropdown, sorted alphabetically by name
   const customerOptions = customers
     .map(customer => ({
       value: customer._id,
       label: customer.name
     }))
-    .sort((a, b) => {
-      const lastNameA = a.label.split(' ').pop();
-      const lastNameB = b.label.split(' ').pop();
-      return lastNameA.localeCompare(lastNameB);
-    });
+    .sort((a, b) => a.label.localeCompare(b.label));
 
 
   // Create vehicle options for dropdown

@@ -153,9 +153,11 @@ const FeedbackAdminPage = () => {
                     <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
                     <td className="py-2 px-4 border-b">{new Date(entry.createdAt).toLocaleDateString()}</td>
                     <td className="py-2 px-4 border-b">
-                      <Button onClick={() => handleEditClick(entry)} className="mr-2">Edit</Button>
-                      <Button onClick={() => handleArchiveClick(entry._id)} className="bg-yellow-500 hover:bg-yellow-700 mr-2">Archive</Button>
-                      <Button onClick={() => handleDeleteClick(entry._id)} className="bg-red-500 hover:bg-red-700">Delete</Button>
+                      <div className="flex flex-row space-x-2">
+                        <Button onClick={() => handleEditClick(entry)} size="sm">Edit</Button>
+                        <Button onClick={() => handleArchiveClick(entry._id)} className="bg-yellow-500 hover:bg-yellow-700" size="sm">Archive</Button>
+                        <Button onClick={() => handleDeleteClick(entry._id)} className="bg-red-500 hover:bg-red-700" size="sm">Delete</Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -192,8 +194,10 @@ const FeedbackAdminPage = () => {
                       <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
                       <td className="py-2 px-4 border-b">{new Date(entry.archivedAt).toLocaleDateString()}</td>
                       <td className="py-2 px-4 border-b">
-                        <Button onClick={() => handleRestoreClick(entry._id)} className="bg-blue-500 hover:bg-blue-700 mr-2">Restore</Button>
-                        <Button onClick={() => handleDeleteClick(entry._id)} className="bg-red-500 hover:bg-red-700">Delete</Button>
+                        <div className="flex flex-row space-x-2">
+                          <Button onClick={() => handleRestoreClick(entry._id)} className="bg-blue-500 hover:bg-blue-700" size="sm">Restore</Button>
+                          <Button onClick={() => handleDeleteClick(entry._id)} className="bg-red-500 hover:bg-red-700" size="sm">Delete</Button>
+                        </div>
                       </td>
                     </tr>
                   ))

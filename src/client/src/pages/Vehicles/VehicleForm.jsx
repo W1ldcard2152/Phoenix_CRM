@@ -206,11 +206,13 @@ const VehicleForm = () => {
     );
   }
 
-  // Create customer options for dropdown
-  const customerOptions = customers.map(customer => ({
-    value: customer._id,
-    label: customer.name
-  }));
+  // Create customer options for dropdown, sorted alphabetically by name
+  const customerOptions = customers
+    .map(customer => ({
+      value: customer._id,
+      label: customer.name
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   // Format date for input field
   const formatDateForInput = (dateString) => {
@@ -255,6 +257,51 @@ const VehicleForm = () => {
                     touched={touched.customer}
                     required
                   />
+                </div>
+
+                {/* VIN Decoder - Full Width Row */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    VIN
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      name="vin"
+                      value={values.vin}
+                      onChange={(e) => {
+                        handleChange(e);
+                        setVinError(null); // Clear error when user types
+                      }}
+                      onBlur={handleBlur}
+                      error={errors.vin || vinError}
+                      touched={touched.vin}
+                      placeholder="17-character VIN"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => handleVinDecode(values.vin, setFieldValue)}
+                      disabled={vinDecoding || !values.vin || values.vin.length !== 17}
+                      variant="secondary"
+                      size="sm"
+                      className="whitespace-nowrap"
+                    >
+                      {vinDecoding ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Decoding...
+                        </>
+                      ) : (
+                        'Decode VIN'
+                      )}
+                    </Button>
+                  </div>
+                  {vinError && (
+                    <p className="mt-1 text-sm text-red-600">{vinError}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -301,50 +348,6 @@ const VehicleForm = () => {
                     touched={touched.model}
                     required
                   />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    VIN
-                  </label>
-                  <div className="flex gap-2">
-                    <Input
-                      name="vin"
-                      value={values.vin}
-                      onChange={(e) => {
-                        handleChange(e);
-                        setVinError(null); // Clear error when user types
-                      }}
-                      onBlur={handleBlur}
-                      error={errors.vin || vinError}
-                      touched={touched.vin}
-                      placeholder="17-character VIN"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => handleVinDecode(values.vin, setFieldValue)}
-                      disabled={vinDecoding || !values.vin || values.vin.length !== 17}
-                      variant="secondary"
-                      size="sm"
-                      className="whitespace-nowrap"
-                    >
-                      {vinDecoding ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Decoding...
-                        </>
-                      ) : (
-                        'Decode VIN'
-                      )}
-                    </Button>
-                  </div>
-                  {vinError && (
-                    <p className="mt-1 text-sm text-red-600">{vinError}</p>
-                  )}
                 </div>
                 
                 <div>

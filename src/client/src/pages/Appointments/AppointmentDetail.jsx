@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -184,9 +184,18 @@ const AppointmentDetail = () => {
           <div className="space-y-4">
             <div>
               <p className="text-sm text-gray-500">Customer</p>
-              <p className="font-medium">
-                {appointment.customer?.name || 'Unknown Customer'}
-              </p>
+              {appointment.customer?._id ? (
+                <Link
+                  to={`/customers/${appointment.customer._id}`}
+                  className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                >
+                  {appointment.customer?.name || 'Unknown Customer'}
+                </Link>
+              ) : (
+                <p className="font-medium">
+                  {appointment.customer?.name || 'Unknown Customer'}
+                </p>
+              )}
               {appointment.customer?.phone && (
                 <p className="text-sm text-gray-600">{appointment.customer.phone}</p>
               )}
@@ -196,32 +205,24 @@ const AppointmentDetail = () => {
             </div>
             <div>
               <p className="text-sm text-gray-500">Vehicle</p>
-              <p className="font-medium">
-                {appointment.vehicle?.year} {appointment.vehicle?.make} {appointment.vehicle?.model}
-              </p>
+              {appointment.vehicle?._id ? (
+                <Link
+                  to={`/vehicles/${appointment.vehicle._id}`}
+                  className="font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                >
+                  {appointment.vehicle?.year} {appointment.vehicle?.make} {appointment.vehicle?.model}
+                </Link>
+              ) : (
+                <p className="font-medium">
+                  {appointment.vehicle?.year} {appointment.vehicle?.make} {appointment.vehicle?.model}
+                </p>
+              )}
               {appointment.vehicle?.vin && (
                 <p className="text-sm text-gray-600">VIN: {appointment.vehicle.vin}</p>
               )}
               {appointment.vehicle?.licensePlate && (
                 <p className="text-sm text-gray-600">License: {appointment.vehicle.licensePlate}</p>
               )}
-            </div>
-            <div className="mt-4">
-              <Button
-                to={`/customers/${appointment.customer?._id}`}
-                variant="outline"
-                size="sm"
-              >
-                View Customer
-              </Button>
-              <Button
-                to={`/vehicles/${appointment.vehicle?._id}`}
-                variant="outline"
-                size="sm"
-                className="ml-2"
-              >
-                View Vehicle
-              </Button>
             </div>
           </div>
         </Card>

@@ -508,7 +508,7 @@ const InvoiceGenerator = () => {
             <div className="border border-gray-200 rounded-md p-4">
               <h3 className="text-xl font-semibold mb-3 text-gray-700">Customer & Vehicle</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <SelectInput label="Customer" name="customer" value={selectedCustomer?._id || ''} onChange={handleCustomerChange} options={[{ value: '', label: selectedCustomer ? 'Change Customer...' : 'Select a customer...' }, ...customers.map(c => ({ value: c._id, label: `${c.name} (${c.phone || 'No Phone'})` }))]} disabled={!!selectedWorkOrder} className="mt-1 block w-full" />
+                <SelectInput label="Customer" name="customer" value={selectedCustomer?._id || ''} onChange={handleCustomerChange} options={[{ value: '', label: selectedCustomer ? 'Change Customer...' : 'Select a customer...' }, ...customers.map(c => ({ value: c._id, label: `${c.name} (${c.phone || 'No Phone'})` })).sort((a, b) => a.label.localeCompare(b.label))]} disabled={!!selectedWorkOrder} className="mt-1 block w-full" />
                 <SelectInput label="Vehicle" name="vehicle" value={selectedVehicle?._id || ''} onChange={handleVehicleChange} options={[{ value: '', label: selectedVehicle ? 'Change Vehicle...' : 'Select a vehicle...' }, ...vehicles.map(v => ({ value: v._id, label: `${v.year} ${v.make} ${v.model} ${v.licensePlate ? `(${v.licensePlate})` : ''}` }))]} disabled={!selectedCustomer || !!selectedWorkOrder} className="mt-1 block w-full" />
               </div>
             </div>

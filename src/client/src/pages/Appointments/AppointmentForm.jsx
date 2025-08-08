@@ -317,7 +317,10 @@ const AppointmentForm = () => {
     return <div className="container mx-auto flex justify-center items-center h-48"><p>Loading form...</p></div>;
   }
 
-  const customerOptions = customers.map(c => ({ value: c._id, label: c.name }));
+  // Create customer options for dropdown, sorted alphabetically by name
+  const customerOptions = customers
+    .map(c => ({ value: c._id, label: c.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   const vehicleOptions = vehicles.map(v => ({ value: v._id, label: `${v.year} ${v.make} ${v.model} ${v.licensePlate ? `(${v.licensePlate})` : ''}` }));
   const statusOptions = [ 
     { value: 'Scheduled', label: 'Scheduled' }, { value: 'Confirmed', label: 'Confirmed' },
