@@ -6,8 +6,10 @@
       "Bash(npm run dev:server:*)",
       "Bash(curl:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": []
-  }
+  },
+  "$schema": "https://json.schemastore.org/claude-code-settings.json"
 }

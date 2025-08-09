@@ -31,6 +31,7 @@ const technicianRoutes = require('./routes/technicianRoutes'); // Import technic
 const feedbackRoutes = require('./routes/feedbackRoutes'); // Import feedback routes
 const partRoutes = require('./routes/partRoutes'); // Import part routes
 const vinRoutes = require('./routes/vinRoutes'); // Import VIN routes
+const registrationRoutes = require('./routes/registrationRoutes'); // Import registration routes
 
 // Initialize Express app
 const app = express();
@@ -67,8 +68,8 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Body parser, reading data from body into req.body
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '10mb' })); // Increased for image uploads
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Increased for image uploads
 app.use(cookieParser());
 
 // Data sanitization against NoSQL query injection
@@ -97,6 +98,7 @@ app.use('/api/technicians', technicianRoutes); // Use technician routes
 app.use('/api/feedback', feedbackRoutes); // Use feedback routes
 app.use('/api/parts', partRoutes); // Use part routes
 app.use('/api/vin', vinRoutes); // Use VIN routes
+app.use('/api/registration', registrationRoutes); // Use registration routes
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

@@ -11,6 +11,7 @@ import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 import vinService from '../../services/vinService';
+import RegistrationScanner from '../../components/vehicles/RegistrationScanner';
 
 // Validation schema - updated with mileage history
 const VehicleSchema = Yup.object().shape({
@@ -45,6 +46,8 @@ const VehicleForm = () => {
   const [error, setError] = useState(null);
   const [vinDecoding, setVinDecoding] = useState(false);
   const [vinError, setVinError] = useState(null);
+  const [scanError, setScanError] = useState(null);
+  const [scanSuccess, setScanSuccess] = useState(null);
   
   // Get customer ID from URL query parameter if present
   const customerIdParam = searchParams.get('customerId'); // Changed 'customer' to 'customerId'
@@ -198,6 +201,46 @@ const VehicleForm = () => {
     }
   };
 
+  // Registration scanner handlers
+  const handleRegistrationDataExtracted = (extractedData, setFieldValue) => {
+    setScanError(null);
+    
+    if (extractedData.vin) {
+      setFieldValue('vin', extractedData.vin);
+      
+      // Auto-decode VIN if it looks valid
+      if (extractedData.vin.length === 17) {
+        handleVinDecode(extractedData.vin, setFieldValue);
+      }
+    }
+    
+    if (extractedData.licensePlate) {
+      setFieldValue('licensePlate', extractedData.licensePlate);
+    }
+    
+    if (extractedData.year) {
+      setFieldValue('year', extractedData.year);
+    }
+    
+    if (extractedData.make) {
+      setFieldValue('make', extractedData.make);
+    }
+    
+    if (extractedData.model) {
+      setFieldValue('model', extractedData.model);
+    }
+    
+    setScanSuccess('Registration scanned successfully! Vehicle information has been auto-filled.');
+    
+    // Clear success message after 5 seconds
+    setTimeout(() => setScanSuccess(null), 5000);
+  };
+
+  const handleRegistrationScanError = (errorMessage) => {
+    setScanError(errorMessage);
+    setScanSuccess(null);
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto flex justify-center items-center h-48">
@@ -256,6 +299,26 @@ const VehicleForm = () => {
                     error={errors.customer}
                     touched={touched.customer}
                     required
+                  />
+                </div>
+
+                {/* Registration Scanner */}
+                <div className="md:col-span-2">
+                  {scanError && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                      {scanError}
+                    </div>
+                  )}
+                  
+                  {scanSuccess && (
+                    <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+                      {scanSuccess}
+                    </div>
+                  )}
+                  
+                  <RegistrationScanner
+                    onDataExtracted={(data) => handleRegistrationDataExtracted(data, setFieldValue)}
+                    onError={handleRegistrationScanError}
                   />
                 </div>
 
