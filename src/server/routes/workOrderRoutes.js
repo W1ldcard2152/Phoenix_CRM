@@ -1,5 +1,6 @@
 const express = require('express');
 const workOrderController = require('../controllers/workOrderController');
+const workOrderNotesRoutes = require('./workOrderNotesRoutes');
 const router = express.Router();
 
 // Search work orders
@@ -19,6 +20,9 @@ router.post('/:id/labor', workOrderController.addLabor);
 
 // Generate invoice
 router.get('/:id/invoice', workOrderController.generateInvoice);
+
+// Work order notes routes - mount under /:workOrderId/notes
+router.use('/:workOrderId/notes', workOrderNotesRoutes);
 
 // Basic CRUD routes
 router

@@ -1,7 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/formatters'; // Import centralized formatter
+import workOrderNotesService from '../../services/workOrderNotesService';
 
 const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref) => {
+  const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
+  
+  // Fetch customer-facing notes when workOrder changes
+  useEffect(() => {
+    const fetchCustomerNotes = async () => {
+      if (invoiceData?.workOrder?._id) {
+        try {
+          const response = await workOrderNotesService.getCustomerFacingNotes(invoiceData.workOrder._id);
+          setCustomerFacingNotes(response.data.notes || []);
+        } catch (error) {
+          console.error('Error fetching customer-facing notes:', error);
+          setCustomerFacingNotes([]);
+        }
+      }
+    };
+
+    fetchCustomerNotes();
+  }, [invoiceData?.workOrder?._id]);
+
   if (!invoiceData || !businessSettings) {
     // Or some placeholder/loading state if preferred
     return <div>Loading invoice data...</div>;
@@ -186,6 +206,31 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           </div>
         </div>
       </div>
+
+      {/* Work Order Notes */}
+      {customerFacingNotes.length > 0 && (
+        <div className="mb-6 text-sm">
+          <h3 className="font-semibold text-md mb-2 text-gray-700">Work Order Notes:</h3>
+          <div className="border border-gray-300 rounded-md bg-gray-50">
+            <div className="divide-y divide-gray-200">
+              {customerFacingNotes.map((note, index) => (
+                <div key={note._id} className="p-3">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs text-gray-500">
+                      {new Date(note.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-gray-700">{note.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notes */}
       {customerNotes && (

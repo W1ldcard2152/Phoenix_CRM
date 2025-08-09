@@ -311,7 +311,7 @@ const VehicleDetail = () => {
           title="Service History" 
           headerActions={
             <Button 
-              to={`/work-orders/new?vehicle=${id}`} 
+              to={`/work-orders/new?vehicle=${id}${customer ? `&customer=${customer._id}` : ''}`} 
               variant="outline"
               size="sm"
             >

@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
 import TextArea from '../../components/common/TextArea';
 import WorkOrderService from '../../services/workOrderService';
+import workOrderNotesService from '../../services/workOrderNotesService';
 import PartsSelector from '../../components/parts/PartsSelector';
 // technicianService import removed as it's no longer needed for a dropdown
 
@@ -20,6 +21,15 @@ const WorkOrderDetail = () => {
   const [partsSelectorOpen, setPartsSelectorOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
+  
+  // Work Order Notes state
+  const [notes, setNotes] = useState([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesFilter, setNotesFilter] = useState('all'); // 'all', 'customer', 'private'
+  const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false });
+  const [addingNote, setAddingNote] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
   const [editingDiagnosticNotes, setEditingDiagnosticNotes] = useState('');
@@ -57,6 +67,77 @@ const WorkOrderDetail = () => {
 
     fetchWorkOrderData(); // Call renamed function
   }, [id]);
+
+  // Fetch work order notes
+  useEffect(() => {
+    if (workOrder) {
+      fetchNotes();
+    }
+  }, [workOrder]);
+
+  const fetchNotes = async () => {
+    try {
+      setNotesLoading(true);
+      const response = await workOrderNotesService.getNotes(id);
+      setNotes(response.data.notes);
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+      setError('Failed to load notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  // Work Order Notes handlers
+  const handleAddNote = async () => {
+    if (!newNote.content.trim()) return;
+    
+    try {
+      setAddingNote(true);
+      await workOrderNotesService.createNote(id, newNote);
+      setNewNote({ content: '', isCustomerFacing: false });
+      await fetchNotes(); // Refresh notes list
+    } catch (err) {
+      console.error('Error adding note:', err);
+      setError('Failed to add note');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  const handleUpdateNote = async (noteId, updateData) => {
+    try {
+      await workOrderNotesService.updateNote(id, noteId, updateData);
+      await fetchNotes(); // Refresh notes list
+      setEditingNote(null);
+    } catch (err) {
+      console.error('Error updating note:', err);
+      setError('Failed to update note');
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    if (!window.confirm('Are you sure you want to delete this note?')) return;
+    
+    try {
+      await workOrderNotesService.deleteNote(id, noteId);
+      await fetchNotes(); // Refresh notes list
+    } catch (err) {
+      console.error('Error deleting note:', err);
+      setError('Failed to delete note');
+    }
+  };
+
+  const getFilteredNotes = () => {
+    switch (notesFilter) {
+      case 'customer':
+        return notes.filter(note => note.isCustomerFacing);
+      case 'private':
+        return notes.filter(note => !note.isCustomerFacing);
+      default:
+        return notes;
+    }
+  };
 
   const handleStatusChange = async (e) => {
     const newStatus = e.target.value;
@@ -604,22 +685,183 @@ const WorkOrderDetail = () => {
         </Card>
       </div>
 
-      {/* Diagnostic Notes, Parts, and Labor Section */}
-      <div className="space-y-6"> 
-        <Card 
-          title="Diagnostic Notes"
-          headerActions={
-            <Button
-              onClick={openEditDiagnosticNotesModal}
-              variant="outline"
-              size="sm"
-            >
-              Edit Notes
-            </Button>
-          }
-        >
-          <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>
-            {workOrder.diagnosticNotes || 'No diagnostic notes available.'}
+      {/* Work Order Notes Section */}
+      <div className="space-y-6">
+        <Card title="Work Order Notes">
+          <div className="space-y-4">
+            {/* Add New Note Form */}
+            <div className="border-b border-gray-200 pb-4">
+              <div className="space-y-3">
+                <TextArea
+                  label="Add New Note"
+                  value={newNote.content}
+                  onChange={(e) => setNewNote({ ...newNote, content: e.target.value })}
+                  placeholder="Enter your note here..."
+                  rows={3}
+                />
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={newNote.isCustomerFacing}
+                      onChange={(e) => setNewNote({ ...newNote, isCustomerFacing: e.target.checked })}
+                      className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Customer-facing (will appear on invoice)</span>
+                  </label>
+                  <Button
+                    onClick={handleAddNote}
+                    disabled={!newNote.content.trim() || addingNote}
+                    variant="primary"
+                    size="sm"
+                  >
+                    {addingNote ? 'Adding...' : 'Add Note'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes Filter */}
+            <div className="flex items-center space-x-4">
+              <span className="text-sm font-medium text-gray-700">Filter:</span>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setNotesFilter('all')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    notesFilter === 'all' 
+                      ? 'bg-primary-100 text-primary-800' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  All ({notes.length})
+                </button>
+                <button
+                  onClick={() => setNotesFilter('customer')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    notesFilter === 'customer' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Customer-facing ({notes.filter(n => n.isCustomerFacing).length})
+                </button>
+                <button
+                  onClick={() => setNotesFilter('private')}
+                  className={`px-3 py-1 text-xs rounded-full ${
+                    notesFilter === 'private' 
+                      ? 'bg-yellow-100 text-yellow-800' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Private ({notes.filter(n => !n.isCustomerFacing).length})
+                </button>
+              </div>
+            </div>
+
+            {/* Notes List */}
+            <div className="space-y-3">
+              {notesLoading ? (
+                <div className="text-center py-4">Loading notes...</div>
+              ) : getFilteredNotes().length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  {notesFilter === 'all' ? 'No notes added yet.' : `No ${notesFilter} notes found.`}
+                </div>
+              ) : (
+                getFilteredNotes().map((note) => (
+                  <div key={note._id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${
+                            note.isCustomerFacing 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {note.isCustomerFacing ? (
+                              <>👁️ Customer-facing</>
+                            ) : (
+                              <>🔒 Private</>
+                            )}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(note.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                          {note.createdBy?.name && (
+                            <span className="text-xs text-gray-500">
+                              by {note.createdBy.name}
+                            </span>
+                          )}
+                        </div>
+                        {editingNote?._id === note._id ? (
+                          <div className="space-y-2">
+                            <TextArea
+                              value={editingNote.content}
+                              onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                              rows={3}
+                            />
+                            <div className="flex items-center space-x-4">
+                              <label className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={editingNote.isCustomerFacing}
+                                  onChange={(e) => setEditingNote({ ...editingNote, isCustomerFacing: e.target.checked })}
+                                  className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                />
+                                <span className="text-sm text-gray-700">Customer-facing</span>
+                              </label>
+                              <div className="flex space-x-2">
+                                <Button
+                                  onClick={() => handleUpdateNote(note._id, { content: editingNote.content, isCustomerFacing: editingNote.isCustomerFacing })}
+                                  variant="primary"
+                                  size="sm"
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  onClick={() => setEditingNote(null)}
+                                  variant="outline"
+                                  size="sm"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>
+                            {note.content}
+                          </div>
+                        )}
+                      </div>
+                      {editingNote?._id !== note._id && (
+                        <div className="flex space-x-1 ml-4">
+                          <Button
+                            onClick={() => setEditingNote(note)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteNote(note._id)}
+                            variant="danger"
+                            size="sm"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </Card>
 
