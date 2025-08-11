@@ -450,9 +450,7 @@ const WorkOrderList = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {workOrder.status.includes('Completed') 
-                          ? formatCurrency(workOrder.totalActual)
-                          : formatCurrency(workOrder.totalEstimate)}
+                        {formatCurrency(workOrder.totalEstimate)}
                       </div>
                       <div className="text-xs text-gray-500">
                         {workOrder.status.includes('Completed') 
@@ -557,12 +555,10 @@ const WorkOrderList = () => {
                   <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {workOrder.status.includes('Completed') 
-                          ? formatCurrency(workOrder.totalActual)
-                          : formatCurrency(workOrder.totalEstimate)}
+                        {formatCurrency(workOrder.totalEstimate)}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {workOrder.status.includes('Completed') ? 'Final' : 'Estimate'}
+                        Estimate
                       </div>
                     </div>
                     <div className="flex space-x-2">
@@ -682,14 +678,10 @@ const WorkOrderList = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {workOrder.status.includes('Completed') || workOrder.status === 'Invoiced' // Assuming Invoiced also shows final amount
-                              ? formatCurrency(workOrder.totalActual)
-                              : formatCurrency(workOrder.totalEstimate)}
+                            {formatCurrency(workOrder.totalEstimate)}
                           </div>
                           <div className="text-xs text-gray-500">
-                            {workOrder.status.includes('Completed') || workOrder.status === 'Invoiced'
-                              ? 'Final'
-                              : 'Estimate'}
+                            Estimate
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

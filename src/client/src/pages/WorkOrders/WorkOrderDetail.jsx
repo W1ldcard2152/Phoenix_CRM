@@ -703,12 +703,6 @@ const WorkOrderDetail = () => {
               <span>Total:</span>
               <span>{formatCurrency(totalWithTax)}</span>
             </div>
-            {workOrder.status.includes('Completed') && (
-              <div>
-                <p className="text-sm text-gray-500">Actual</p>
-                <p className="font-medium">{formatCurrency(workOrder.totalActual)}</p>
-              </div>
-            )}
           </div>
         </Card>
       </div>
