@@ -113,7 +113,7 @@ const WorkOrderService = {
   // Get work orders by status
   getWorkOrdersByStatus: async (status) => {
     try {
-      const response = await API.get(`/workorders/status/${status}`);
+      const response = await API.get(`/workorders/status/${encodeURIComponent(status)}`);
       return response.data;
     } catch (error) {
       console.error(`Error fetching work orders with status ${status}:`, error);
@@ -128,6 +128,28 @@ const WorkOrderService = {
       return response.data;
     } catch (error) {
       console.error(`Error searching work orders with query "${query}":`, error);
+      throw error;
+    }
+  },
+
+  // Get work orders awaiting scheduling (Parts Received status with no future appointments)
+  getWorkOrdersAwaitingScheduling: async () => {
+    try {
+      const response = await API.get('/workorders/awaiting-scheduling');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching work orders awaiting scheduling:', error);
+      throw error;
+    }
+  },
+
+  // Get all work orders that need scheduling (for appointments page)
+  getWorkOrdersNeedingScheduling: async () => {
+    try {
+      const response = await API.get('/workorders/needing-scheduling');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching work orders needing scheduling:', error);
       throw error;
     }
   }

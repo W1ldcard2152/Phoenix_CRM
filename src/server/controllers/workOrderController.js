@@ -306,11 +306,11 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     if (oldWorkOrder && oldWorkOrder.status !== workOrderData.status) {
       // Send notification if status is changing to a notifiable status
       const notifiableStatuses = [
-        'Inspected - Need Parts Ordered',
+        'Inspected/Parts Ordered',
         'Parts Received',
         'Repair In Progress',
-        'Completed - Need Payment',
-        'Completed - Paid'
+        'Completed - Awaiting Payment',
+        'Invoiced'
       ];
       
       if (notifiableStatuses.includes(workOrderData.status) && 
@@ -440,8 +440,8 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   // Update the status
   workOrder.status = status;
   
-  // If the status is "Completed - Paid" or "Invoiced", set the totalActual
-  if (status === 'Completed - Paid' || status === 'Invoiced') {
+  // If the status is "Invoiced", set the totalActual
+  if (status === 'Invoiced') {
     // Calculate total from parts and labor
     const partsCost = workOrder.parts.reduce((total, part) => {
       return total + (part.price * part.quantity);
@@ -683,6 +683,85 @@ exports.searchWorkOrders = catchAsync(async (req, res, next) => {
     results: workOrders.length,
     data: {
       workOrders
+    }
+  });
+});
+
+// Get work orders awaiting scheduling (Parts Received status with no future appointments)
+exports.getWorkOrdersAwaitingScheduling = catchAsync(async (req, res, next) => {
+  const Appointment = require('../models/Appointment');
+  
+  // Get all work orders with "Parts Received" status
+  const partsReceivedWorkOrders = await WorkOrder.find({ 
+    status: 'Parts Received' 
+  })
+  .populate('customer', 'name phone email')
+  .populate('vehicle', 'year make model vin licensePlate')
+  .populate('assignedTechnician', 'name specialization');
+  
+  // Get all future appointments (starting from now)
+  const now = new Date();
+  const futureAppointments = await Appointment.find({
+    startTime: { $gte: now },
+    workOrder: { $exists: true },
+    status: { $nin: ['Cancelled', 'No-Show'] } // Exclude cancelled/no-show appointments
+  }).select('workOrder');
+  
+  // Create a Set of work order IDs that have future appointments
+  const scheduledWorkOrderIds = new Set(
+    futureAppointments.map(apt => apt.workOrder.toString())
+  );
+  
+  // Filter out work orders that have future appointments
+  const unscheduledWorkOrders = partsReceivedWorkOrders.filter(
+    wo => !scheduledWorkOrderIds.has(wo._id.toString())
+  );
+  
+  res.status(200).json({
+    status: 'success',
+    results: unscheduledWorkOrders.length,
+    data: {
+      workOrders: unscheduledWorkOrders
+    }
+  });
+});
+
+// Get all work orders that need scheduling (for appointments page)
+exports.getWorkOrdersNeedingScheduling = catchAsync(async (req, res, next) => {
+  const Appointment = require('../models/Appointment');
+  
+  // Get all work orders with statuses that typically need scheduling
+  const needsSchedulingStatuses = ['Created', 'Inspected/Parts Ordered', 'Parts Received'];
+  const workOrders = await WorkOrder.find({ 
+    status: { $in: needsSchedulingStatuses }
+  })
+  .populate('customer', 'name phone email')
+  .populate('vehicle', 'year make model vin licensePlate')
+  .populate('assignedTechnician', 'name specialization');
+  
+  // Get all future appointments (starting from now)
+  const now = new Date();
+  const futureAppointments = await Appointment.find({
+    startTime: { $gte: now },
+    workOrder: { $exists: true },
+    status: { $nin: ['Cancelled', 'No-Show'] } // Exclude cancelled/no-show appointments
+  }).select('workOrder');
+  
+  // Create a Set of work order IDs that have future appointments
+  const scheduledWorkOrderIds = new Set(
+    futureAppointments.map(apt => apt.workOrder.toString())
+  );
+  
+  // Filter out work orders that have future appointments
+  const unscheduledWorkOrders = workOrders.filter(
+    wo => !scheduledWorkOrderIds.has(wo._id.toString())
+  );
+  
+  res.status(200).json({
+    status: 'success',
+    results: unscheduledWorkOrders.length,
+    data: {
+      workOrders: unscheduledWorkOrders
     }
   });
 });

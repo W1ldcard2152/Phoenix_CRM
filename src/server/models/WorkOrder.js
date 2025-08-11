@@ -123,14 +123,12 @@ const WorkOrderSchema = new Schema(
       enum: [
         'Created', 
         'Scheduled', 
-        'In Progress', 
-        'Inspected - Need Parts Ordered',
-        'Parts Ordered',
+        'Inspection In Progress', 
+        'Inspected/Parts Ordered',
         'Parts Received',
         'Repair In Progress',
-        'Completed - Need Payment',
-        'Invoiced', // Added Invoiced status
-        'Completed - Paid',
+        'Completed - Awaiting Payment',
+        'Invoiced',
         'On Hold',
         'Cancelled'
       ],

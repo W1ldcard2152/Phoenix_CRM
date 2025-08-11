@@ -164,13 +164,12 @@ const WorkOrderList = () => {
     { value: '', label: 'All Statuses' },
     { value: 'Created', label: 'Created' },
     { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'In Progress', label: 'In Progress' },
-    { value: 'Inspected - Need Parts Ordered', label: 'Inspected - Need Parts' },
-    { value: 'Parts Ordered', label: 'Parts Ordered' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
-    { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
+    { value: 'Invoiced', label: 'Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
@@ -179,13 +178,11 @@ const WorkOrderList = () => {
   const workOrderStatusOptions = [
     { value: 'Created', label: 'Created' },
     { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'In Progress', label: 'In Progress' },
-    { value: 'Inspected - Need Parts Ordered', label: 'Inspected - Need Parts' },
-    { value: 'Parts Ordered', label: 'Parts Ordered' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
-    { value: 'Completed - Paid', label: 'Completed - Paid' },
+    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
     { value: 'Invoiced', label: 'Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
@@ -196,16 +193,14 @@ const WorkOrderList = () => {
     const priorities = {
       'Created': 1,
       'Scheduled': 2,
-      'In Progress': 3,
-      'Inspected - Need Parts Ordered': 4,
-      'Parts Ordered': 5,
-      'Parts Received': 6,
-      'Repair In Progress': 7,
-      'Completed - Need Payment': 8,
-      'Completed - Paid': 9,
-      'Invoiced': 10,
-      'On Hold': 11,
-      'Cancelled': 12
+      'Inspection In Progress': 3,
+      'Inspected/Parts Ordered': 4,
+      'Parts Received': 5,
+      'Repair In Progress': 6,
+      'Completed - Awaiting Payment': 7,
+      'Invoiced': 8,
+      'On Hold': 9,
+      'Cancelled': 10
     };
     return priorities[status] || 99;
   };

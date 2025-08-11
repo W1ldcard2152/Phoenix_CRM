@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -68,25 +68,32 @@ const WorkOrderDetail = () => {
     fetchWorkOrderData(); // Call renamed function
   }, [id]);
 
+  const fetchNotes = useCallback(async () => {
+    try {
+      setNotesLoading(true);
+      const response = await workOrderNotesService.getNotes(id);
+      
+      if (response && response.data && response.data.notes) {
+        setNotes(response.data.notes);
+      } else {
+        console.warn('No notes found in response:', response);
+        setNotes([]);
+      }
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+      setError('Failed to load notes');
+      setNotes([]);
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [id]);
+
   // Fetch work order notes
   useEffect(() => {
     if (workOrder) {
       fetchNotes();
     }
-  }, [workOrder]);
-
-  const fetchNotes = async () => {
-    try {
-      setNotesLoading(true);
-      const response = await workOrderNotesService.getNotes(id);
-      setNotes(response.data.notes);
-    } catch (err) {
-      console.error('Error fetching notes:', err);
-      setError('Failed to load notes');
-    } finally {
-      setNotesLoading(false);
-    }
-  };
+  }, [workOrder, fetchNotes]);
 
   // Work Order Notes handlers
   const handleAddNote = async () => {
@@ -145,11 +152,34 @@ const WorkOrderDetail = () => {
 
     try {
       setStatusUpdateLoading(true);
-      // Ensure we send the full work order object if other fields might be affected by status change
-      // For now, assuming updateStatus endpoint only handles status.
-      // If not, might need to send { ...workOrder, status: newStatus } to a general update endpoint.
       const response = await WorkOrderService.updateStatus(id, newStatus); 
-      setWorkOrder(response.data.workOrder); // Assuming response returns the updated work order
+      setWorkOrder(response.data.workOrder);
+      
+      // Show notification if status changed to "Parts Received"
+      if (newStatus === 'Parts Received') {
+        const customerName = workOrder.customer?.name || 'Customer';
+        const phoneNumber = workOrder.customer?.phone;
+        let message = `Parts received for ${customerName}! Schedule the work order for completion.`;
+        
+        if (phoneNumber) {
+          message += ` Customer phone: ${phoneNumber}`;
+        }
+        
+        // Show browser notification if permission is granted
+        if (window.Notification && Notification.permission === 'granted') {
+          new Notification('Parts Received - Schedule Work Order', {
+            body: message,
+            icon: '/favicon.ico'
+          });
+        } else if (window.Notification && Notification.permission !== 'denied') {
+          // Request permission for future notifications
+          Notification.requestPermission();
+        }
+        
+        // Show alert as backup
+        alert(`🔔 NOTIFICATION: ${message}`);
+      }
+      
       setStatusUpdateLoading(false);
     } catch (err) {
       console.error('Error updating status:', err);
@@ -410,14 +440,12 @@ const WorkOrderDetail = () => {
   const statusOptions = [
     { value: 'Created', label: 'Created' },
     { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'In Progress', label: 'In Progress' },
-    { value: 'Inspected - Need Parts Ordered', label: 'Inspected - Need Parts' },
-    { value: 'Parts Ordered', label: 'Parts Ordered' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
-    { value: 'Completed - Paid', label: 'Completed - Paid' },
-    { value: 'Invoiced', label: 'Invoiced' }, // Added Invoiced status
+    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
+    { value: 'Invoiced', label: 'Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];

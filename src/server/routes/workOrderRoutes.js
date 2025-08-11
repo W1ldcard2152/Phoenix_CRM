@@ -6,6 +6,12 @@ const router = express.Router();
 // Search work orders
 router.get('/search', workOrderController.searchWorkOrders);
 
+// Get work orders awaiting scheduling (Parts Received with no future appointments)
+router.get('/awaiting-scheduling', workOrderController.getWorkOrdersAwaitingScheduling);
+
+// Get all work orders that need scheduling (for appointments page)
+router.get('/needing-scheduling', workOrderController.getWorkOrdersNeedingScheduling);
+
 // Get work orders by status
 router.get('/status/:status', workOrderController.getWorkOrdersByStatus);
 

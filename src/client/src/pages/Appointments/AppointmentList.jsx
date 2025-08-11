@@ -66,27 +66,9 @@ const AppointmentList = () => {
         const appointmentsResponse = await AppointmentService.getAllAppointments(filters);
         setAppointments(appointmentsResponse.data.appointments);
         
-        // Fetch pending work orders (not scheduled yet)
-        const pendingStatuses = ['Created', 'Inspected - Need Parts Ordered', 'Parts Ordered', 'Parts Received'];
-        const workOrdersPromises = pendingStatuses.map(status => 
-          WorkOrderService.getWorkOrdersByStatus(status)
-        );
-        
-        const workOrdersResponses = await Promise.all(workOrdersPromises);
-        const allPendingWorkOrders = workOrdersResponses.flatMap(response => response.data.workOrders);
-        
-        // Filter out work orders that already have appointments
-        const scheduledWorkOrderIds = new Set(
-          appointmentsResponse.data.appointments
-            .filter(a => a.workOrder)
-            .map(a => typeof a.workOrder === 'object' ? a.workOrder._id : a.workOrder)
-        );
-        
-        const unscheduledWorkOrders = allPendingWorkOrders.filter(
-          wo => !scheduledWorkOrderIds.has(wo._id)
-        );
-        
-        setPendingWorkOrders(unscheduledWorkOrders);
+        // Fetch work orders that need scheduling (includes all statuses that need scheduling)
+        const needingSchedulingResponse = await WorkOrderService.getWorkOrdersNeedingScheduling();
+        setPendingWorkOrders(needingSchedulingResponse.data.workOrders);
         
         setLoading(false);
       } catch (err) {
@@ -158,6 +140,13 @@ const AppointmentList = () => {
       {/* Work Orders Awaiting Scheduling Section */}
       {pendingWorkOrders.length > 0 && (
         <Card title="Work Orders Awaiting Scheduling" className="mb-6">
+          {pendingWorkOrders.some(wo => wo.status === 'Parts Received') && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800 text-sm">
+                📞 <strong>Parts Received!</strong> {pendingWorkOrders.filter(wo => wo.status === 'Parts Received').length} work order(s) have parts ready and customers need to be called to schedule completion.
+              </p>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -195,12 +184,15 @@ const AppointmentList = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span 
                         className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          workOrder.status.includes('Parts') 
-                            ? 'bg-yellow-100 text-yellow-800' 
-                            : 'bg-gray-100 text-gray-800'
+                          workOrder.status === 'Parts Received'
+                            ? 'bg-green-100 text-green-800' 
+                            : workOrder.status === 'Inspected/Parts Ordered'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-gray-100 text-gray-800'
                         }`}
                       >
                         {workOrder.status}
+                        {workOrder.status === 'Parts Received' && ' 📞'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">

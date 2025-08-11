@@ -1,13 +1,17 @@
 // src/client/src/pages/Dashboard/Dashboard.jsx
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
+import Button from '../../components/common/Button';
 import AppointmentCalendar from '../../components/dashboard/AppointmentCalendar';
 import WorkflowSummary from '../../components/dashboard/WorkflowSummary';
 import WorkOrderService from '../../services/workOrderService';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [activeWorkOrders, setActiveWorkOrders] = useState([]);
+  const [workOrdersAwaitingScheduling, setWorkOrdersAwaitingScheduling] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -20,9 +24,8 @@ const Dashboard = () => {
         const activeStatuses = [
           'Created', 
           'Scheduled', 
-          'In Progress', 
-          'Inspected - Need Parts Ordered',
-          'Parts Ordered',
+          'Inspection In Progress', 
+          'Inspected/Parts Ordered',
           'Parts Received',
           'Repair In Progress'
         ];
@@ -39,6 +42,11 @@ const Dashboard = () => {
         );
         
         setActiveWorkOrders(allActiveWorkOrders);
+        
+        // Fetch work orders awaiting scheduling
+        const awaitingSchedulingResponse = await WorkOrderService.getWorkOrdersAwaitingScheduling();
+        setWorkOrdersAwaitingScheduling(awaitingSchedulingResponse.data.workOrders);
+        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -49,6 +57,10 @@ const Dashboard = () => {
     
     fetchDashboardData();
   }, []);
+
+  const handleScheduleWorkOrder = (workOrderId) => {
+    navigate(`/appointments/new?workOrder=${workOrderId}`);
+  };
 
   return (
     <div className="container mx-auto">
@@ -68,23 +80,79 @@ const Dashboard = () => {
         <WorkflowSummary />
       </div>
       
-      {/* Quick Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <Card title="Quick Stats">
-          {loading ? (
-            <div className="flex justify-center items-center h-32">
-              <p>Loading stats...</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="text-blue-800 font-medium">Active Work Orders</h3>
-                <p className="text-3xl font-bold">{activeWorkOrders.length}</p>
+      {/* Work Orders Awaiting Scheduling Section */}
+      {workOrdersAwaitingScheduling.length > 0 && (
+        <Card title="Work Orders Awaiting Scheduling" className="mb-6">
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-yellow-800 text-sm">
+              📞 <strong>Parts Received!</strong> These work orders have their parts and need to be scheduled for completion.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Customer & Vehicle
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Service
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {workOrdersAwaitingScheduling.slice(0, 5).map((workOrder) => (
+                  <tr key={workOrder._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-medium text-gray-900">
+                        {workOrder.customer?.name || 'Unknown Customer'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900 truncate max-w-xs">
+                        {workOrder.serviceRequested}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {workOrder.customer?.phone || 'No phone'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <Button
+                        onClick={() => handleScheduleWorkOrder(workOrder._id)}
+                        variant="primary"
+                        size="sm"
+                      >
+                        Schedule
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {workOrdersAwaitingScheduling.length > 5 && (
+              <div className="py-3 text-center">
+                <Button
+                  onClick={() => navigate('/appointments')}
+                  variant="link"
+                >
+                  View {workOrdersAwaitingScheduling.length - 5} more work orders
+                </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </Card>
-      </div>
+      )}
       
       {/* Calendar Section */}
       <div className="mb-6">

@@ -271,14 +271,12 @@ const WorkOrderForm = () => {
   const statusOptions = [
     { value: 'Created', label: 'Created' },
     { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'In Progress', label: 'In Progress' },
-    { value: 'Inspected - Need Parts Ordered', label: 'Inspected - Need Parts' },
-    { value: 'Parts Ordered', label: 'Parts Ordered' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Need Payment', label: 'Completed - Need Payment' },
-    { value: 'Completed - Paid', label: 'Completed - Paid' },
-    { value: 'Invoiced', label: 'Invoiced' }, // Added Invoiced status
+    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
+    { value: 'Invoiced', label: 'Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
