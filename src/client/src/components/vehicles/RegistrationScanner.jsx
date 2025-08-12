@@ -115,7 +115,7 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
         </div>
 
         <div className="text-sm text-gray-700">
-          Take a photo or upload an image of the vehicle registration to automatically extract the VIN and license plate.
+          Take a photo or upload an image of the vehicle registration to automatically extract the VIN, license plate, and license plate state.
         </div>
 
         {/* Action Buttons */}
@@ -219,31 +219,10 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
                 </div>
               )}
               
-              {scanResult.year && (
+              {scanResult.licensePlateState && (
                 <div>
-                  <span className="font-medium text-gray-700">Year:</span>
-                  <div className="text-gray-900">{scanResult.year}</div>
-                </div>
-              )}
-              
-              {scanResult.make && (
-                <div>
-                  <span className="font-medium text-gray-700">Make:</span>
-                  <div className="text-gray-900">{scanResult.make}</div>
-                </div>
-              )}
-              
-              {scanResult.model && (
-                <div>
-                  <span className="font-medium text-gray-700">Model:</span>
-                  <div className="text-gray-900">{scanResult.model}</div>
-                </div>
-              )}
-              
-              {scanResult.state && (
-                <div>
-                  <span className="font-medium text-gray-700">State:</span>
-                  <div className="text-gray-900">{scanResult.state}</div>
+                  <span className="font-medium text-gray-700">License Plate State:</span>
+                  <div className="text-gray-900">{scanResult.licensePlateState}</div>
                 </div>
               )}
             </div>

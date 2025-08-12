@@ -54,6 +54,12 @@ const VehicleSchema = new Schema(
       type: String,
       trim: true
     },
+    licensePlateState: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: [2, 'License plate state should be a 2-letter abbreviation']
+    },
     currentMileage: {
       type: Number,
       min: [0, 'Mileage cannot be negative']

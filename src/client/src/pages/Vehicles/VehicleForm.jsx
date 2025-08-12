@@ -24,6 +24,7 @@ const VehicleSchema = Yup.object().shape({
   model: Yup.string().required('Model is required'),
   vin: Yup.string(),
   licensePlate: Yup.string(),
+  licensePlateState: Yup.string().max(2, 'State should be a 2-letter abbreviation'),
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
     .nullable(),
@@ -59,6 +60,7 @@ const VehicleForm = () => {
     model: '',
     vin: 'N/A',
     licensePlate: '',
+    licensePlateState: '',
     currentMileage: '',
     mileageHistory: [],
     notes: ''
@@ -88,6 +90,7 @@ const VehicleForm = () => {
             model: vehicleData.model || '',
             vin: vehicleData.vin || '',
             licensePlate: vehicleData.licensePlate || '',
+            licensePlateState: vehicleData.licensePlateState || '',
             currentMileage: vehicleData.currentMileage || '',
             mileageHistory: vehicleData.mileageHistory || [],
             notes: vehicleData.notes || ''
@@ -218,16 +221,8 @@ const VehicleForm = () => {
       setFieldValue('licensePlate', extractedData.licensePlate);
     }
     
-    if (extractedData.year) {
-      setFieldValue('year', extractedData.year);
-    }
-    
-    if (extractedData.make) {
-      setFieldValue('make', extractedData.make);
-    }
-    
-    if (extractedData.model) {
-      setFieldValue('model', extractedData.model);
+    if (extractedData.licensePlateState) {
+      setFieldValue('licensePlateState', extractedData.licensePlateState);
     }
     
     setScanSuccess('Registration scanned successfully! Vehicle information has been auto-filled.');
@@ -422,6 +417,20 @@ const VehicleForm = () => {
                     onBlur={handleBlur}
                     error={errors.licensePlate}
                     touched={touched.licensePlate}
+                  />
+                </div>
+                
+                <div>
+                  <Input
+                    label="License Plate State"
+                    name="licensePlateState"
+                    value={values.licensePlateState}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.licensePlateState}
+                    touched={touched.licensePlateState}
+                    placeholder="e.g., NY, CA, TX"
+                    maxLength={2}
                   />
                 </div>
                 

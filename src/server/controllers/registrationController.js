@@ -54,23 +54,20 @@ const analyzeRegistrationWithOpenAI = async (imageBuffer) => {
                 text: `Please analyze this vehicle registration document and extract the following information in JSON format:
 
 {
-  "vin": "Vehicle Identification Number (17 characters)",
+  "vin": "Vehicle Identification Number (17 characters if found)",
   "licensePlate": "License plate number",
-  "year": "Vehicle year",
-  "make": "Vehicle make/manufacturer",
-  "model": "Vehicle model",
-  "state": "State of registration",
+  "licensePlateState": "State of registration (e.g., 'NY', 'CA', 'TX')",
   "confidence": "Your confidence level (0.0 to 1.0) in the accuracy of the extracted information"
 }
 
 Important instructions:
-- Only return valid JSON, no additional text
+- Only return valid JSON, no additional text or markdown
 - If you cannot find a field, omit it from the response or set it to null
-- VIN should be exactly 17 characters if found
+- VIN should be exactly 17 characters if found - be very careful with VIN recognition
 - License plate should be the actual plate number without state prefix
-- Year should be a 4-digit number
-- Be very careful with VIN recognition - double-check each character
-- Confidence should reflect how clearly you can read the information`
+- License plate state should be the 2-letter state abbreviation (e.g., 'NY', 'CA', 'TX')
+- Confidence should reflect how clearly you can read the information
+- Focus only on these essential fields - ignore make, model, year as they will be obtained from VIN decoding`
               },
               {
                 type: 'image_url',
@@ -104,7 +101,15 @@ Important instructions:
       throw new AppError('Invalid response from OpenAI', 500);
     }
 
-    const content = data.choices[0].message.content;
+    let content = data.choices[0].message.content;
+    
+    // Clean up content - remove markdown code blocks if present
+    content = content.trim();
+    if (content.startsWith('```json')) {
+      content = content.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+    } else if (content.startsWith('```')) {
+      content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
     
     // Parse the JSON response
     let extractedData;
@@ -159,28 +164,12 @@ const validateExtractedData = (data) => {
     }
   }
 
-  // Validate year
-  if (data.year) {
-    const year = parseInt(data.year);
-    const currentYear = new Date().getFullYear();
-    
-    if (year >= 1900 && year <= currentYear + 1) {
-      cleaned.year = year;
+  // Include license plate state
+  if (data.licensePlateState && data.licensePlateState.toString().trim()) {
+    const state = data.licensePlateState.toString().toUpperCase().trim();
+    if (state.length <= 2) {
+      cleaned.licensePlateState = state;
     }
-  }
-
-  // Clean make and model
-  if (data.make && data.make.toString().trim()) {
-    cleaned.make = data.make.toString().trim();
-  }
-
-  if (data.model && data.model.toString().trim()) {
-    cleaned.model = data.model.toString().trim();
-  }
-
-  // Include state
-  if (data.state && data.state.toString().trim()) {
-    cleaned.state = data.state.toString().toUpperCase().trim();
   }
 
   // Include confidence
