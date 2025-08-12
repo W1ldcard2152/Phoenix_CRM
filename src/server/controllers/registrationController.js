@@ -1,4 +1,5 @@
 const multer = require('multer');
+const fetch = require('node-fetch');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
