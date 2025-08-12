@@ -54,13 +54,34 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
     setScanResult(null);
 
     try {
+      console.log('Processing image:', {
+        name: imageFile.name,
+        size: imageFile.size,
+        type: imageFile.type,
+        userAgent: navigator.userAgent
+      });
+
       // Create preview
       const imageUrl = URL.createObjectURL(imageFile);
       setPreviewImage(imageUrl);
 
+      // Check file size before sending
+      if (imageFile.size > 10 * 1024 * 1024) {
+        throw new Error('Image file is too large. Please use an image smaller than 10MB.');
+      }
+
+      // For mobile, compress image if it's very large
+      let fileToUpload = imageFile;
+      if (imageFile.size > 5 * 1024 * 1024) {
+        console.log('Compressing large image for mobile...');
+        fileToUpload = await compressImage(imageFile);
+      }
+
       // Prepare form data for API call
       const formData = new FormData();
-      formData.append('registration', imageFile);
+      formData.append('registration', fileToUpload);
+
+      console.log('Sending request to server...');
 
       // Call backend API to process with OpenAI
       const response = await fetch('/api/registration/scan', {
@@ -71,11 +92,16 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
         }
       });
 
+      console.log('Server response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Server error response:', errorText);
+        throw new Error(`Server error (${response.status}): ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('Server response:', result);
 
       if (result.success) {
         setScanResult(result.data);
@@ -88,10 +114,58 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
 
     } catch (error) {
       console.error('Registration scan error:', error);
-      onError?.(error.message || 'Failed to scan registration. Please try again.');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to scan registration. Please try again.';
+      
+      if (error.message.includes('Network request failed') || error.message.includes('Failed to fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (error.message.includes('too large')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('Server error')) {
+        errorMessage = 'Server error. Please try again or contact support.';
+      }
+      
+      onError?.(errorMessage);
     } finally {
       setIsScanning(false);
     }
+  };
+
+  // Helper function to compress images for mobile
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions (max 1920px width)
+        const maxWidth = 1920;
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+        
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          console.log('Image compressed:', {
+            originalSize: file.size,
+            compressedSize: compressedFile.size,
+            ratio: (compressedFile.size / file.size).toFixed(2)
+          });
+          resolve(compressedFile);
+        }, 'image/jpeg', 0.8);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
   };
 
   const clearResults = () => {

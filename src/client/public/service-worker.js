@@ -1,8 +1,8 @@
 // Phoenix CRM Service Worker - Enhanced PWA Functionality
-const CACHE_NAME = 'phoenix-crm-v1';
-const STATIC_CACHE = 'phoenix-crm-static-v1';
-const DYNAMIC_CACHE = 'phoenix-crm-dynamic-v1';
-const API_CACHE = 'phoenix-crm-api-v1';
+const CACHE_NAME = 'phoenix-crm-v2';
+const STATIC_CACHE = 'phoenix-crm-static-v2';
+const DYNAMIC_CACHE = 'phoenix-crm-dynamic-v2';
+const API_CACHE = 'phoenix-crm-api-v2';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [

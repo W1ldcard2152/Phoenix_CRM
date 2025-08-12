@@ -195,22 +195,47 @@ const validateExtractedData = (data) => {
  * Handle registration image scanning
  */
 const scanRegistration = catchAsync(async (req, res, next) => {
+  console.log('Registration scan request received:', {
+    hasFile: !!req.file,
+    userAgent: req.headers['user-agent'],
+    contentType: req.headers['content-type'],
+    fileInfo: req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : null
+  });
+
   // Check if file was uploaded
   if (!req.file) {
+    console.error('No file in request:', req.body);
     return next(new AppError('No image file provided', 400));
   }
 
   // Validate file type
   if (!req.file.mimetype.startsWith('image/')) {
+    console.error('Invalid file type:', req.file.mimetype);
     return next(new AppError('Only image files are allowed', 400));
   }
 
+  // Check file size (mobile might send very large images)
+  if (req.file.size > 10 * 1024 * 1024) {
+    console.error('File too large:', req.file.size);
+    return next(new AppError('Image file too large. Maximum size is 10MB.', 400));
+  }
+
   try {
+    console.log('Processing image with OpenAI...');
+    
     // Analyze the image with OpenAI
     const extractedData = await analyzeRegistrationWithOpenAI(req.file.buffer);
     
+    console.log('OpenAI response:', extractedData);
+    
     // Validate and clean the extracted data
     const validation = validateExtractedData(extractedData);
+    
+    console.log('Validation result:', validation);
     
     if (!validation.isValid) {
       return res.status(200).json({
@@ -228,7 +253,13 @@ const scanRegistration = catchAsync(async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Registration scanning error:', error);
+    console.error('Registration scanning error details:', {
+      message: error.message,
+      stack: error.stack,
+      userAgent: req.headers['user-agent'],
+      fileSize: req.file?.size,
+      fileMimetype: req.file?.mimetype
+    });
     
     if (error instanceof AppError) {
       return next(error);
