@@ -1,10 +1,11 @@
 // src/client/src/App.jsx - Fixed with Appointment Routes
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import './components/wizard/wizard.css';
 import './styles/mobile.css';
+import './utils/pwaUtils';
 
 // Layout components
 import Navbar from './components/layout/Navbar';

@@ -9,12 +9,28 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Phoenix CRM" />
+    <meta name="application-name" content="Phoenix CRM" />
+    <meta name="msapplication-TileColor" content="#1d4ed8" />
+    <meta name="msapplication-config" content="%PUBLIC_URL%/browserconfig.xml" />
     <meta
       name="description"
-      content="Auto Repair Shop CRM - Manage customers, vehicles, and work orders"
+      content="Phoenix Auto Repair CRM - Manage customers, vehicles, and work orders offline"
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <meta name="keywords" content="auto repair, CRM, customer management, work orders, offline" />
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="%PUBLIC_URL%/favicon-96x96.png" />
+    <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" as="style" />
+    
+    <!-- PWA Status Bar -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-touch-fullscreen" content="yes" />
     <link 
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" 
       rel="stylesheet"
