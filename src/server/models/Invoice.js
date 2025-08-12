@@ -112,7 +112,7 @@ const InvoiceSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'], // Added 'Refunded'
+      enum: ['', 'Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'], // Added empty string and 'Refunded'
       default: 'Draft'
     },
     paymentTerms: {
@@ -218,12 +218,9 @@ InvoiceSchema.methods.calculateTotals = function() {
 
 // Pre-save middleware to check status
 InvoiceSchema.pre('save', function(next) {
-  // Check if invoice is overdue
-  if (this.status !== 'Paid' && 
-      this.status !== 'Cancelled' && 
-      new Date() > this.dueDate) {
-    this.status = 'Overdue';
-  }
+  // Disable automatic overdue checking during routine operations
+  // Only manually update invoice statuses to prevent unwanted changes during reads
+  // Overdue status should be set explicitly when needed, not automatically
   
   next();
 });

@@ -26,6 +26,7 @@ import AppointmentDetail from './pages/Appointments/AppointmentDetail';
 import AppointmentForm from './pages/Appointments/AppointmentForm';
 import InvoiceGenerator from './pages/Invoices/InvoiceGenerator';
 import InvoiceDetail from './pages/Invoices/InvoiceDetail'; // Added InvoiceDetail
+import InvoiceList from './pages/Invoices/InvoiceList';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 
@@ -100,6 +101,7 @@ const App = () => {
                       <Route path="/appointments/:id/edit" element={<AppointmentForm />} />
                       
                       {/* Invoice Routes */}
+                      <Route path="/invoices" element={<InvoiceList />} />
                       <Route path="/invoices/new" element={<InvoiceGenerator />} />
                       <Route path="/invoices/new/:id" element={<InvoiceGenerator />} />
                       <Route path="/invoices/generate" element={<InvoiceGenerator />} />

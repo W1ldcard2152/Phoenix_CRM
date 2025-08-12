@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService';
@@ -19,6 +19,7 @@ const InvoiceGenerator = () => {
   const { id } = useParams(); // For loading a specific work order to convert to invoice
   const [searchParams] = useSearchParams();
   const workOrderIdParam = searchParams.get('workOrder');
+  const navigate = useNavigate();
   const printTemplateRef = useRef(null);
 
   // Main states
@@ -396,12 +397,14 @@ const InvoiceGenerator = () => {
     try {
       if (InvoiceService && typeof InvoiceService.createInvoice === 'function') {
         await InvoiceService.createInvoice(finalInvoice); 
+        if (selectedWorkOrder && WorkOrderService && typeof WorkOrderService.updateWorkOrderStatus === 'function') {
+          await WorkOrderService.updateWorkOrderStatus(selectedWorkOrder._id, 'Invoiced');
+        }
         alert('Invoice saved successfully!');
+        // Redirect to invoices page after successful save
+        navigate('/invoices');
       } else {
         alert('Error: InvoiceService is not properly configured.');
-      }
-      if (selectedWorkOrder && WorkOrderService && typeof WorkOrderService.updateWorkOrderStatus === 'function') {
-        await WorkOrderService.updateWorkOrderStatus(selectedWorkOrder._id, 'Invoiced');
       }
     } catch (err) {
       setError(`Failed to save invoice: ${err.response?.data?.message || err.message}.`);

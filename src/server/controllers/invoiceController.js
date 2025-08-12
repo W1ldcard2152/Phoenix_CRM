@@ -385,7 +385,7 @@ exports.updateInvoiceStatus = catchAsync(async (req, res, next) => {
   }
 
   // Validate status if necessary (e.g., ensure it's one of the allowed values)
-  const allowedStatuses = ['Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'];
+  const allowedStatuses = ['', 'Draft', 'Issued', 'Paid', 'Partial', 'Overdue', 'Cancelled', 'Refunded'];
   if (!allowedStatuses.includes(status)) {
     return next(new AppError(`Invalid status: ${status}`, 400));
   }

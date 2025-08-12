@@ -15,6 +15,7 @@ const WorkOrderList = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
+  const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false); // Added for collapsible on hold & cancelled table
   const [statusUpdating, setStatusUpdating] = useState(null); // Track which work order status is being updated
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -281,9 +282,10 @@ const WorkOrderList = () => {
     }
   };
 
-  // Filter work orders into active and invoiced
-  const activeWorkOrders = workOrders.filter(wo => wo.status !== 'Invoiced');
+  // Filter work orders into active, invoiced, and on hold/cancelled
+  const activeWorkOrders = workOrders.filter(wo => wo.status !== 'Invoiced' && wo.status !== 'On Hold' && wo.status !== 'Cancelled');
   const invoicedWorkOrders = workOrders.filter(wo => wo.status === 'Invoiced');
+  const onHoldCancelledWorkOrders = workOrders.filter(wo => wo.status === 'On Hold' || wo.status === 'Cancelled');
 
   return (
     <div className="container mx-auto">
@@ -689,6 +691,123 @@ const WorkOrderList = () => {
                             <Button to={`/work-orders/${workOrder._id}`} variant="outline" size="sm">View</Button>
                             <Button to={`/work-orders/${workOrder._id}/edit`} variant="outline" size="sm">Edit</Button>
                             {/* Schedule button likely not needed for Invoiced WOs, but keeping for "same style" consistency for now */}
+                            {needsSchedulingParam && ( 
+                              <Button
+                                onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
+                                variant="primary"
+                                size="sm"
+                              >
+                                Schedule
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </Card>
+      ) : null}
+
+      {/* Collapsible Table for On Hold & Cancelled Work Orders */}
+      {onHoldCancelledWorkOrders.length > 0 || showOnHoldCancelledTable ? (
+        <Card className="mt-6">
+          <div 
+            className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
+            onClick={() => setShowOnHoldCancelledTable(!showOnHoldCancelledTable)}
+          >
+            <h2 className="text-xl font-semibold text-gray-700">
+              On Hold & Cancelled Work Orders ({onHoldCancelledWorkOrders.length})
+            </h2>
+            <span className="text-sm font-medium text-primary-600">
+              {showOnHoldCancelledTable ? 'Collapse' : 'Expand'}
+              {showOnHoldCancelledTable ? 
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg> :
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+              }
+            </span>
+          </div>
+          {showOnHoldCancelledTable && (
+            loading ? (
+              <div className="flex justify-center items-center h-48 p-4">
+                <p>Loading...</p>
+              </div>
+            ) : onHoldCancelledWorkOrders.length === 0 ? (
+              <div className="text-center py-6 text-gray-500 p-4">
+                <p>No on hold or cancelled work orders found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto p-4">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Vehicle</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {onHoldCancelledWorkOrders.map((workOrder) => (
+                      <tr key={workOrder._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-medium text-gray-900">{workOrder.customer?.name || 'Unknown Customer'}</div>
+                          <div className="text-sm text-gray-500">{workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="relative">
+                            <select
+                              value={workOrder.status}
+                              onChange={(e) => handleWorkOrderStatusUpdate(workOrder._id, e.target.value)}
+                              disabled={statusUpdating === workOrder._id}
+                              className={`
+                                text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
+                                ${getStatusColor(workOrder.status)}
+                                ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
+                              `}
+                              style={{ 
+                                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+                                backgroundPosition: 'right 4px center',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundSize: '12px'
+                              }}
+                            >
+                              {workOrderStatusOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {statusUpdating === workOrder._id && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatCurrency(workOrder.totalEstimate)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Estimate
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <div className="flex justify-end space-x-2">
+                            <Button to={`/work-orders/${workOrder._id}`} variant="outline" size="sm">View</Button>
+                            <Button to={`/work-orders/${workOrder._id}/edit`} variant="outline" size="sm">Edit</Button>
                             {needsSchedulingParam && ( 
                               <Button
                                 onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}

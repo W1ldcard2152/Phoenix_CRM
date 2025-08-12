@@ -70,7 +70,7 @@ const Sidebar = () => {
     { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list' },
     { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt' },
     { name: 'Parts', path: '/parts', icon: 'fas fa-cogs' },
-    { name: 'Invoices', path: '/invoices/generate', icon: 'fas fa-file-invoice-dollar' },
+    { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar' },
   ];
 
   const secondaryNavigationItems = [

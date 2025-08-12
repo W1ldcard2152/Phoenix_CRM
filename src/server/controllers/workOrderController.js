@@ -140,24 +140,16 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   }
   
   // Calculate total estimate if parts and labor are provided
-  if (workOrderData.parts && workOrderData.parts.length > 0) {
-    const partsCost = workOrderData.parts.reduce((total, part) => {
+  if (!workOrderData.totalEstimate) {
+    const partsCost = (workOrderData.parts || []).reduce((total, part) => {
       return total + (part.price * part.quantity);
     }, 0);
     
-    if (!workOrderData.totalEstimate) {
-      workOrderData.totalEstimate = partsCost;
-    }
-  }
-  
-  if (workOrderData.labor && workOrderData.labor.length > 0) {
-    const laborCost = workOrderData.labor.reduce((total, labor) => {
+    const laborCost = (workOrderData.labor || []).reduce((total, labor) => {
       return total + (labor.hours * labor.rate);
     }, 0);
     
-    if (!workOrderData.totalEstimate) {
-      workOrderData.totalEstimate = (workOrderData.totalEstimate || 0) + laborCost;
-    }
+    workOrderData.totalEstimate = partsCost + laborCost;
   }
   
   const newWorkOrder = await WorkOrder.create(workOrderData);
@@ -233,19 +225,16 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         return total + (part.price * part.quantity);
       }, 0);
       
-      // Only update totalEstimate if it's not explicitly provided
-      if (!workOrderData.totalEstimate) {
-        // Calculate labor cost from existing data if not updated
-        const laborCost = workOrderData.labor 
-          ? workOrderData.labor.reduce((total, labor) => {
-              return total + (labor.hours * labor.rate);
-            }, 0)
-          : workOrder.labor.reduce((total, labor) => {
-              return total + (labor.hours * labor.rate);
-            }, 0);
-            
-        workOrderData.totalEstimate = partsCost + laborCost;
-      }
+      // Always recalculate totalEstimate when parts are updated
+      const laborCost = workOrderData.labor 
+        ? workOrderData.labor.reduce((total, labor) => {
+            return total + (labor.hours * labor.rate);
+          }, 0)
+        : workOrder.labor.reduce((total, labor) => {
+            return total + (labor.hours * labor.rate);
+          }, 0);
+          
+      workOrderData.totalEstimate = partsCost + laborCost;
     }
     
     if (workOrderData.labor) {
@@ -253,19 +242,16 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         return total + (labor.hours * labor.rate);
       }, 0);
       
-      // Only update totalEstimate if it's not explicitly provided
-      if (!workOrderData.totalEstimate) {
-        // Calculate parts cost from existing data if not updated
-        const partsCost = workOrderData.parts 
-          ? workOrderData.parts.reduce((total, part) => {
-              return total + (part.price * part.quantity);
-            }, 0)
-          : workOrder.parts.reduce((total, part) => {
-              return total + (part.price * part.quantity);
-            }, 0);
-            
-        workOrderData.totalEstimate = partsCost + laborCost;
-      }
+      // Always recalculate totalEstimate when labor is updated
+      const partsCost = workOrderData.parts 
+        ? workOrderData.parts.reduce((total, part) => {
+            return total + (part.price * part.quantity);
+          }, 0)
+        : workOrder.parts.reduce((total, part) => {
+            return total + (part.price * part.quantity);
+          }, 0);
+          
+      workOrderData.totalEstimate = partsCost + laborCost;
     }
   }
   
