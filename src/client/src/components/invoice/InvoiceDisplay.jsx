@@ -34,8 +34,9 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
     customerNotes,
     terms,
     taxRate = 0,
-    parts: invoiceDataParts = [],      // Original parts from invoiceData
-    labor: invoiceDataLabor = [],      // Original labor from invoiceData
+    items = [],                    // Modern invoice structure with items array
+    parts: invoiceDataParts = [],      // Legacy parts from invoiceData (fallback)
+    labor: invoiceDataLabor = [],      // Legacy labor from invoiceData (fallback)
     subtotal: initialSubtotal,     // Original subtotal from invoiceData
     taxAmount: initialTaxAmount,   // Original taxAmount from invoiceData
     total: initialTotal,           // Original total from invoiceData
@@ -47,36 +48,32 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
 
   const custAddr = customer?.address;
 
-  // Process parts and labor to segregate them correctly
-  const processedParts = [];
-  // Start with items correctly in the labor array, or an empty array if undefined
-  const processedLabor = [...(invoiceDataLabor || [])]; 
-
-  (invoiceDataParts || []).forEach(item => {
-    const itemName = item.name || item.description || "";
-    // Ensure partNumber is treated as a string before trimming, default to empty string if not.
-    const itemPartNumber = (typeof item.partNumber === 'string' || typeof item.partNumber === 'number')
-                           ? String(item.partNumber).trim()
-                           : "";
-
-    // Heuristic: item is labor if partNumber is empty AND name/description contains "labor"
-    const isLikelyLabor = !itemPartNumber && itemName.toLowerCase().includes("labor");
-
-    if (isLikelyLabor) {
-      processedLabor.push({
-        ...item, // Spread to keep other fields like _id, and original total
-        description: itemName,
-        hours: item.quantity, // Map quantity from "part" structure to hours for labor structure
-        rate: item.price,     // Map price from "part" structure to rate for labor structure
-      });
-    } else {
-      processedParts.push(item);
-    }
-  });
-
-  // Use the processed arrays for rendering and calculations
-  const parts = processedParts;
-  const labor = processedLabor;
+  // Process items array (modern structure) or fallback to legacy parts/labor arrays
+  let parts, labor;
+  
+  if (items && items.length > 0) {
+    // Modern structure: separate items by type
+    parts = items.filter(item => item.type === 'Part').map(item => ({
+      _id: item._id,
+      name: item.description,
+      partNumber: item.partNumber || '',
+      quantity: item.quantity,
+      price: item.unitPrice,
+      total: item.total
+    }));
+    
+    labor = items.filter(item => item.type === 'Labor').map(item => ({
+      _id: item._id,
+      description: item.description,
+      hours: item.quantity,
+      rate: item.unitPrice,
+      total: item.total
+    }));
+  } else {
+    // Legacy structure: use existing parts and labor arrays
+    parts = invoiceDataParts || [];
+    labor = invoiceDataLabor || [];
+  }
 
   // Calculate totals based on processed parts and labor,
   // or use initial totals from invoiceData if provided.

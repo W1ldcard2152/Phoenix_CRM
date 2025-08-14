@@ -67,9 +67,9 @@ const partValidation = [
     .withMessage('Notes cannot exceed 500 characters')
     .trim(),
   body('url')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isURL({ require_protocol: true })
-    .withMessage('Please enter a valid URL (including http:// or https://')
+    .withMessage('Please enter a valid URL (including http:// or https://)')
     .trim(),
   body('isActive')
     .optional()

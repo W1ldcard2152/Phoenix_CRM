@@ -15,8 +15,13 @@
       "Bash(rm:*)",
       "Bash(grep:*)",
       "Bash(npm run build:*)",
-      "Bash(npx serve:*)"
+      "Bash(npx serve:*)",
+      "Bash(cmd /c:*)",
+      "Bash(timeout:*)",
+      "Bash(tasklist:*)",
+      "Bash(set PORT=3001)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

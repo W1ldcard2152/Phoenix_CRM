@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const WorkOrder = require('../models/WorkOrder');
 const Vehicle = require('../models/Vehicle');
 const Customer = require('../models/Customer');
+const Appointment = require('../models/Appointment');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const twilioService = require('../services/twilioService');
@@ -748,6 +749,118 @@ exports.getWorkOrdersNeedingScheduling = catchAsync(async (req, res, next) => {
     results: unscheduledWorkOrders.length,
     data: {
       workOrders: unscheduledWorkOrders
+    }
+  });
+});
+
+// Split work order
+exports.splitWorkOrder = catchAsync(async (req, res, next) => {
+  const originalWorkOrder = await WorkOrder.findById(req.params.id)
+    .populate('customer')
+    .populate('vehicle')
+    .populate('assignedTechnician');
+  
+  if (!originalWorkOrder) {
+    return next(new AppError('No work order found with that ID', 404));
+  }
+
+  // Extract the parts and labor to move to new work order
+  const { partsToMove, laborToMove, newWorkOrderTitle } = req.body;
+
+  if (!partsToMove && !laborToMove) {
+    return next(new AppError('Must specify parts or labor to move to new work order', 400));
+  }
+
+  // Validate that the parts and labor to move exist in the original work order
+  const partsToMoveIds = partsToMove || [];
+  const laborToMoveIds = laborToMove || [];
+
+  // Find the actual parts and labor items to move
+  const partsToMoveItems = originalWorkOrder.parts.filter(part => 
+    partsToMoveIds.includes(part._id.toString())
+  );
+  const laborToMoveItems = originalWorkOrder.labor.filter(labor => 
+    laborToMoveIds.includes(labor._id.toString())
+  );
+
+  if (partsToMoveItems.length !== partsToMoveIds.length || 
+      laborToMoveItems.length !== laborToMoveIds.length) {
+    return next(new AppError('Some specified parts or labor items not found', 400));
+  }
+
+  // Create new work order with moved items
+  const newWorkOrder = new WorkOrder({
+    customer: originalWorkOrder.customer._id,
+    vehicle: originalWorkOrder.vehicle._id,
+    assignedTechnician: originalWorkOrder.assignedTechnician ? originalWorkOrder.assignedTechnician._id : null,
+    date: new Date(),
+    priority: originalWorkOrder.priority,
+    status: 'Created',
+    serviceRequested: newWorkOrderTitle || `Split from WO ${originalWorkOrder._id.toString().slice(-6)}`,
+    diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${new Date().toLocaleDateString()}`,
+    parts: partsToMoveItems.map(part => ({
+      name: part.name,
+      partNumber: part.partNumber,
+      quantity: part.quantity,
+      price: part.price,
+      ordered: part.ordered,
+      received: part.received,
+      vendor: part.vendor,
+      purchaseOrderNumber: part.purchaseOrderNumber
+    })),
+    labor: laborToMoveItems.map(labor => ({
+      description: labor.description,
+      hours: labor.hours,
+      rate: labor.rate
+    }))
+  });
+
+  // Calculate totals for new work order
+  const newPartsCost = newWorkOrder.parts.reduce((total, part) => 
+    total + (part.price * part.quantity), 0);
+  const newLaborCost = newWorkOrder.labor.reduce((total, labor) => 
+    total + (labor.hours * labor.rate), 0);
+  newWorkOrder.totalEstimate = newPartsCost + newLaborCost;
+
+  // Remove moved items from original work order
+  originalWorkOrder.parts = originalWorkOrder.parts.filter(part => 
+    !partsToMoveIds.includes(part._id.toString())
+  );
+  originalWorkOrder.labor = originalWorkOrder.labor.filter(labor => 
+    !laborToMoveIds.includes(labor._id.toString())
+  );
+
+  // Update totals for original work order
+  const remainingPartsCost = originalWorkOrder.parts.reduce((total, part) => 
+    total + (part.price * part.quantity), 0);
+  const remainingLaborCost = originalWorkOrder.labor.reduce((total, labor) => 
+    total + (labor.hours * labor.rate), 0);
+  originalWorkOrder.totalEstimate = remainingPartsCost + remainingLaborCost;
+
+  // Add note to original work order about the split
+  if (!originalWorkOrder.diagnosticNotes) {
+    originalWorkOrder.diagnosticNotes = '';
+  }
+  originalWorkOrder.diagnosticNotes += `\n\nWork order split on ${new Date().toLocaleDateString()}. Moved items to new work order.`;
+
+  // Save both work orders
+  await Promise.all([
+    originalWorkOrder.save(),
+    newWorkOrder.save()
+  ]);
+
+  // Populate the new work order for response
+  await newWorkOrder.populate([
+    { path: 'customer', select: 'name phone email' },
+    { path: 'vehicle', select: 'year make model vin licensePlate' },
+    { path: 'assignedTechnician', select: 'name specialization' }
+  ]);
+
+  res.status(201).json({
+    status: 'success',
+    data: {
+      originalWorkOrder,
+      newWorkOrder
     }
   });
 });

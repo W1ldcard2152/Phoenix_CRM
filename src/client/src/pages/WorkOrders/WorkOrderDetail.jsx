@@ -7,6 +7,7 @@ import TextArea from '../../components/common/TextArea';
 import WorkOrderService from '../../services/workOrderService';
 import workOrderNotesService from '../../services/workOrderNotesService';
 import PartsSelector from '../../components/parts/PartsSelector';
+import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -21,6 +22,7 @@ const WorkOrderDetail = () => {
   const [partsSelectorOpen, setPartsSelectorOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
+  const [splitModalOpen, setSplitModalOpen] = useState(false);
   
   // Work Order Notes state
   const [notes, setNotes] = useState([]);
@@ -428,6 +430,26 @@ const WorkOrderDetail = () => {
     navigate(`/invoices/generate?workOrder=${id}`);
   };
 
+  const handleSplitWorkOrder = async (splitData) => {
+    try {
+      const response = await WorkOrderService.splitWorkOrder(id, splitData);
+      
+      // Update the current work order with the modified data
+      setWorkOrder(response.data.originalWorkOrder);
+      
+      // Show success message and navigate to the new work order
+      alert(`Work order split successfully! New work order created: ${response.data.newWorkOrder._id.slice(-6)}`);
+      
+      // Optionally navigate to the new work order
+      if (window.confirm('Would you like to view the new work order?')) {
+        navigate(`/work-orders/${response.data.newWorkOrder._id}`);
+      }
+    } catch (err) {
+      console.error('Error splitting work order:', err);
+      setError('Failed to split work order. Please try again.');
+    }
+  };
+
   // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -525,6 +547,13 @@ const WorkOrderDetail = () => {
             variant="primary"
           >
             Edit Work Order
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setSplitModalOpen(true)}
+            disabled={(!workOrder.parts || workOrder.parts.length === 0) && (!workOrder.labor || workOrder.labor.length === 0)}
+          >
+            Split Work Order
           </Button>
           <Button
             variant="danger"
@@ -1390,6 +1419,14 @@ const WorkOrderDetail = () => {
           onClose={() => setPartsSelectorOpen(false)}
         />
       )}
+
+      {/* Split Work Order Modal */}
+      <SplitWorkOrderModal
+        isOpen={splitModalOpen}
+        onClose={() => setSplitModalOpen(false)}
+        workOrder={workOrder}
+        onSplit={handleSplitWorkOrder}
+      />
     </div>
   );
 };

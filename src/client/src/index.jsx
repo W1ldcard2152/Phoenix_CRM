@@ -11,8 +11,8 @@ root.render(
   </React.StrictMode>
 );
 
-// Register Service Worker for PWA functionality
-if ('serviceWorker' in navigator) {
+// Register Service Worker for PWA functionality (only in production)
+if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
@@ -79,8 +79,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Background Sync registration
-if ('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype) {
+// Background Sync registration (only in production)
+if ('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype && process.env.NODE_ENV === 'production') {
   navigator.serviceWorker.ready.then((registration) => {
     // Register for background sync when offline requests fail
     window.addEventListener('online', () => {

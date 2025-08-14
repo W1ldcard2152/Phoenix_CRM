@@ -27,6 +27,9 @@ router.post('/:id/labor', workOrderController.addLabor);
 // Generate invoice
 router.get('/:id/invoice', workOrderController.generateInvoice);
 
+// Split work order
+router.post('/:id/split', workOrderController.splitWorkOrder);
+
 // Work order notes routes - mount under /:workOrderId/notes
 router.use('/:workOrderId/notes', workOrderNotesRoutes);
 

@@ -152,6 +152,17 @@ const WorkOrderService = {
       console.error('Error fetching work orders needing scheduling:', error);
       throw error;
     }
+  },
+
+  // Split a work order
+  splitWorkOrder: async (id, splitData) => {
+    try {
+      const response = await API.post(`/workorders/${id}/split`, splitData);
+      return response.data;
+    } catch (error) {
+      console.error(`Error splitting work order ${id}:`, error);
+      throw error;
+    }
   }
 };
 
