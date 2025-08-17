@@ -19,7 +19,8 @@
       "Bash(cmd /c:*)",
       "Bash(timeout:*)",
       "Bash(tasklist:*)",
-      "Bash(set PORT=3001)"
+      "Bash(set PORT=3001)",
+      "Bash(set PORT=5001)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

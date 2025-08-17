@@ -468,7 +468,7 @@ const WorkOrderForm = () => {
                 
                 <div className="md:col-span-2">
                   <TextArea
-                    label="Diagnostic Notes"
+                    label="Initial Notes (Customer Facing)"
                     name="diagnosticNotes"
                     value={values.diagnosticNotes}
                     onChange={handleChange}
@@ -476,6 +476,7 @@ const WorkOrderForm = () => {
                     error={errors.diagnosticNotes}
                     touched={touched.diagnosticNotes}
                     rows={4}
+                    placeholder="Enter initial notes about the service request (visible to customer)"
                   />
                 </div>
               </div>

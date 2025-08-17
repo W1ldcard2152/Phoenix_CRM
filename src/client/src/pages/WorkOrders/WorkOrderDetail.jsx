@@ -6,8 +6,11 @@ import SelectInput from '../../components/common/SelectInput';
 import TextArea from '../../components/common/TextArea';
 import WorkOrderService from '../../services/workOrderService';
 import workOrderNotesService from '../../services/workOrderNotesService';
+import MediaService from '../../services/mediaService';
 import PartsSelector from '../../components/parts/PartsSelector';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
+import FileUpload from '../../components/common/FileUpload';
+import FileList from '../../components/common/FileList';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -31,6 +34,10 @@ const WorkOrderDetail = () => {
   const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false });
   const [addingNote, setAddingNote] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+  
+  // File attachment state
+  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [filesLoading, setFilesLoading] = useState(false);
   
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
@@ -90,12 +97,31 @@ const WorkOrderDetail = () => {
     }
   }, [id]);
 
-  // Fetch work order notes
+  // Fetch work order notes and files
   useEffect(() => {
     if (workOrder) {
       fetchNotes();
+      fetchAttachedFiles();
     }
   }, [workOrder, fetchNotes]);
+
+  const fetchAttachedFiles = useCallback(async () => {
+    try {
+      setFilesLoading(true);
+      const response = await MediaService.getAllMedia({ workOrder: id });
+      
+      if (response && response.data && response.data.media) {
+        setAttachedFiles(response.data.media);
+      } else {
+        setAttachedFiles([]);
+      }
+    } catch (err) {
+      console.error('Error fetching attached files:', err);
+      setAttachedFiles([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [id]);
 
   // Work Order Notes handlers
   const handleAddNote = async () => {
@@ -422,6 +448,37 @@ const WorkOrderDetail = () => {
     } catch (err) {
       console.error('Error updating part status:', err);
       setError('Failed to update part status. Please try again later.');
+    }
+  };
+
+  // File handling functions
+  const handleFileUpload = async (formData) => {
+    try {
+      await MediaService.uploadMedia(formData);
+      await fetchAttachedFiles(); // Refresh the file list
+    } catch (error) {
+      console.error('File upload failed:', error);
+      throw error;
+    }
+  };
+
+  const handleFileDelete = async (fileId) => {
+    try {
+      await MediaService.deleteMedia(fileId);
+      await fetchAttachedFiles(); // Refresh the file list
+    } catch (error) {
+      console.error('File deletion failed:', error);
+      setError('Failed to delete file. Please try again.');
+    }
+  };
+
+  const handleFileShare = async (fileId, email) => {
+    try {
+      await MediaService.shareMediaViaEmail(fileId, email);
+      await fetchAttachedFiles(); // Refresh the file list to show shared status
+    } catch (error) {
+      console.error('File sharing failed:', error);
+      throw error;
     }
   };
 
@@ -1137,6 +1194,47 @@ const WorkOrderDetail = () => {
             </div>
           )}
         </Card>
+
+        {/* File Attachments Section */}
+        <Card title="Attached Documents">
+          <div className="space-y-6">
+            {/* Upload Section */}
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 mb-4">Upload New Document</h4>
+              <FileUpload
+                onFileUpload={handleFileUpload}
+                workOrderId={workOrder._id}
+                vehicleId={workOrder.vehicle?._id}
+                customerId={workOrder.customer?._id}
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.txt,.doc,.docx,.xls,.xlsx"
+              />
+            </div>
+            
+            {/* Files List */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-medium text-gray-900">
+                  Documents ({attachedFiles.length})
+                </h4>
+                {attachedFiles.length > 0 && (
+                  <Button
+                    onClick={() => fetchAttachedFiles()}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Refresh
+                  </Button>
+                )}
+              </div>
+              <FileList
+                files={attachedFiles}
+                onDelete={handleFileDelete}
+                onShare={handleFileShare}
+                loading={filesLoading}
+              />
+            </div>
+          </div>
+        </Card>
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -1366,7 +1464,7 @@ const WorkOrderDetail = () => {
               <Button
                 variant="primary"
                 onClick={editingLabor ? handleEditLabor : handleAddLabor}
-                disabled={!newLabor.description || !newLabor.hours || !newLabor.rate}
+                disabled={!newLabor.description || !newLabor.hours || newLabor.rate < 0}
               >
                 {editingLabor ? 'Update Labor' : 'Add Labor'}
               </Button>

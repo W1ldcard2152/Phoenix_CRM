@@ -3,6 +3,7 @@ const WorkOrder = require('../models/WorkOrder');
 const Vehicle = require('../models/Vehicle');
 const Customer = require('../models/Customer');
 const Appointment = require('../models/Appointment');
+const WorkOrderNote = require('../models/WorkOrderNote');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const twilioService = require('../services/twilioService');
@@ -154,6 +155,22 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   }
   
   const newWorkOrder = await WorkOrder.create(workOrderData);
+  
+  // Create a note from diagnostic notes if provided
+  if (workOrderData.diagnosticNotes && workOrderData.diagnosticNotes.trim()) {
+    try {
+      await WorkOrderNote.create({
+        workOrder: newWorkOrder._id,
+        content: workOrderData.diagnosticNotes.trim(),
+        isCustomerFacing: true, // Default to customer facing as requested
+        createdBy: 'System', // Could be enhanced to use actual user
+        createdAt: new Date()
+      });
+    } catch (noteError) {
+      console.error('Error creating note from diagnostic notes:', noteError);
+      // Don't fail the work order creation if note creation fails
+    }
+  }
   
   // Add the work order to the vehicle's service history
   vehicle.serviceHistory.push(newWorkOrder._id);

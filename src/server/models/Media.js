@@ -24,13 +24,16 @@ const MediaSchema = new Schema(
       type: String,
       required: true
     },
+    s3Key: {
+      type: String,
+      required: true
+    },
     fileName: {
       type: String,
       required: true
     },
     fileType: {
       type: String,
-      enum: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain', 'other'],
       required: true
     },
     fileSize: {

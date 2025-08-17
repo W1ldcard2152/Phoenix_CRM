@@ -2,18 +2,14 @@ const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 
 // Configure AWS SDK
-/*
 AWS.config.update({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   region: process.env.AWS_REGION
 });
-*/
 
-// const s3 = new AWS.S3();
-// const bucketName = process.env.S3_BUCKET_NAME;
-const s3 = null; // S3 not configured
-const bucketName = null; // S3 not configured
+const s3 = new AWS.S3();
+const bucketName = process.env.S3_BUCKET_NAME;
 
 /**
  * Upload a file to S3
@@ -63,9 +59,12 @@ exports.getSignedUrl = (key, expiresIn = 3600) => {
       throw new Error('S3 key is required to generate a signed URL');
     }
     
+    // Decode the key if it's URL encoded (for backwards compatibility)
+    const decodedKey = decodeURIComponent(key);
+    
     const params = {
       Bucket: bucketName,
-      Key: key,
+      Key: decodedKey,
       Expires: expiresIn
     };
     
@@ -86,9 +85,13 @@ exports.deleteFile = async (key) => {
     console.warn('S3 service is not configured. File deletion skipped.');
     return Promise.resolve(); 
   }
+  
+  // Decode the key if it's URL encoded (for backwards compatibility)
+  const decodedKey = decodeURIComponent(key);
+  
   const params = {
     Bucket: bucketName,
-    Key: key
+    Key: decodedKey
   };
   
   return s3.deleteObject(params).promise();

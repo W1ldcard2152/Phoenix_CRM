@@ -6,6 +6,7 @@ import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import ResponsiveTable, { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import WorkOrderService from '../../services/workOrderService';
+import MediaService from '../../services/mediaService';
 
 const WorkOrderList = () => {
   const [workOrders, setWorkOrders] = useState([]);
@@ -17,6 +18,7 @@ const WorkOrderList = () => {
   const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
   const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false); // Added for collapsible on hold & cancelled table
   const [statusUpdating, setStatusUpdating] = useState(null); // Track which work order status is being updated
+  const [attachmentCounts, setAttachmentCounts] = useState({}); // Track attachment counts for each work order
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -51,6 +53,9 @@ const WorkOrderList = () => {
         });
         setWorkOrders(sortedWorkOrders);
         
+        // Fetch attachment counts for each work order
+        await fetchAttachmentCounts(sortedWorkOrders);
+        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching work orders:', err);
@@ -61,6 +66,29 @@ const WorkOrderList = () => {
 
     fetchWorkOrders();
   }, [customerParam, vehicleParam, statusFilter]);
+
+  const fetchAttachmentCounts = async (workOrdersList) => {
+    try {
+      const counts = {};
+      
+      // Fetch attachment counts for each work order
+      await Promise.all(
+        workOrdersList.map(async (workOrder) => {
+          try {
+            const response = await MediaService.getAllMedia({ workOrder: workOrder._id });
+            counts[workOrder._id] = response?.data?.media?.length || 0;
+          } catch (err) {
+            console.error(`Error fetching attachments for work order ${workOrder._id}:`, err);
+            counts[workOrder._id] = 0;
+          }
+        })
+      );
+      
+      setAttachmentCounts(counts);
+    } catch (err) {
+      console.error('Error fetching attachment counts:', err);
+    }
+  };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -415,8 +443,18 @@ const WorkOrderList = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 truncate max-w-xs">
-                        {getServiceDisplay(workOrder)}
+                      <div className="flex items-center space-x-2">
+                        <div className="text-sm text-gray-900 truncate max-w-xs">
+                          {getServiceDisplay(workOrder)}
+                        </div>
+                        {attachmentCounts[workOrder._id] > 0 && (
+                          <div className="flex items-center space-x-1 text-xs text-gray-500">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                            </svg>
+                            <span>{attachmentCounts[workOrder._id]}</span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -551,7 +589,17 @@ const WorkOrderList = () => {
                   </div>
 
                   <MobileSection label="Service">
-                    <div className="text-sm">{getServiceDisplay(workOrder)}</div>
+                    <div className="flex items-center space-x-2">
+                      <div className="text-sm">{getServiceDisplay(workOrder)}</div>
+                      {attachmentCounts[workOrder._id] > 0 && (
+                        <div className="flex items-center space-x-1 text-xs text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                          <span>{attachmentCounts[workOrder._id]}</span>
+                        </div>
+                      )}
+                    </div>
                   </MobileSection>
 
                   <div className="flex items-center justify-between pt-3 border-t border-gray-100">
@@ -645,7 +693,17 @@ const WorkOrderList = () => {
                           <div className="text-sm text-gray-500">{workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                          <div className="flex items-center space-x-2">
+                            <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                            {attachmentCounts[workOrder._id] > 0 && (
+                              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                </svg>
+                                <span>{attachmentCounts[workOrder._id]}</span>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="relative">
@@ -763,7 +821,17 @@ const WorkOrderList = () => {
                           <div className="text-sm text-gray-500">{workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                          <div className="flex items-center space-x-2">
+                            <div className="text-sm text-gray-900 truncate max-w-xs">{getServiceDisplay(workOrder)}</div>
+                            {attachmentCounts[workOrder._id] > 0 && (
+                              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                </svg>
+                                <span>{attachmentCounts[workOrder._id]}</span>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="relative">
