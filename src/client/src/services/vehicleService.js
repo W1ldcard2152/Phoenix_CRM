@@ -1,4 +1,5 @@
 import API from './api';
+import { getTodayForInput } from '../utils/formatters';
 
 const VehicleService = {
   // Get all vehicles
@@ -37,7 +38,7 @@ const VehicleService = {
       if (vehicleData.mileageHistory && vehicleData.mileageHistory.length > 0) {
         vehicleData.mileageHistory = vehicleData.mileageHistory.map(record => ({
           ...record,
-          date: record.date || new Date().toISOString().split('T')[0],
+          date: record.date || getTodayForInput(),
           mileage: parseInt(record.mileage) || 0
         }));
       }
@@ -58,7 +59,7 @@ const VehicleService = {
       if (vehicleData.mileageHistory && vehicleData.mileageHistory.length > 0) {
         vehicleData.mileageHistory = vehicleData.mileageHistory.map(record => ({
           ...record,
-          date: record.date || new Date().toISOString().split('T')[0],
+          date: record.date || getTodayForInput(),
           mileage: parseInt(record.mileage) || 0
         }));
         
@@ -118,7 +119,7 @@ const VehicleService = {
     try {
       // Format the data
       const formattedData = {
-        date: mileageData.date || new Date().toISOString().split('T')[0],
+        date: mileageData.date || getTodayForInput(),
         mileage: parseInt(mileageData.mileage) || 0,
         notes: mileageData.notes || ''
       };

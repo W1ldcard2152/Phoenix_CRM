@@ -4,6 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import AppointmentService from '../../services/appointmentService';
+import { getTodayForInput } from '../../utils/formatters';
 
 const VehicleDetail = () => {
   const { id } = useParams();
@@ -16,7 +17,7 @@ const VehicleDetail = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [mileageModalOpen, setMileageModalOpen] = useState(false);
   const [newMileageRecord, setNewMileageRecord] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayForInput(),
     mileage: '',
     notes: ''
   });
@@ -96,7 +97,7 @@ const VehicleDetail = () => {
       
       // Reset the form and close modal
       setNewMileageRecord({
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayForInput(),
         mileage: '',
         notes: ''
       });

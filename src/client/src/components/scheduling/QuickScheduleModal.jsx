@@ -7,6 +7,7 @@ import SelectInput from '../common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService'; // Import technician service
+import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 /**
  * Quick Schedule Modal Component
@@ -26,7 +27,7 @@ const QuickScheduleModal = ({
   const [workOrder, setWorkOrder] = useState(null);
   const [technicianOptionsList, setTechnicianOptionsList] = useState([{ value: '', label: 'Loading Technicians...' }]);
   const [scheduleData, setScheduleData] = useState({
-    date: initialDate || new Date().toISOString().split('T')[0],
+    date: initialDate ? formatDateForInput(initialDate) : getTodayForInput(),
     startTime: '09:00',
     duration: 1,
     technician: '',

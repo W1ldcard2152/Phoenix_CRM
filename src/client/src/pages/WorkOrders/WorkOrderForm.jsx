@@ -10,6 +10,7 @@ import Button from '../../components/common/Button';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService'; // Added VehicleService
+import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - updated for services array
 const WorkOrderSchema = Yup.object().shape({
@@ -47,7 +48,7 @@ const WorkOrderForm = () => {
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',
     vehicle: vehicleIdParam || '',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayForInput(),
     currentMileage: '', // Added currentMileage
     services: [{ description: '' }], // Initialize with one empty service item
     priority: 'Normal',
@@ -106,7 +107,7 @@ const WorkOrderForm = () => {
               : workOrderData.customer,
             vehicle: loadedVehicleId,
             currentMileage: workOrderData.currentMileage || '', // Load current mileage if exists
-            date: new Date(workOrderData.date).toISOString().split('T')[0],
+            date: formatDateForInput(workOrderData.date),
             services: servicesArray,
             priority: workOrderData.priority || 'Normal',
             status: workOrderData.status || 'Created',

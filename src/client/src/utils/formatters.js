@@ -77,3 +77,44 @@ export const capitalizeWords = (str) => {
   if (!str) return '';
   return str.replace(/\b\w/g, char => char.toUpperCase());
 };
+
+/**
+ * Convert a Date object to a local date string for HTML date inputs (YYYY-MM-DD)
+ * This avoids timezone conversion issues by working with local dates
+ * @param {Date|string} date - The date to format
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+export const formatDateForInput = (date) => {
+  if (!date) return '';
+  
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  
+  // Use local date methods to avoid timezone conversion
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Get today's date as a local date string for HTML date inputs (YYYY-MM-DD)
+ * @returns {string} Today's date in YYYY-MM-DD format
+ */
+export const getTodayForInput = () => {
+  const today = new Date();
+  return formatDateForInput(today);
+};
+
+/**
+ * Parse a date from an HTML date input and create a Date object
+ * This ensures the date is treated as a local date, not UTC
+ * @param {string} dateString - Date string in YYYY-MM-DD format
+ * @returns {Date} Date object representing the local date
+ */
+export const parseDateFromInput = (dateString) => {
+  if (!dateString) return null;
+  
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day); // month is 0-indexed
+};

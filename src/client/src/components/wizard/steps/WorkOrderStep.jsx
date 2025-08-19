@@ -6,6 +6,7 @@ import Button from '../../common/Button';
 import Input from '../../common/Input';
 import TextArea from '../../common/TextArea';
 import SelectInput from '../../common/SelectInput';
+import { getTodayForInput } from '../../../utils/formatters';
 
 const WorkOrderSchema = Yup.object().shape({
   services: Yup.array().of(
@@ -37,7 +38,7 @@ const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoadi
       const workOrderData = {
         customer: customer._id,
         vehicle: vehicle._id,
-        date: new Date().toISOString().split('T')[0],
+        date: getTodayForInput(),
         currentMileage: values.currentMileage,
         services: values.services,
         serviceRequested: values.services.map(s => s.description).join('\n'),

@@ -8,7 +8,7 @@ import SelectInput from '../../components/common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService'; // Import technician service
-import { formatDateTimeToET } from '../../utils/formatters';
+import { formatDateTimeToET, getTodayForInput, formatDateForInput } from '../../utils/formatters';
 
 const AppointmentList = () => {
   const navigate = useNavigate();
@@ -17,8 +17,8 @@ const AppointmentList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState({
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    startDate: getTodayForInput(),
+    endDate: formatDateForInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
   });
   const [statusFilter, setStatusFilter] = useState('');
   const [technicianFilter, setTechnicianFilter] = useState('');

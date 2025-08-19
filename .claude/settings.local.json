@@ -20,7 +20,8 @@
       "Bash(timeout:*)",
       "Bash(tasklist:*)",
       "Bash(set PORT=3001)",
-      "Bash(set PORT=5001)"
+      "Bash(set PORT=5001)",
+      "Bash(del test-date-fix.js)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"

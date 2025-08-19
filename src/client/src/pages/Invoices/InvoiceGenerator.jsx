@@ -12,7 +12,7 @@ import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay'; // Import the new component
 // formatCurrency is now imported from utils/formatters, so local definition is removed.
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, getTodayForInput } from '../../utils/formatters';
 
 
 const InvoiceGenerator = () => {
@@ -33,7 +33,7 @@ const InvoiceGenerator = () => {
   // Form data
   const [invoiceData, setInvoiceData] = useState({
     invoiceNumber: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: getTodayForInput(),
     customerNotes: '',
     terms: 'All services and repairs are guaranteed for 90 days or 3,000 miles, whichever comes first. Payment is due upon receipt unless other arrangements are made.',
     taxRate: 8.0,
@@ -169,13 +169,13 @@ const InvoiceGenerator = () => {
         setCustomers(customersRes.data.customers);
 
         const today = new Date();
-        const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+        const dateStr = getTodayForInput().replace(/-/g, '');
         const invoiceCount = Math.floor(Math.random() * 10000) + 1;
         
         setInvoiceData(prev => ({
           ...prev,
           invoiceNumber: `INV-${dateStr}-${invoiceCount.toString().padStart(4, '0')}`,
-          invoiceDate: today.toISOString().split('T')[0]
+          invoiceDate: getTodayForInput()
         }));
 
         const dueDate = new Date();

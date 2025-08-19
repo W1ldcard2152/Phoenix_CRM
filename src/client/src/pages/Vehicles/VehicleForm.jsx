@@ -12,6 +12,7 @@ import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 import vinService from '../../services/vinService';
 import RegistrationScanner from '../../components/vehicles/RegistrationScanner';
+import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - updated with mileage history
 const VehicleSchema = Yup.object().shape({
@@ -112,9 +113,9 @@ const VehicleForm = () => {
     try {
       // Add current mileage to history if provided and no existing record for today
       if (values.currentMileage) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayForInput();
         const hasTodayRecord = values.mileageHistory.some(record => 
-          new Date(record.date).toISOString().split('T')[0] === today
+          formatDateForInput(record.date) === today
         );
         
         if (!hasTodayRecord) {
@@ -256,7 +257,7 @@ const VehicleForm = () => {
   const formatDateForInput = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toISOString().split('T')[0];
+    return formatDateForInput(date);
   };
 
   return (
@@ -464,7 +465,7 @@ const VehicleForm = () => {
                             <Button
                               type="button"
                               onClick={() => push({ 
-                                date: new Date().toISOString().split('T')[0],
+                                date: getTodayForInput(),
                                 mileage: values.currentMileage || '',
                                 notes: ''
                               })}
