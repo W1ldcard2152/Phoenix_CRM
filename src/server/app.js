@@ -32,6 +32,7 @@ const feedbackRoutes = require('./routes/feedbackRoutes'); // Import feedback ro
 const partRoutes = require('./routes/partRoutes'); // Import part routes
 const vinRoutes = require('./routes/vinRoutes'); // Import VIN routes
 const registrationRoutes = require('./routes/registrationRoutes'); // Import registration routes
+const searchRoutes = require('./routes/searchRoutes'); // Import search routes
 
 // Initialize Express app
 const app = express();
@@ -99,6 +100,7 @@ app.use('/api/feedback', feedbackRoutes); // Use feedback routes
 app.use('/api/parts', partRoutes); // Use part routes
 app.use('/api/vin', vinRoutes); // Use VIN routes
 app.use('/api/registration', registrationRoutes); // Use registration routes
+app.use('/api/search', searchRoutes); // Use search routes
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

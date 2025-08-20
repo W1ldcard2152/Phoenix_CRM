@@ -1,6 +1,6 @@
 // src/client/src/App.jsx - Fixed with Appointment Routes
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import './components/wizard/wizard.css';
@@ -41,6 +41,11 @@ import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import ne
 // Parts Pages
 import PartsList from './pages/Parts/PartsList';
 import PartsForm from './pages/Parts/PartsForm';
+
+// Technician Portal Pages
+import TechnicianPortal from './pages/TechnicianPortal/TechnicianPortal';
+import TechnicianChecklist from './pages/TechnicianPortal/TechnicianChecklist';
+import TechnicianWorkOrderDetail from './pages/TechnicianPortal/TechnicianWorkOrderDetail';
 
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -121,6 +126,11 @@ const App = () => {
                       <Route path="/parts" element={<PartsList />} />
                       <Route path="/parts/new" element={<PartsForm />} />
                       <Route path="/parts/:id/edit" element={<PartsForm />} />
+
+                      {/* Technician Portal Routes */}
+                      <Route path="/technician-portal" element={<TechnicianPortal />} />
+                      <Route path="/technician-portal/checklist/:id" element={<TechnicianChecklist />} />
+                      <Route path="/technician-portal/work-orders/:id" element={<TechnicianWorkOrderDetail />} />
 
                       {/* Settings Routes */}
                       <Route path="/settings" element={<SettingsPage />} />

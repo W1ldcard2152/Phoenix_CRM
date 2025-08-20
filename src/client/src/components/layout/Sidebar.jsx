@@ -68,6 +68,7 @@ const Sidebar = () => {
     { name: 'Customers', path: '/customers', icon: 'fas fa-users' },
     { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car' },
     { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list' },
+    { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench' },
     { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt' },
     { name: 'Parts', path: '/parts', icon: 'fas fa-cogs' },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar' },

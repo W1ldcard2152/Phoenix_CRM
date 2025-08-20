@@ -6,6 +6,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import AppointmentCalendar from '../../components/dashboard/AppointmentCalendar';
 import WorkflowSummary from '../../components/dashboard/WorkflowSummary';
+import GlobalSearch from '../../components/common/GlobalSearch';
 import WorkOrderService from '../../services/workOrderService';
 
 const Dashboard = () => {
@@ -65,8 +66,15 @@ const Dashboard = () => {
   return (
     <div className="container mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-600">Welcome to the Auto Repair Shop CRM</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+            <p className="text-gray-600">Welcome to the Auto Repair Shop CRM</p>
+          </div>
+          <div className="w-full sm:w-80">
+            <GlobalSearch />
+          </div>
+        </div>
       </div>
       
       {error && (
