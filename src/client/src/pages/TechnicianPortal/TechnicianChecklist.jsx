@@ -46,6 +46,26 @@ const TechnicianChecklist = () => {
       const fetchedWorkOrder = response.data.workOrder;
       setWorkOrder(fetchedWorkOrder);
       
+      // Check if checklist has already been completed for this work order
+      try {
+        const notesResponse = await workOrderNotesService.getNotes(id);
+        const notes = notesResponse?.data?.notes || [];
+        
+        // Look for a vehicle inspection checklist note
+        const hasInspectionChecklist = notes.some(note => 
+          note.content && note.content.includes('Vehicle Inspection Checklist:')
+        );
+        
+        if (hasInspectionChecklist) {
+          // Checklist already completed, redirect to work order detail
+          console.log('Checklist already completed for this work order, redirecting...');
+          navigate(`/technician-portal/work-orders/${id}`);
+          return;
+        }
+      } catch (notesErr) {
+        console.warn('Could not check for existing checklist, proceeding with checklist:', notesErr);
+      }
+      
       // Pre-populate current mileage if available
       if (fetchedWorkOrder.vehicle?.currentMileage) {
         setChecklist(prev => ({
@@ -79,17 +99,42 @@ const TechnicianChecklist = () => {
   };
 
 
+  // Function to correlate tire depth with condition
+  const getTireConditionFromDepth = (depth) => {
+    const numericDepth = parseFloat(depth);
+    if (isNaN(numericDepth) || numericDepth < 0) return '';
+    
+    if (numericDepth <= 3) {
+      return 'Replace ASAP';
+    } else if (numericDepth < 6) {
+      return 'Replace Soon';
+    } else {
+      return 'Good Condition';
+    }
+  };
+
   const handleVehicleInspectionChange = (item, field, value) => {
-    setVehicleInspection(prev => ({
-      ...prev,
-      [item]: { ...prev[item], [field]: value }
-    }));
+    setVehicleInspection(prev => {
+      const updatedItem = { ...prev[item], [field]: value };
+      
+      // If it's a tire and we're updating the depth, auto-set the condition
+      if ((item === 'frontTires' || item === 'rearTires') && field === 'depth') {
+        const autoCondition = getTireConditionFromDepth(value);
+        if (autoCondition) {
+          updatedItem.status = autoCondition;
+        }
+      }
+      
+      return {
+        ...prev,
+        [item]: updatedItem
+      };
+    });
   };
 
   const isChecklistComplete = () => {
-    const basicChecklistComplete = Object.values(checklist).every(item => 
-      !item.required || item.completed
-    );
+    // Check if mileage has a value (since we removed the checkbox)
+    const mileageComplete = checklist.currentMileage.value && checklist.currentMileage.value.trim();
     
     const vehicleInspectionComplete = Object.entries(vehicleInspection).every(([key, item]) => {
       if (!item.required) return true;
@@ -99,7 +144,7 @@ const TechnicianChecklist = () => {
       return true;
     });
 
-    return basicChecklistComplete && vehicleInspectionComplete;
+    return mileageComplete && vehicleInspectionComplete;
   };
 
   const handleSubmitChecklist = async () => {
@@ -112,11 +157,11 @@ const TechnicianChecklist = () => {
       setSubmitting(true);
 
       // 1. Update vehicle mileage if provided
-      if (checklist.currentMileage.completed && checklist.currentMileage.value) {
+      if (checklist.currentMileage.value && checklist.currentMileage.value.trim()) {
         await VehicleService.addMileageRecord(workOrder.vehicle._id, {
           date: getTodayForInput(),
           mileage: parseInt(checklist.currentMileage.value),
-          notes: `Mileage recorded during work order inspection - WO #${workOrder._id.slice(-6)}`
+          notes: `Recorded from Work Order #${workOrder._id.slice(-6)} Pre-Work Checklist`
         });
       }
 
@@ -247,41 +292,29 @@ const TechnicianChecklist = () => {
         <div className="space-y-6">
           {/* Current Mileage */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <div className="flex items-start space-x-4">
-              <div className="flex items-center pt-1">
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Current Mileage <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center space-x-3">
                 <input
-                  type="checkbox"
-                  id="currentMileage"
-                  checked={checklist.currentMileage.completed}
-                  onChange={(e) => handleChecklistChange('currentMileage', 'completed', e.target.checked)}
-                  className="h-5 w-5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  disabled={!checklist.currentMileage.value.trim()}
+                  type="number"
+                  placeholder="Enter current mileage"
+                  value={checklist.currentMileage.value}
+                  onChange={(e) => handleChecklistChange('currentMileage', 'value', e.target.value)}
+                  className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  min="0"
                 />
+                <span className="text-sm text-gray-500">miles</span>
+                {workOrder.vehicle?.currentMileage && (
+                  <span className="text-sm text-gray-500">
+                    (Last recorded: {workOrder.vehicle.currentMileage.toLocaleString()} miles)
+                  </span>
+                )}
               </div>
-              <div className="flex-1">
-                <label htmlFor="currentMileage" className="block text-sm font-medium text-gray-900 mb-2">
-                  Current Mileage <span className="text-red-500">*</span>
-                </label>
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="number"
-                    placeholder="Enter current mileage"
-                    value={checklist.currentMileage.value}
-                    onChange={(e) => handleChecklistChange('currentMileage', 'value', e.target.value)}
-                    className="w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    min="0"
-                  />
-                  <span className="text-sm text-gray-500">miles</span>
-                  {workOrder.vehicle?.currentMileage && (
-                    <span className="text-sm text-gray-500">
-                      (Last recorded: {workOrder.vehicle.currentMileage.toLocaleString()} miles)
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  Record the current odometer reading to track vehicle usage
-                </p>
-              </div>
+              <p className="text-sm text-gray-600 mt-1">
+                Record the current odometer reading to track vehicle usage
+              </p>
             </div>
           </div>
 
@@ -359,7 +392,7 @@ const TechnicianChecklist = () => {
                       />
                       <span className="text-sm text-gray-500">/32"</span>
                       <span className="text-xs text-gray-400">
-                        (New tires: ~10-12/32", Replace at: 2/32")
+                        (0-3/32": Replace ASAP, 4-5/32": Replace Soon, 6+/32": Good Condition)
                       </span>
                     </div>
                   </div>

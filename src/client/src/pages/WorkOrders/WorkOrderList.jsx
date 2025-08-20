@@ -67,6 +67,54 @@ const WorkOrderList = () => {
     fetchWorkOrders();
   }, [customerParam, vehicleParam, statusFilter]);
 
+  // Real-time search effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      // If search is empty, fetch all work orders with current filters
+      const fetchAllWorkOrders = async () => {
+        try {
+          setIsSearching(true);
+          const filters = {};
+          if (customerParam) filters.customer = customerParam;
+          if (vehicleParam) filters.vehicle = vehicleParam;
+          if (statusFilter) filters.status = statusFilter;
+          
+          const response = await WorkOrderService.getAllWorkOrders(filters);
+          const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
+            const statusPriorityA = getStatusPriority(a.status);
+            const statusPriorityB = getStatusPriority(b.status);
+            
+            if (statusPriorityA !== statusPriorityB) {
+              return statusPriorityA - statusPriorityB;
+            }
+            
+            return new Date(b.date) - new Date(a.date);
+          });
+          setWorkOrders(sortedWorkOrders);
+          await fetchAttachmentCounts(sortedWorkOrders);
+          setIsSearching(false);
+        } catch (err) {
+          console.error('Error fetching work orders:', err);
+          setError('Failed to load work orders. Please try again later.');
+          setIsSearching(false);
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
+        fetchAllWorkOrders();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Debounced search
+      const timeoutId = setTimeout(() => {
+        performSearch(searchQuery);
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchQuery, customerParam, vehicleParam, statusFilter]);
+
   const fetchAttachmentCounts = async (workOrdersList) => {
     try {
       const counts = {};
@@ -90,46 +138,11 @@ const WorkOrderList = () => {
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      // If search query is empty, fetch all work orders with current filters
-      try {
-        setIsSearching(true);
-        
-        const filters = {};
-        if (customerParam) filters.customer = customerParam;
-        if (vehicleParam) filters.vehicle = vehicleParam;
-        if (statusFilter) filters.status = statusFilter;
-        
-        const response = await WorkOrderService.getAllWorkOrders(filters);
-        const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
-          // First sort by status priority
-          const statusPriorityA = getStatusPriority(a.status);
-          const statusPriorityB = getStatusPriority(b.status);
-          
-          if (statusPriorityA !== statusPriorityB) {
-            return statusPriorityA - statusPriorityB;
-          }
-          
-          // If status priority is the same, sort by date (newest first)
-          return new Date(b.date) - new Date(a.date);
-        });
-        setWorkOrders(sortedWorkOrders);
-        
-        setIsSearching(false);
-      } catch (err) {
-        console.error('Error fetching work orders:', err);
-        setError('Failed to load work orders. Please try again later.');
-        setIsSearching(false);
-      }
-      return;
-    }
-
+  const performSearch = async (query) => {
     try {
       setIsSearching(true);
-      const response = await WorkOrderService.searchWorkOrders(searchQuery);
+      const response = await WorkOrderService.searchWorkOrders(query);
       const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
-        // First sort by status priority
         const statusPriorityA = getStatusPriority(a.status);
         const statusPriorityB = getStatusPriority(b.status);
         
@@ -137,10 +150,10 @@ const WorkOrderList = () => {
           return statusPriorityA - statusPriorityB;
         }
         
-        // If status priority is the same, sort by date (newest first)
         return new Date(b.date) - new Date(a.date);
       });
       setWorkOrders(sortedWorkOrders);
+      await fetchAttachmentCounts(sortedWorkOrders);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching work orders:', err);
@@ -332,36 +345,27 @@ const WorkOrderList = () => {
 
       <Card>
         <div className="mb-4 space-y-4 md:space-y-0 md:grid md:grid-cols-3 md:gap-4">
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 relative">
             <Input
               placeholder="Search by service type, notes, or status..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleSearch();
-                }
-              }}
-              className="w-full"
+              className="w-full pr-10"
             />
+            {isSearching && (
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                <i className="fas fa-spinner fa-spin text-gray-400"></i>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div>
             <SelectInput
               name="statusFilter"
               options={statusOptions}
               value={statusFilter}
               onChange={handleStatusChange}
-              className="flex-grow"
+              className="w-full"
             />
-            <Button
-              onClick={handleSearch}
-              variant="secondary"
-              className="w-full sm:w-auto"
-              disabled={isSearching}
-              size="md"
-            >
-              {isSearching ? 'Searching...' : 'Search'}
-            </Button>
           </div>
         </div>
 

@@ -109,6 +109,41 @@ const VehicleDetail = () => {
     }
   };
 
+  const handleDeleteMileageRecord = async (recordIndex) => {
+    if (!window.confirm('Are you sure you want to delete this mileage record?')) {
+      return;
+    }
+
+    try {
+      // Create a copy of vehicle with the mileage record removed
+      const updatedMileageHistory = [...vehicle.mileageHistory];
+      updatedMileageHistory.splice(recordIndex, 1);
+      
+      // Recalculate current mileage from remaining records
+      let newCurrentMileage = 0;
+      if (updatedMileageHistory.length > 0) {
+        newCurrentMileage = Math.max(...updatedMileageHistory.map(record => record.mileage));
+      }
+
+      const updatedVehicle = {
+        ...vehicle,
+        mileageHistory: updatedMileageHistory,
+        currentMileage: newCurrentMileage
+      };
+      
+      // Update the vehicle
+      await VehicleService.updateVehicle(id, updatedVehicle);
+      
+      // Reload the vehicle data
+      const vehicleResponse = await VehicleService.getVehicle(id);
+      setVehicle(vehicleResponse.data.vehicle);
+      
+    } catch (err) {
+      console.error('Error deleting mileage record:', err);
+      setError('Failed to delete mileage record. Please try again later.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto flex justify-center items-center h-48">
@@ -277,14 +312,18 @@ const VehicleDetail = () => {
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Notes
                     </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {/* Sort mileage history by date descending */}
                   {[...vehicle.mileageHistory]
+                    .map((record, originalIndex) => ({ ...record, originalIndex }))
                     .sort((a, b) => new Date(b.date) - new Date(a.date))
-                    .map((record, index) => (
-                      <tr key={index} className={index === 0 ? 'bg-blue-50' : ''}>
+                    .map((record, sortedIndex) => (
+                      <tr key={record.originalIndex} className={sortedIndex === 0 ? 'bg-blue-50' : ''}>
                         <td className="px-4 py-2 whitespace-nowrap">
                           <div className="font-medium text-gray-900">
                             {formatDate(record.date)}
@@ -299,6 +338,15 @@ const VehicleDetail = () => {
                           <div className="text-sm text-gray-900">
                             {record.notes || '-'}
                           </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-right">
+                          <button
+                            onClick={() => handleDeleteMileageRecord(record.originalIndex)}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                            title="Delete mileage record"
+                          >
+                            Delete
+                          </button>
                         </td>
                       </tr>
                     ))}

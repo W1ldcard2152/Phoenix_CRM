@@ -1027,8 +1027,21 @@ const WorkOrderDetail = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {workOrder.parts.map((part, index) => (
-                    <tr key={index}>
+                  {workOrder.parts
+                    .map((part, originalIndex) => ({ ...part, originalIndex }))
+                    .sort((a, b) => {
+                      // Sort by vendor alphabetically, with empty vendors at the end
+                      const vendorA = (a.vendor || '').toLowerCase();
+                      const vendorB = (b.vendor || '').toLowerCase();
+                      
+                      if (!vendorA && !vendorB) return 0;
+                      if (!vendorA) return 1;
+                      if (!vendorB) return -1;
+                      
+                      return vendorA.localeCompare(vendorB);
+                    })
+                    .map((part, sortedIndex) => (
+                    <tr key={part.originalIndex}>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="font-medium text-gray-900">
                           {part.name}
@@ -1065,7 +1078,7 @@ const WorkOrderDetail = () => {
                             <input
                               type="checkbox"
                               checked={part.ordered || false}
-                              onChange={(e) => handlePartStatusChange(index, 'ordered', e.target.checked)}
+                              onChange={(e) => handlePartStatusChange(part.originalIndex, 'ordered', e.target.checked)}
                               className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                             />
                             <span className={part.ordered ? 'text-yellow-600' : 'text-gray-500'}>
@@ -1077,7 +1090,7 @@ const WorkOrderDetail = () => {
                               type="checkbox"
                               checked={part.received || false}
                               disabled={!part.ordered}
-                              onChange={(e) => handlePartStatusChange(index, 'received', e.target.checked)}
+                              onChange={(e) => handlePartStatusChange(part.originalIndex, 'received', e.target.checked)}
                               className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                             />
                             <span className={part.received ? 'text-green-600' : (part.ordered ? 'text-gray-700' : 'text-gray-400')}>
@@ -1089,13 +1102,13 @@ const WorkOrderDetail = () => {
                       <td className="px-4 py-2 whitespace-nowrap text-right">
                         <div className="flex justify-end space-x-2">
                           <button
-                            onClick={() => openEditPartModal(part, index)}
+                            onClick={() => openEditPartModal(part, part.originalIndex)}
                             className="text-blue-600 hover:text-blue-800 text-xs"
                           >
                             Edit
                           </button>
                           <button
-                            onClick={() => handleRemovePart(index)}
+                            onClick={() => handleRemovePart(part.originalIndex)}
                             className="text-red-600 hover:text-red-800 text-xs"
                           >
                             Remove

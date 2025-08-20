@@ -29,26 +29,43 @@ const CustomerList = () => {
     fetchCustomers();
   }, []);
 
-  const handleSearch = async () => {
+  // Real-time search effect
+  useEffect(() => {
     if (!searchQuery.trim()) {
-      // If search query is empty, fetch all customers
-      try {
-        setIsSearching(true);
-        const response = await CustomerService.getAllCustomers();
-        const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
-        setCustomers(sortedCustomers);
-        setIsSearching(false);
-      } catch (err) {
-        console.error('Error fetching all customers:', err);
-        setError('Failed to load customers. Please try again later.');
-        setIsSearching(false);
-      }
-      return;
-    }
+      // If search is empty, fetch all customers
+      const fetchAllCustomers = async () => {
+        try {
+          setIsSearching(true);
+          const response = await CustomerService.getAllCustomers();
+          const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
+          setCustomers(sortedCustomers);
+          setIsSearching(false);
+        } catch (err) {
+          console.error('Error fetching customers:', err);
+          setError('Failed to load customers. Please try again later.');
+          setIsSearching(false);
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
+        fetchAllCustomers();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Debounced search
+      const timeoutId = setTimeout(() => {
+        performSearch(searchQuery);
+      }, 300);
 
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchQuery]);
+
+  const performSearch = async (query) => {
     try {
       setIsSearching(true);
-      const response = await CustomerService.searchCustomers(searchQuery);
+      const response = await CustomerService.searchCustomers(query);
       const sortedCustomers = response.data.customers.sort((a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id));
       setCustomers(sortedCustomers);
       setIsSearching(false);
@@ -75,26 +92,18 @@ const CustomerList = () => {
       )}
 
       <Card>
-        <div className="mb-4 flex">
+        <div className="mb-4 relative">
           <Input
             placeholder="Search by name, email, or phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-grow"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSearch();
-              }
-            }}
+            className="w-full pr-10"
           />
-          <Button
-            onClick={handleSearch}
-            variant="secondary"
-            className="ml-2"
-            disabled={isSearching}
-          >
-            {isSearching ? 'Searching...' : 'Search'}
-          </Button>
+          {isSearching && (
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+              <i className="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
+          )}
         </div>
 
         {loading ? (

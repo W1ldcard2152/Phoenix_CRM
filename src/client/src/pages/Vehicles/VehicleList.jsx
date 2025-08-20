@@ -46,6 +46,43 @@ const VehicleList = () => {
     fetchVehicles();
   }, [customerIdParam]);
 
+  // Real-time search effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      // If search is empty, fetch all vehicles
+      const fetchAllVehicles = async () => {
+        try {
+          setIsSearching(true);
+          let filters = {};
+          if (customerIdParam) {
+            filters.customer = customerIdParam;
+          }
+          const response = await VehicleService.getAllVehicles(filters);
+          setVehicles(response.data.vehicles);
+          await fetchCustomersForVehicles(response.data.vehicles);
+          setIsSearching(false);
+        } catch (err) {
+          console.error('Error fetching vehicles:', err);
+          setError('Failed to load vehicles. Please try again later.');
+          setIsSearching(false);
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
+        fetchAllVehicles();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Debounced search
+      const timeoutId = setTimeout(() => {
+        performSearch(searchQuery);
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchQuery, customerIdParam]);
+
   const fetchCustomersForVehicles = async (vehicleList) => {
     // Create a set of unique customer IDs
     const customerIds = new Set(vehicleList.map(vehicle => 
@@ -89,26 +126,10 @@ const VehicleList = () => {
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      // If search query is empty, fetch all vehicles
-      try {
-        setIsSearching(true);
-        const response = await VehicleService.getAllVehicles();
-        setVehicles(response.data.vehicles);
-        await fetchCustomersForVehicles(response.data.vehicles);
-        setIsSearching(false);
-      } catch (err) {
-        console.error('Error fetching all vehicles:', err);
-        setError('Failed to load vehicles. Please try again later.');
-        setIsSearching(false);
-      }
-      return;
-    }
-
+  const performSearch = async (query) => {
     try {
       setIsSearching(true);
-      const response = await VehicleService.searchVehicles(searchQuery);
+      const response = await VehicleService.searchVehicles(query);
       setVehicles(response.data.vehicles);
       await fetchCustomersForVehicles(response.data.vehicles);
       setIsSearching(false);
@@ -144,26 +165,18 @@ const VehicleList = () => {
       )}
 
       <Card>
-        <div className="mb-4 flex">
+        <div className="mb-4 relative">
           <Input
             placeholder="Search by make, model, or VIN..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-grow"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSearch();
-              }
-            }}
+            className="w-full pr-10"
           />
-          <Button
-            onClick={handleSearch}
-            variant="secondary"
-            className="ml-2"
-            disabled={isSearching}
-          >
-            {isSearching ? 'Searching...' : 'Search'}
-          </Button>
+          {isSearching && (
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+              <i className="fas fa-spinner fa-spin text-gray-400"></i>
+            </div>
+          )}
         </div>
 
         {loading ? (

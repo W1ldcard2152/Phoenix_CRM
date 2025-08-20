@@ -24,6 +24,9 @@
       "Bash(del test-date-fix.js)"
     ],
     "deny": [],
-    "defaultMode": "acceptEdits"
+    "defaultMode": "acceptEdits",
+    "additionalDirectories": [
+      "C:\\mnt\\c\\Users\\W1ldcard\\Documents\\Programming"
+    ]
   }
 }

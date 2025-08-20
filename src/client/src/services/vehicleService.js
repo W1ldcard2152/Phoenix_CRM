@@ -126,7 +126,11 @@ const VehicleService = {
       
       // Get current vehicle data
       const vehicleResponse = await API.get(`/vehicles/${id}`);
-      const vehicleData = vehicleResponse.data.vehicle;
+      const vehicleData = vehicleResponse.data.vehicle || vehicleResponse.data;
+      
+      if (!vehicleData) {
+        throw new Error('Vehicle data not found in response');
+      }
       
       // Update mileage history
       const updatedVehicle = {
@@ -152,7 +156,7 @@ const VehicleService = {
   getMileageAtDate: async (id, date) => {
     try {
       const vehicleResponse = await API.get(`/vehicles/${id}`);
-      const vehicle = vehicleResponse.data.vehicle;
+      const vehicle = vehicleResponse.data.vehicle || vehicleResponse.data;
       
       if (!vehicle.mileageHistory || vehicle.mileageHistory.length === 0) {
         return vehicle.currentMileage || 0;
