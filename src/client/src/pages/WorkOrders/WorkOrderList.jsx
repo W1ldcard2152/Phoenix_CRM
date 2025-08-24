@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import SelectInput from '../../components/common/SelectInput';
-import ResponsiveTable, { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
+import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import WorkOrderService from '../../services/workOrderService';
 import MediaService from '../../services/mediaService';
 
@@ -13,7 +12,7 @@ const WorkOrderList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
   const [isSearching, setIsSearching] = useState(false);
   const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
   const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false); // Added for collapsible on hold & cancelled table
@@ -36,7 +35,7 @@ const WorkOrderList = () => {
         const filters = {};
         if (customerParam) filters.customer = customerParam;
         if (vehicleParam) filters.vehicle = vehicleParam;
-        if (statusFilter) filters.status = statusFilter;
+        // Don't filter by status on the API level - we'll filter client-side
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
         const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
@@ -65,7 +64,7 @@ const WorkOrderList = () => {
     };
 
     fetchWorkOrders();
-  }, [customerParam, vehicleParam, statusFilter]);
+  }, [customerParam, vehicleParam]);
 
   // Real-time search effect
   useEffect(() => {
@@ -77,7 +76,7 @@ const WorkOrderList = () => {
           const filters = {};
           if (customerParam) filters.customer = customerParam;
           if (vehicleParam) filters.vehicle = vehicleParam;
-          if (statusFilter) filters.status = statusFilter;
+          // Don't filter by status on the API level - we'll filter client-side
           
           const response = await WorkOrderService.getAllWorkOrders(filters);
           const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
@@ -113,24 +112,34 @@ const WorkOrderList = () => {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [searchQuery, customerParam, vehicleParam, statusFilter]);
+  }, [searchQuery, customerParam, vehicleParam]);
 
   const fetchAttachmentCounts = async (workOrdersList) => {
     try {
       const counts = {};
       
-      // Fetch attachment counts for each work order
-      await Promise.all(
-        workOrdersList.map(async (workOrder) => {
-          try {
-            const response = await MediaService.getAllMedia({ workOrder: workOrder._id });
-            counts[workOrder._id] = response?.data?.media?.length || 0;
-          } catch (err) {
-            console.error(`Error fetching attachments for work order ${workOrder._id}:`, err);
-            counts[workOrder._id] = 0;
-          }
-        })
-      );
+      // Process work orders in batches to avoid rate limiting
+      const batchSize = 5;
+      for (let i = 0; i < workOrdersList.length; i += batchSize) {
+        const batch = workOrdersList.slice(i, i + batchSize);
+        
+        await Promise.all(
+          batch.map(async (workOrder) => {
+            try {
+              const response = await MediaService.getAllMedia({ workOrder: workOrder._id });
+              counts[workOrder._id] = response?.data?.media?.length || 0;
+            } catch (err) {
+              console.error(`Error fetching attachments for work order ${workOrder._id}:`, err);
+              counts[workOrder._id] = 0;
+            }
+          })
+        );
+        
+        // Add delay between batches to prevent rate limiting
+        if (i + batchSize < workOrdersList.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
       
       setAttachmentCounts(counts);
     } catch (err) {
@@ -138,7 +147,7 @@ const WorkOrderList = () => {
     }
   };
 
-  const performSearch = async (query) => {
+  const performSearch = useCallback(async (query) => {
     try {
       setIsSearching(true);
       const response = await WorkOrderService.searchWorkOrders(query);
@@ -160,14 +169,11 @@ const WorkOrderList = () => {
       setError('Failed to search work orders. Please try again later.');
       setIsSearching(false);
     }
-  };
+  }, []);
 
-  const handleStatusChange = (e) => {
-    setStatusFilter(e.target.value);
-  };
 
   // Handle inline status update for individual work orders
-  const handleWorkOrderStatusUpdate = async (workOrderId, newStatus) => {
+  const handleWorkOrderStatusUpdate = async (workOrderId, newStatus, retryCount = 0) => {
     try {
       setStatusUpdating(workOrderId);
       
@@ -195,37 +201,37 @@ const WorkOrderList = () => {
       
     } catch (err) {
       console.error('Error updating work order status:', err);
+      
+      // Retry on rate limit (429) error, up to 2 retries
+      if (err.status === 429 && retryCount < 2) {
+        console.log(`Rate limited, retrying in ${(retryCount + 1) * 1000}ms...`);
+        setTimeout(() => {
+          handleWorkOrderStatusUpdate(workOrderId, newStatus, retryCount + 1);
+        }, (retryCount + 1) * 1000);
+        return;
+      }
+      
       setError('Failed to update work order status. Please try again.');
     } finally {
-      setStatusUpdating(null);
+      if (retryCount === 0) { // Only clear on the initial attempt, not retries
+        setStatusUpdating(null);
+      }
     }
   };
 
-  // Status options for filter dropdown
-  const statusOptions = [
-    { value: '', label: 'All Statuses' },
-    { value: 'Created', label: 'Created' },
-    { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
-    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
-    { value: 'Parts Received', label: 'Parts Received' },
-    { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
-    { value: 'Invoiced', label: 'Invoiced' },
-    { value: 'On Hold', label: 'On Hold' },
-    { value: 'Cancelled', label: 'Cancelled' }
-  ];
 
   // Status options for inline status change (without "All Statuses")
   const workOrderStatusOptions = [
-    { value: 'Created', label: 'Created' },
-    { value: 'Scheduled', label: 'Scheduled' },
+    { value: 'Work Order Created', label: 'Work Order Created' },
+    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
-    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
+    { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
+    { value: 'Parts Ordered', label: 'Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
+    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
-    { value: 'Invoiced', label: 'Invoiced' },
+    { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
+    { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
@@ -233,18 +239,41 @@ const WorkOrderList = () => {
   // Status priority for sorting (lower number = higher priority)
   const getStatusPriority = (status) => {
     const priorities = {
-      'Created': 1,
-      'Scheduled': 2,
+      'Work Order Created': 1,
+      'Inspection/Diag Scheduled': 2,
       'Inspection In Progress': 3,
-      'Inspected/Parts Ordered': 4,
-      'Parts Received': 5,
-      'Repair In Progress': 6,
-      'Completed - Awaiting Payment': 7,
-      'Invoiced': 8,
-      'On Hold': 9,
-      'Cancelled': 10
+      'Inspection/Diag Complete': 4,
+      'Parts Ordered': 5,
+      'Parts Received': 6,
+      'Repair Scheduled': 7,
+      'Repair In Progress': 8,
+      'Repair Complete - Awaiting Payment': 9,
+      'Repair Complete - Invoiced': 10,
+      'On Hold': 11,
+      'Cancelled': 12
     };
     return priorities[status] || 99;
+  };
+
+  // Status filter categories
+  const statusCategories = [
+    { key: 'All', label: 'All', statuses: [] },
+    { key: 'Created', label: 'Created', statuses: ['Work Order Created'] },
+    { key: 'In Progress', label: 'In Progress', statuses: ['Inspection/Diag Scheduled', 'Inspection In Progress', 'Repair Scheduled', 'Repair In Progress'] },
+    { key: 'Needs Parts', label: 'Needs Parts', statuses: ['Inspection/Diag Complete'] },
+    { key: 'Parts Ordered', label: 'Parts Ordered', statuses: ['Parts Ordered'] },
+    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received'] },
+    { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
+  ];
+
+  // Filter work orders based on selected category
+  const getFilteredWorkOrders = () => {
+    if (statusFilter === 'All') return workOrders;
+    
+    const selectedCategory = statusCategories.find(cat => cat.key === statusFilter);
+    if (!selectedCategory) return workOrders;
+    
+    return workOrders.filter(wo => selectedCategory.statuses.includes(wo.status));
   };
 
   // Format currency
@@ -323,9 +352,26 @@ const WorkOrderList = () => {
     }
   };
 
-  // Filter work orders into active, invoiced, and on hold/cancelled
-  const activeWorkOrders = workOrders.filter(wo => wo.status !== 'Invoiced' && wo.status !== 'On Hold' && wo.status !== 'Cancelled');
-  const invoicedWorkOrders = workOrders.filter(wo => wo.status === 'Invoiced');
+  // Get filtered work orders based on current filter
+  const filteredWorkOrders = useMemo(() => getFilteredWorkOrders(), [workOrders, statusFilter]);
+  
+  // Calculate status counts (memoized so they update when workOrders changes)
+  const statusCounts = useMemo(() => {
+    const counts = {};
+    statusCategories.forEach(category => {
+      if (category.key === 'All') {
+        counts[category.key] = workOrders.length;
+      } else {
+        counts[category.key] = workOrders.filter(wo => 
+          category.statuses.includes(wo.status)
+        ).length;
+      }
+    });
+    return counts;
+  }, [workOrders]);
+  
+  // Keep existing logic for invoiced and on hold/cancelled tables
+  const invoicedWorkOrders = workOrders.filter(wo => wo.status === 'Repair Complete - Invoiced');
   const onHoldCancelledWorkOrders = workOrders.filter(wo => wo.status === 'On Hold' || wo.status === 'Cancelled');
 
   return (
@@ -344,8 +390,26 @@ const WorkOrderList = () => {
       )}
 
       <Card>
-        <div className="mb-4 space-y-4 md:space-y-0 md:grid md:grid-cols-3 md:gap-4">
-          <div className="md:col-span-2 relative">
+        <div className="mb-4 space-y-4">
+          {/* Status Filter Buttons */}
+          <div className="flex flex-wrap gap-2">
+            {statusCategories.map((category) => (
+              <button
+                key={category.key}
+                onClick={() => setStatusFilter(category.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === category.key
+                    ? 'bg-primary-100 text-primary-800 border-2 border-primary-200'
+                    : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+                }`}
+              >
+                {category.label} ({statusCounts[category.key] || 0})
+              </button>
+            ))}
+          </div>
+          
+          {/* Search Input */}
+          <div className="relative">
             <Input
               placeholder="Search by service type, notes, or status..."
               value={searchQuery}
@@ -357,15 +421,6 @@ const WorkOrderList = () => {
                 <i className="fas fa-spinner fa-spin text-gray-400"></i>
               </div>
             )}
-          </div>
-          <div>
-            <SelectInput
-              name="statusFilter"
-              options={statusOptions}
-              value={statusFilter}
-              onChange={handleStatusChange}
-              className="w-full"
-            />
           </div>
         </div>
 
@@ -386,18 +441,18 @@ const WorkOrderList = () => {
             );
           }
           
-          if (activeWorkOrders.length === 0 && (statusFilter || searchQuery)) {
+          if (filteredWorkOrders.length === 0 && (statusFilter !== 'All' || searchQuery)) {
             return (
               <div className="text-center py-6 text-gray-500">
-                <p>No active work orders match your criteria.</p>
+                <p>No work orders match your criteria.</p>
               </div>
             );
           }
           
-          if (activeWorkOrders.length === 0 && invoicedWorkOrders.length > 0) {
+          if (filteredWorkOrders.length === 0 && statusFilter === 'All') {
             return (
               <div className="text-center py-6 text-gray-500">
-                <p>No active work orders. All current work orders are invoiced.</p>
+                <p>No work orders found.</p>
               </div>
             );
           }
@@ -425,13 +480,13 @@ const WorkOrderList = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Amount
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-80">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {activeWorkOrders.map((workOrder) => (
+                {filteredWorkOrders.map((workOrder) => (
                   <tr key={workOrder._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -503,7 +558,7 @@ const WorkOrderList = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
+                      <div className="flex justify-end space-x-2 min-w-[280px]">
                         <Button
                           to={`/work-orders/${workOrder._id}`}
                           variant="outline"
@@ -527,6 +582,34 @@ const WorkOrderList = () => {
                             Schedule
                           </Button>
                         )}
+                        {/* Quick Action Buttons based on status */}
+                        {(workOrder.status === 'Work Order Created' || workOrder.status === 'Parts Received') && (
+                          <Button
+                            onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
+                            variant="primary"
+                            size="sm"
+                          >
+                            Schedule Work Order
+                          </Button>
+                        )}
+                        {workOrder.status === 'Inspection/Diag Complete' && (
+                          <Button
+                            onClick={() => navigate(`/work-orders/${workOrder._id}#parts`)}
+                            variant="primary"
+                            size="sm"
+                          >
+                            Order Parts
+                          </Button>
+                        )}
+                        {workOrder.status === 'Parts Ordered' && (
+                          <Button
+                            onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
+                            variant="primary"
+                            size="sm"
+                          >
+                            Schedule Repair
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -537,7 +620,7 @@ const WorkOrderList = () => {
 
             {/* Mobile Cards */}
             <MobileContainer>
-              {activeWorkOrders.map((workOrder) => (
+              {filteredWorkOrders.map((workOrder) => (
                 <MobileCard key={workOrder._id} onClick={() => navigate(`/work-orders/${workOrder._id}`)}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">

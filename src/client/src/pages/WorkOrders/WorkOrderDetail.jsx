@@ -178,6 +178,38 @@ const WorkOrderDetail = () => {
     const newStatus = e.target.value;
     if (!newStatus || newStatus === workOrder.status) return;
 
+    // Special handling for "Parts Received" status
+    if (newStatus === 'Parts Received') {
+      const partsCount = workOrder.parts?.length || 0;
+      
+      if (partsCount > 0) {
+        const unreceivedParts = workOrder.parts.filter(part => !part.received);
+        const unreceivedCount = unreceivedParts.length;
+        
+        let confirmMessage = `Changing status to "Parts Received" will automatically mark ALL ${partsCount} parts as received.\n\n`;
+        
+        if (unreceivedCount > 0) {
+          confirmMessage += `This will mark ${unreceivedCount} parts that are currently NOT marked as received:\n`;
+          unreceivedParts.slice(0, 3).forEach(part => {
+            confirmMessage += `• ${part.name}\n`;
+          });
+          if (unreceivedCount > 3) {
+            confirmMessage += `• ...and ${unreceivedCount - 3} more\n`;
+          }
+          confirmMessage += '\n';
+        }
+        
+        confirmMessage += 'Are you sure all parts have been received and you want to proceed?';
+        
+        const confirmed = window.confirm(confirmMessage);
+        if (!confirmed) {
+          // Reset the select dropdown to previous value
+          e.target.value = workOrder.status;
+          return;
+        }
+      }
+    }
+
     try {
       setStatusUpdateLoading(true);
       const response = await WorkOrderService.updateStatus(id, newStatus); 
@@ -517,14 +549,16 @@ const WorkOrderDetail = () => {
 
   // Status options for dropdown
   const statusOptions = [
-    { value: 'Created', label: 'Created' },
-    { value: 'Scheduled', label: 'Scheduled' },
+    { value: 'Work Order Created', label: 'Work Order Created' },
+    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
-    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
+    { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
+    { value: 'Parts Ordered', label: 'Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
+    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
-    { value: 'Invoiced', label: 'Invoiced' },
+    { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
+    { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];

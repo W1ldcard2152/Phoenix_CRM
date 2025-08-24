@@ -27,8 +27,8 @@ const WorkOrderSchema = Yup.object().shape({
     })
   ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
-  status: Yup.string().required('Status is required'),
-  diagnosticNotes: Yup.string()
+  diagnosticNotes: Yup.string(),
+  skipDiagnostics: Yup.boolean()
 });
 
 const WorkOrderForm = () => {
@@ -52,8 +52,9 @@ const WorkOrderForm = () => {
     currentMileage: '', // Added currentMileage
     services: [{ description: '' }], // Initialize with one empty service item
     priority: 'Normal',
-    status: 'Created',
+    status: 'Work Order Created',
     diagnosticNotes: '',
+    skipDiagnostics: false,
     parts: [],
     labor: []
   });
@@ -112,6 +113,7 @@ const WorkOrderForm = () => {
             priority: workOrderData.priority || 'Normal',
             status: workOrderData.status || 'Created',
             diagnosticNotes: workOrderData.diagnosticNotes || '',
+            skipDiagnostics: workOrderData.skipDiagnostics || false,
             parts: workOrderData.parts || [],
             labor: workOrderData.labor || []
           });
@@ -194,8 +196,11 @@ const WorkOrderForm = () => {
     if (customerId) {
       try {
         const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
-        // Don't auto-select a vehicle anymore since it's now optional
-        // Leave vehicle field empty so user can choose
+        // Auto-select first vehicle if available
+        if (fetchedVehicles.length > 0) {
+          const firstVehicleId = fetchedVehicles[0]._id;
+          setFieldValue('vehicle', firstVehicleId);
+        }
       } catch (err) {
         console.error('Error fetching vehicles for customer:', err);
         setError('Failed to load vehicles for the selected customer.');
@@ -209,11 +214,7 @@ const WorkOrderForm = () => {
   const handleVehicleChange = async (e, setFieldValue) => {
     const vehicleId = e.target.value;
     setFieldValue('vehicle', vehicleId);
-    if (vehicleId) {
-      await fetchAndSetLatestMileage(vehicleId, (mileage) => setFieldValue('currentMileage', mileage));
-    } else {
-      setFieldValue('currentMileage', ''); // Clear mileage when no vehicle selected
-    }
+    // Don't auto-fill mileage - let user enter it manually
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
@@ -268,19 +269,6 @@ const WorkOrderForm = () => {
     }))
   ];
 
-  // Status options for dropdown
-  const statusOptions = [
-    { value: 'Created', label: 'Created' },
-    { value: 'Scheduled', label: 'Scheduled' },
-    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
-    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
-    { value: 'Parts Received', label: 'Parts Received' },
-    { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
-    { value: 'Invoiced', label: 'Invoiced' },
-    { value: 'On Hold', label: 'On Hold' },
-    { value: 'Cancelled', label: 'Cancelled' }
-  ];
 
   // Priority options for dropdown
   const priorityOptions = [
@@ -384,6 +372,28 @@ const WorkOrderForm = () => {
                   />
                 </div>
                 
+                {/* Skip Diagnostics Checkbox */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="skipDiagnostics"
+                      name="skipDiagnostics"
+                      checked={values.skipDiagnostics}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      className="mr-3 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="skipDiagnostics" className="text-sm font-medium text-gray-700">
+                      This order does not require diagnostics/inspection
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 ml-7">
+                    Check this for work that doesn't need diagnosis (e.g., brake pads, oil changes). 
+                    Work orders will skip directly to "Inspection Complete" status.
+                  </p>
+                </div>
+                
                 {/* Services Section - Multiple services can be added */}
                 <div className="md:col-span-2">
                   <FieldArray name="services">
@@ -451,20 +461,6 @@ const WorkOrderForm = () => {
                       </div>
                     )}
                   </FieldArray>
-                </div>
-                
-                <div>
-                  <SelectInput
-                    label="Status"
-                    name="status"
-                    options={statusOptions}
-                    value={values.status}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.status}
-                    touched={touched.status}
-                    required
-                  />
                 </div>
                 
                 <div className="md:col-span-2">

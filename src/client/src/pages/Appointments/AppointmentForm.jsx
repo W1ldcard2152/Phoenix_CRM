@@ -281,7 +281,21 @@ const AppointmentForm = () => {
       } else {
         await AppointmentService.createAppointment(formattedValues);
       }
-      navigate('/appointments');
+      
+      // If appointment was created from a work order, update work order status and redirect back to work orders
+      const workOrderParam = searchParams.get('workOrder');
+      if (workOrderParam) {
+        try {
+          // Update work order status from "Work Order Created" to "Inspection/Diag Scheduled"
+          await WorkOrderService.updateWorkOrder(workOrderParam, { status: 'Inspection/Diag Scheduled' });
+        } catch (statusErr) {
+          console.error('Failed to update work order status:', statusErr);
+          // Don't fail the whole operation if status update fails
+        }
+        navigate('/work-orders');
+      } else {
+        navigate('/appointments');
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save appointment.');
       setSubmitting(false);

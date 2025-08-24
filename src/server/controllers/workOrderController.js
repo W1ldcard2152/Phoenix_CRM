@@ -17,7 +17,19 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   // Build query based on filters
   const query = {};
   
-  if (status) query.status = status;
+  if (status) {
+    // Handle both old and new status names for backward compatibility
+    const statusAliases = {
+      'Work Order Created': ['Work Order Created', 'Created'],
+      'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
+      'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
+      'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
+      'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
+    };
+    
+    const aliasesForStatus = statusAliases[status] || [status];
+    query.status = { $in: aliasesForStatus };
+  }
   if (customer) query.customer = customer;
   if (vehicle) query.vehicle = vehicle;
   
@@ -139,6 +151,15 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
     workOrderData.serviceRequested = workOrderData.services
       .map(service => service.description)
       .join('\n');
+  }
+  
+  // Handle skip diagnostics logic and status assignment
+  if (workOrderData.skipDiagnostics === true) {
+    // If skip diagnostics is checked, set status to 'Inspection/Diag Complete'
+    workOrderData.status = 'Inspection/Diag Complete';
+  } else if (!workOrderData.status || workOrderData.status === 'Work Order Created') {
+    // If skip diagnostics is not checked, ensure status is 'Work Order Created'
+    workOrderData.status = 'Work Order Created';
   }
   
   // Calculate total estimate if parts and labor are provided
@@ -313,8 +334,8 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         'Inspected/Parts Ordered',
         'Parts Received',
         'Repair In Progress',
-        'Completed - Awaiting Payment',
-        'Invoiced'
+        'Repair Complete - Awaiting Payment',
+        'Repair Complete - Invoiced'
       ];
       
       if (notifiableStatuses.includes(workOrderData.status) && 
@@ -365,6 +386,19 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     // or leaving it as is, depending on desired logic. For now, we'll let assignedTechnician be managed separately if no appointment.
   }
 
+  // If status is changing to "Parts Received", mark all parts as received
+  if (workOrderData.status === 'Parts Received') {
+    const currentWorkOrder = await WorkOrder.findById(req.params.id);
+    if (currentWorkOrder && currentWorkOrder.status !== 'Parts Received') {
+      // Only auto-mark parts if status is actually changing to Parts Received
+      if (currentWorkOrder.parts && currentWorkOrder.parts.length > 0) {
+        workOrderData.parts = currentWorkOrder.parts.map(part => ({
+          ...part.toObject(),
+          received: true
+        }));
+      }
+    }
+  }
 
   const updatedWorkOrderPopulated = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
     new: true,
@@ -444,8 +478,15 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   // Update the status
   workOrder.status = status;
   
+  // If the status is "Parts Received", mark all parts as received
+  if (status === 'Parts Received') {
+    workOrder.parts.forEach(part => {
+      part.received = true;
+    });
+  }
+  
   // If the status is "Invoiced", set the totalActual
-  if (status === 'Invoiced') {
+  if (status === 'Repair Complete - Invoiced') {
     // Calculate total from parts and labor
     const partsCost = workOrder.parts.reduce((total, part) => {
       return total + (part.price * part.quantity);

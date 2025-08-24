@@ -16,7 +16,7 @@ const TechnicianWorkOrderDetail = () => {
   const [workOrder, setWorkOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
+  const [completingService, setCompletingService] = useState(false);
   
   // Work Order Notes state
   const [notes, setNotes] = useState([]);
@@ -144,22 +144,6 @@ const TechnicianWorkOrderDetail = () => {
     }
   };
 
-  // Only allow technicians to update status to specific values
-  const handleStatusChange = async (e) => {
-    const newStatus = e.target.value;
-    if (!newStatus || newStatus === workOrder.status) return;
-
-    try {
-      setStatusUpdateLoading(true);
-      const response = await WorkOrderService.updateStatus(id, newStatus); 
-      setWorkOrder(response.data.workOrder);
-      setStatusUpdateLoading(false);
-    } catch (err) {
-      console.error('Error updating status:', err);
-      setError('Failed to update status. Please try again later.');
-      setStatusUpdateLoading(false);
-    }
-  };
 
   // File handling functions
   const handleFileUpload = async (formData) => {
@@ -200,14 +184,86 @@ const TechnicianWorkOrderDetail = () => {
     }).format(amount || 0);
   };
 
-  // Status options for technicians (limited set)
-  const technicianStatusOptions = [
-    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
-    { value: 'Inspected/Parts Ordered', label: 'Inspected/Parts Ordered' },
-    { value: 'Repair In Progress', label: 'Repair In Progress' },
-    { value: 'Completed - Awaiting Payment', label: 'Completed - Awaiting Payment' },
-    { value: 'On Hold', label: 'On Hold' }
-  ];
+  // Get status color for display
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Inspection/Diag Scheduled':
+        return 'bg-blue-100 text-blue-800';
+      case 'Inspection In Progress':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'Inspection/Diag Complete':
+        return 'bg-purple-100 text-purple-800';
+      case 'Parts Received':
+        return 'bg-green-100 text-green-800';
+      case 'Repair Scheduled':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'Repair In Progress':
+        return 'bg-orange-100 text-orange-800';
+      case 'Repair Complete - Awaiting Payment':
+        return 'bg-emerald-100 text-emerald-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Check if service can be completed
+  const canCompleteService = () => {
+    if (!workOrder) return false;
+    
+    // Only allow completion for "in progress" statuses
+    const completableStatuses = ['Inspection In Progress', 'Repair In Progress'];
+    if (!completableStatuses.includes(workOrder.status)) return false;
+    
+    // For inspections, require at least one non-system note
+    if (workOrder.status === 'Inspection In Progress') {
+      const nonSystemNotes = notes.filter(note => 
+        !note.content.includes('Vehicle Inspection Checklist:') && 
+        note.createdBy !== 'System'
+      );
+      return nonSystemNotes.length > 0;
+    }
+    
+    // For repairs, no additional requirements
+    return true;
+  };
+
+  // Get the next status after completion
+  const getNextStatus = (currentStatus) => {
+    switch (currentStatus) {
+      case 'Inspection In Progress':
+        return 'Inspection/Diag Complete';
+      case 'Repair In Progress':
+        return 'Repair Complete - Awaiting Payment';
+      default:
+        return currentStatus;
+    }
+  };
+
+  // Handle service completion
+  const handleCompleteService = async () => {
+    if (!canCompleteService()) {
+      if (workOrder.status === 'Inspection In Progress') {
+        alert('Please add at least one progress note before marking the inspection as complete.');
+      }
+      return;
+    }
+
+    const nextStatus = getNextStatus(workOrder.status);
+    const confirmMessage = `Mark service as complete and change status to "${nextStatus}"?`;
+    
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      setCompletingService(true);
+      await WorkOrderService.updateStatus(id, nextStatus);
+      // Navigate back to technician portal after successful completion
+      navigate('/technician-portal');
+    } catch (err) {
+      console.error('Error completing service:', err);
+      setError('Failed to complete service. Please try again.');
+      setCompletingService(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -356,13 +412,9 @@ const TechnicianWorkOrderDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Status</p>
               <div className="mt-1">
-                <SelectInput
-                  name="status"
-                  options={technicianStatusOptions}
-                  value={workOrder.status}
-                  onChange={handleStatusChange}
-                  disabled={statusUpdateLoading}
-                />
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(workOrder.status)}`}>
+                  {workOrder.status}
+                </span>
               </div>
             </div>
           </div>
@@ -405,7 +457,7 @@ const TechnicianWorkOrderDetail = () => {
             <div className="border-b border-gray-200 pb-4">
               <div className="space-y-3">
                 <TextArea
-                  label="Add Progress Note"
+                  label="Add Diagnostic Note"
                   value={newNote.content}
                   onChange={(e) => setNewNote({ ...newNote, content: e.target.value })}
                   placeholder="Document work progress, findings, or next steps..."
@@ -753,6 +805,67 @@ const TechnicianWorkOrderDetail = () => {
             </div>
           </div>
         </Card>
+
+        {/* Service Complete Button */}
+        {(workOrder.status === 'Inspection In Progress' || workOrder.status === 'Repair In Progress') && (
+          <Card title="Complete Service">
+            <div className="space-y-4">
+              {workOrder.status === 'Inspection In Progress' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <i className="fas fa-info-circle text-blue-500 mt-0.5"></i>
+                    </div>
+                    <div className="ml-3">
+                      <h4 className="text-sm font-medium text-blue-800">
+                        Inspection Requirements
+                      </h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Before completing the inspection, please add at least one progress note documenting your findings, 
+                        recommendations, or diagnostic results.
+                      </p>
+                      {!canCompleteService() && (
+                        <p className="text-sm text-red-600 mt-2 font-medium">
+                          ⚠️ Missing required progress note
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Ready to complete this {workOrder.status === 'Inspection In Progress' ? 'inspection' : 'repair'}?
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    This will advance the work order to the next stage: "{getNextStatus(workOrder.status)}"
+                  </p>
+                </div>
+                <Button
+                  onClick={handleCompleteService}
+                  disabled={!canCompleteService() || completingService}
+                  variant={canCompleteService() ? "primary" : "outline"}
+                  size="lg"
+                  className="ml-4"
+                >
+                  {completingService ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin mr-2"></i>
+                      Completing...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-check-circle mr-2"></i>
+                      Service Complete
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

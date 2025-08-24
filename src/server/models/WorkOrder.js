@@ -121,18 +121,20 @@ const WorkOrderSchema = new Schema(
     status: {
       type: String,
       enum: [
-        'Created', 
-        'Scheduled', 
+        'Work Order Created',
+        'Inspection/Diag Scheduled', 
         'Inspection In Progress', 
-        'Inspected/Parts Ordered',
+        'Inspection/Diag Complete',
+        'Parts Ordered',
         'Parts Received',
+        'Repair Scheduled',
         'Repair In Progress',
-        'Completed - Awaiting Payment',
-        'Invoiced',
+        'Repair Complete - Awaiting Payment',
+        'Repair Complete - Invoiced',
         'On Hold',
         'Cancelled'
       ],
-      default: 'Created'
+      default: 'Work Order Created'
     },
     // Replace single serviceRequested with services array
     services: [ServiceSchema],
@@ -165,6 +167,10 @@ const WorkOrderSchema = new Schema(
     assignedTechnician: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Technician'
+    },
+    skipDiagnostics: {
+      type: Boolean,
+      default: false
     }
   },
   {

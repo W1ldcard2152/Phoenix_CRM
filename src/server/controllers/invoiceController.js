@@ -119,7 +119,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     }
     
     // Update work order status and totalActual
-    workOrder.status = 'Invoiced';
+    workOrder.status = 'Repair Complete - Invoiced';
     
     // Calculate totalActual from the work order's parts and labor
     const partsCost = workOrder.parts.reduce((total, part) => {
@@ -258,7 +258,7 @@ exports.deleteInvoice = catchAsync(async (req, res, next) => {
   if (invoice.workOrder) {
     const workOrder = await WorkOrder.findById(invoice.workOrder);
     
-    if (workOrder && workOrder.status === 'Invoiced') {
+    if (workOrder && workOrder.status === 'Repair Complete - Invoiced') {
       workOrder.status = workOrder.parts.some(part => !part.received) 
         ? 'Parts Ordered' 
         : 'Parts Received';

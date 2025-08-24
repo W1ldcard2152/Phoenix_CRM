@@ -13,6 +13,9 @@ const AppointmentCalendar = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showWeekends, setShowWeekends] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
   const navigate = useNavigate();
 
   // Make sure currentWeek is included in the dependency array
@@ -57,9 +60,53 @@ const AppointmentCalendar = () => {
     setCurrentWeek(moment());
   };
 
-  const handleAppointmentClick = (appointmentId) => {
-    navigate(`/appointments/${appointmentId}`);
+  const handleAppointmentClick = (appointment, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Get click position relative to viewport
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPopoverPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 5
+    });
+    
+    setSelectedAppointment(appointment);
+    setActionMenuOpen(true);
   };
+
+  const handleGoToAppointment = () => {
+    navigate(`/appointments/${selectedAppointment._id}`);
+    setActionMenuOpen(false);
+    setSelectedAppointment(null);
+  };
+
+  const handleGoToWorkOrder = () => {
+    if (selectedAppointment.workOrder?._id) {
+      navigate(`/work-orders/${selectedAppointment.workOrder._id}`);
+    }
+    setActionMenuOpen(false);
+    setSelectedAppointment(null);
+  };
+
+  const handleCloseActionMenu = () => {
+    setActionMenuOpen(false);
+    setSelectedAppointment(null);
+  };
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (actionMenuOpen) {
+        handleCloseActionMenu();
+      }
+    };
+
+    if (actionMenuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [actionMenuOpen]);
 
   // Generate array of days for the calendar
   const getDays = () => {
@@ -80,7 +127,7 @@ const AppointmentCalendar = () => {
         // Convert appointment.startTime (UTC) to ET for date comparison
         const appointmentDateET = moment.utc(appointment.startTime).tz('America/New_York').format('YYYY-MM-DD');
         // Filter out appointments linked to "Invoiced" work orders
-        return appointmentDateET === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Invoiced';
+        return appointmentDateET === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Repair Complete - Invoiced';
       })
       .sort((a, b) => moment.utc(a.startTime).valueOf() - moment.utc(b.startTime).valueOf());
   };
@@ -165,7 +212,7 @@ const AppointmentCalendar = () => {
                     {dayAppointments.map(appointment => (
                       <div 
                         key={appointment._id}
-                        onClick={() => handleAppointmentClick(appointment._id)}
+                        onClick={(e) => handleAppointmentClick(appointment, e)}
                         className="bg-white p-2 rounded border border-gray-200 shadow-sm hover:bg-gray-50 cursor-pointer transition"
                       >
                         <div className="flex justify-between items-start">
@@ -197,6 +244,42 @@ const AppointmentCalendar = () => {
           })}
         </div>
       </div>
+
+      {/* Simple Action Popover */}
+      {actionMenuOpen && selectedAppointment && (
+        <div 
+          className="fixed bg-white border border-gray-300 rounded-lg shadow-lg z-50 py-2 min-w-[180px]"
+          style={{
+            left: `${popoverPosition.x}px`,
+            top: `${popoverPosition.y}px`,
+            transform: 'translateX(-50%)'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={handleGoToAppointment}
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+          >
+            <i className="fas fa-calendar-alt mr-3 text-blue-600 w-4"></i>
+            View Appointment
+          </button>
+          
+          {selectedAppointment.workOrder?._id ? (
+            <button
+              onClick={handleGoToWorkOrder}
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+            >
+              <i className="fas fa-wrench mr-3 text-green-600 w-4"></i>
+              View Work Order
+            </button>
+          ) : (
+            <div className="w-full px-4 py-2 text-left text-sm text-gray-400 flex items-center cursor-not-allowed">
+              <i className="fas fa-wrench mr-3 text-gray-400 w-4"></i>
+              No Work Order
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 };
