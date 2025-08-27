@@ -21,7 +21,8 @@
       "Bash(tasklist:*)",
       "Bash(set PORT=3001)",
       "Bash(set PORT=5001)",
-      "Bash(del test-date-fix.js)"
+      "Bash(del test-date-fix.js)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

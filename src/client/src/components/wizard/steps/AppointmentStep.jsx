@@ -115,8 +115,8 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
 
       const response = await AppointmentService.createAppointment(appointmentData);
       
-      // Update work order status to Scheduled
-      await WorkOrderService.updateStatus(workOrder._id, 'Scheduled');
+      // Update work order status to Inspection/Diag Scheduled (since this is a new service request)
+      await WorkOrderService.updateStatus(workOrder._id, 'Inspection/Diag Scheduled');
       
       onAppointmentCreate(response.data.appointment);
     } catch (err) {

@@ -6,13 +6,14 @@ const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { parseLocalDate } = require('../utils/dateUtils');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 
 // Get all work orders
 exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   // Allow filtering by status, customer, vehicle, date range
-  const { status, customer, vehicle, startDate, endDate } = req.query;
+  const { status, customer, vehicle, startDate, endDate, excludeStatuses } = req.query;
   
   // Build query based on filters
   const query = {};
@@ -29,6 +30,10 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
     
     const aliasesForStatus = statusAliases[status] || [status];
     query.status = { $in: aliasesForStatus };
+  } else if (excludeStatuses) {
+    // Support excluding specific statuses (comma-separated)
+    const statusesToExclude = excludeStatuses.split(',').map(s => s.trim());
+    query.status = { $nin: statusesToExclude };
   }
   if (customer) query.customer = customer;
   if (vehicle) query.vehicle = vehicle;
@@ -36,8 +41,8 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   // Date range filter
   if (startDate || endDate) {
     query.date = {};
-    if (startDate) query.date.$gte = new Date(startDate);
-    if (endDate) query.date.$lte = new Date(endDate);
+    if (startDate) query.date.$gte = parseLocalDate(startDate);
+    if (endDate) query.date.$lte = parseLocalDate(endDate);
   }
   
   const workOrders = await WorkOrder.find(query)
@@ -201,7 +206,7 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
     const mileageValue = parseFloat(workOrderData.currentMileage);
     // Add to mileage history
     vehicle.mileageHistory.push({
-      date: workOrderData.date ? new Date(workOrderData.date) : new Date(), // Use WO date or current date
+      date: workOrderData.date ? parseLocalDate(workOrderData.date) : new Date(), // Use WO date or current date
       mileage: mileageValue,
       source: `Work Order #${newWorkOrder.id}` // Optional: add source
     });
@@ -305,13 +310,13 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         // Check if this mileage entry already exists to avoid duplicates from simple re-saves
         const existingMileageEntry = vehicleToUpdate.mileageHistory.find(
           entry => entry.mileage === mileageValue && 
-                   new Date(entry.date).toDateString() === new Date(workOrderData.date || new Date()).toDateString() &&
+                   new Date(entry.date).toDateString() === (workOrderData.date ? parseLocalDate(workOrderData.date) : new Date()).toDateString() &&
                    (entry.source || '').includes(`Work Order #${req.params.id}`)
         );
 
         if (!existingMileageEntry) {
            vehicleToUpdate.mileageHistory.push({
-            date: workOrderData.date ? new Date(workOrderData.date) : new Date(),
+            date: workOrderData.date ? parseLocalDate(workOrderData.date) : new Date(),
             mileage: mileageValue,
             source: `Work Order #${req.params.id}`
           });

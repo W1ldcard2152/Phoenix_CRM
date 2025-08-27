@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { parseLocalDate } = require('../utils/dateUtils');
 const Schema = mongoose.Schema;
 
 // Mileage History Schema
@@ -96,7 +97,7 @@ VehicleSchema.pre('save', function(next) {
   if (this.mileageHistory && this.mileageHistory.length > 0) {
     // Sort by date descending
     const sortedHistory = [...this.mileageHistory].sort((a, b) => 
-      new Date(b.date) - new Date(a.date)
+      parseLocalDate(b.date) - parseLocalDate(a.date)
     );
     
     // Update current mileage if newest record is higher
@@ -140,14 +141,14 @@ VehicleSchema.methods.getMileageAtDate = function(date) {
     return this.currentMileage || 0;
   }
   
-  const targetDate = new Date(date);
+  const targetDate = parseLocalDate(date);
   const sortedHistory = [...this.mileageHistory].sort((a, b) => 
-    new Date(a.date) - new Date(b.date)
+    parseLocalDate(a.date) - parseLocalDate(b.date)
   );
   
   // Exact match
   const exactMatch = sortedHistory.find(record => 
-    new Date(record.date).toDateString() === targetDate.toDateString()
+    parseLocalDate(record.date).toDateString() === targetDate.toDateString()
   );
   
   if (exactMatch) {
@@ -156,11 +157,11 @@ VehicleSchema.methods.getMileageAtDate = function(date) {
   
   // Find closest records before and after
   const before = [...sortedHistory].reverse().find(record => 
-    new Date(record.date) <= targetDate
+    parseLocalDate(record.date) <= targetDate
   );
   
   const after = sortedHistory.find(record => 
-    new Date(record.date) >= targetDate
+    parseLocalDate(record.date) >= targetDate
   );
   
   // No records before, use first record or 0
@@ -174,8 +175,8 @@ VehicleSchema.methods.getMileageAtDate = function(date) {
   }
   
   // Interpolate between the two closest records
-  const beforeDate = new Date(before.date);
-  const afterDate = new Date(after.date);
+  const beforeDate = parseLocalDate(before.date);
+  const afterDate = parseLocalDate(after.date);
   const totalDays = (afterDate - beforeDate) / (1000 * 60 * 60 * 24);
   const daysBetween = (targetDate - beforeDate) / (1000 * 60 * 60 * 24);
   const ratio = daysBetween / totalDays;

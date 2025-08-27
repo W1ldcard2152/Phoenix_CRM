@@ -4,7 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import AppointmentService from '../../services/appointmentService';
-import { getTodayForInput } from '../../utils/formatters';
+import { getTodayForInput, parseLocalDate } from '../../utils/formatters';
 
 const VehicleDetail = () => {
   const { id } = useParams();
@@ -66,7 +66,8 @@ const VehicleDetail = () => {
       navigate('/vehicles');
     } catch (err) {
       console.error('Error deleting vehicle:', err);
-      setError('Failed to delete vehicle. Please try again later.');
+      const errorMessage = err.response?.data?.message || 'Failed to delete vehicle. Please try again later.';
+      setError(errorMessage);
       setDeleteModalOpen(false);
     }
   };
@@ -175,7 +176,7 @@ const VehicleDetail = () => {
   // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
+    const date = parseLocalDate(dateString);
     return date.toLocaleDateString();
   };
 

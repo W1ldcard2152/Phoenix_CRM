@@ -52,7 +52,7 @@ const VehicleForm = () => {
   const [scanSuccess, setScanSuccess] = useState(null);
   
   // Get customer ID from URL query parameter if present
-  const customerIdParam = searchParams.get('customerId'); // Changed 'customer' to 'customerId'
+  const customerIdParam = searchParams.get('customer'); // Look for 'customer' parameter from CustomerDetail
   
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',
@@ -96,6 +96,12 @@ const VehicleForm = () => {
             mileageHistory: vehicleData.mileageHistory || [],
             notes: vehicleData.notes || ''
           });
+        } else if (customerIdParam) {
+          // If creating new vehicle with customer parameter, update initial values
+          setInitialValues(prev => ({
+            ...prev,
+            customer: customerIdParam
+          }));
         }
         
         setLoading(false);
@@ -115,7 +121,7 @@ const VehicleForm = () => {
       if (values.currentMileage) {
         const today = getTodayForInput();
         const hasTodayRecord = values.mileageHistory.some(record => 
-          formatDateForInput(record.date) === today
+          formatDateForInputLocal(record.date) === today
         );
         
         if (!hasTodayRecord) {
@@ -253,11 +259,10 @@ const VehicleForm = () => {
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  // Format date for input field
-  const formatDateForInput = (dateString) => {
+  // Format date for input field using the utility function
+  const formatDateForInputLocal = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return formatDateForInput(date);
+    return formatDateForInput(dateString); // Use the imported utility
   };
 
   return (
@@ -502,7 +507,7 @@ const VehicleForm = () => {
                                         <Input
                                           type="date"
                                           name={`mileageHistory.${index}.date`}
-                                          value={formatDateForInput(record.date)}
+                                          value={formatDateForInputLocal(record.date)}
                                           onChange={handleChange}
                                           onBlur={handleBlur}
                                           error={

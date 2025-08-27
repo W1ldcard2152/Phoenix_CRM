@@ -3,6 +3,7 @@ const Customer = require('../models/Customer');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { parseLocalDate } = require('../utils/dateUtils');
 
 // Get all vehicles
 exports.getAllVehicles = catchAsync(async (req, res, next) => {
@@ -112,7 +113,7 @@ exports.deleteVehicle = catchAsync(async (req, res, next) => {
   if (workOrderCount > 0) {
     return next(
       new AppError(
-        'This vehicle has associated work orders. Please delete them first.',
+        `Cannot delete this vehicle because it has ${workOrderCount} associated work order${workOrderCount === 1 ? '' : 's'}. You must delete or reassign all associated work orders before deleting this vehicle.`,
         400
       )
     );
@@ -202,7 +203,7 @@ exports.addMileageRecord = catchAsync(async (req, res, next) => {
   // Add mileage record using the model method
   vehicle.addMileageRecord(
     mileage,
-    date ? new Date(date) : new Date(),
+    date ? parseLocalDate(date) : new Date(),
     notes || ''
   );
 
@@ -232,7 +233,7 @@ exports.getMileageAtDate = catchAsync(async (req, res, next) => {
   }
 
   // Use the model method to estimate mileage at the given date
-  const estimatedMileage = vehicle.getMileageAtDate(new Date(date));
+  const estimatedMileage = vehicle.getMileageAtDate(parseLocalDate(date));
 
   res.status(200).json({
     status: 'success',
@@ -240,7 +241,7 @@ exports.getMileageAtDate = catchAsync(async (req, res, next) => {
       date,
       estimatedMileage,
       isExact: vehicle.mileageHistory.some(record =>
-        new Date(record.date).toDateString() === new Date(date).toDateString()
+        parseLocalDate(record.date).toDateString() === parseLocalDate(date).toDateString()
       )
     }
   });

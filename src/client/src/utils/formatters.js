@@ -87,7 +87,8 @@ export const capitalizeWords = (str) => {
 export const formatDateForInput = (date) => {
   if (!date) return '';
   
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  // Use parseLocalDate for string dates to avoid timezone issues
+  const dateObj = typeof date === 'string' ? parseLocalDate(date) : date;
   
   // Use local date methods to avoid timezone conversion
   const year = dateObj.getFullYear();
@@ -117,4 +118,26 @@ export const parseDateFromInput = (dateString) => {
   
   const [year, month, day] = dateString.split('-').map(Number);
   return new Date(year, month - 1, day); // month is 0-indexed
+};
+
+/**
+ * Safe date parsing for server-side use that avoids timezone conversion issues
+ * Parses YYYY-MM-DD strings as local dates instead of UTC
+ * @param {string} dateString - Date string in YYYY-MM-DD format
+ * @returns {Date} Date object representing the local date
+ */
+export const parseLocalDate = (dateString) => {
+  if (!dateString) return null;
+  
+  // If it's already a Date object, return as is
+  if (dateString instanceof Date) return dateString;
+  
+  // Check if it's a YYYY-MM-DD format string
+  if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
+    const [year, month, day] = dateString.trim().split('-').map(Number);
+    return new Date(year, month - 1, day); // month is 0-indexed
+  }
+  
+  // Fallback to standard Date parsing for other formats
+  return new Date(dateString);
 };

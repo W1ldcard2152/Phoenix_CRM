@@ -19,6 +19,7 @@ const WorkOrderSchema = Yup.object().shape({
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
     .nullable(),
+  skipDiagnostics: Yup.boolean()
 });
 
 const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoading, loading }) => {
@@ -43,8 +44,9 @@ const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoadi
         services: values.services,
         serviceRequested: values.services.map(s => s.description).join('\n'),
         priority: values.priority,
-        status: 'Created',
+        status: values.skipDiagnostics ? 'Inspection/Diag Complete' : 'Work Order Created',
         diagnosticNotes: values.diagnosticNotes,
+        skipDiagnostics: values.skipDiagnostics,
         parts: [],
         labor: []
       };
@@ -103,7 +105,8 @@ const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoadi
           services: [{ description: '' }],
           priority: 'Normal',
           diagnosticNotes: '',
-          currentMileage: vehicle?.currentMileage || ''
+          currentMileage: vehicle?.currentMileage || '',
+          skipDiagnostics: false
         }}
         validationSchema={WorkOrderSchema}
         onSubmit={handleCreateWorkOrder}
@@ -257,6 +260,30 @@ const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoadi
                 rows={4}
                 placeholder="Any initial observations, customer complaints, or diagnostic notes..."
               />
+
+              {/* Skip Diagnostics Checkbox */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <input
+                    type="checkbox"
+                    id="skipDiagnostics"
+                    name="skipDiagnostics"
+                    checked={values.skipDiagnostics}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    className="mr-3 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <div>
+                    <label htmlFor="skipDiagnostics" className="text-sm font-medium text-gray-900 cursor-pointer">
+                      This work order does not require diagnostics/inspection
+                    </label>
+                    <p className="text-xs text-gray-600 mt-1">
+                      Check this for services that don't need diagnosis (e.g., oil changes, scheduled maintenance). 
+                      Work orders will skip directly to "Inspection Complete" status.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               {/* Submit Button */}
               <div className="flex justify-end pt-4">

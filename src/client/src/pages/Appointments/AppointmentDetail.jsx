@@ -39,7 +39,8 @@ const AppointmentDetail = () => {
       navigate('/appointments');
     } catch (err) {
       console.error('Error deleting appointment:', err);
-      setError('Failed to delete appointment. Please try again later.');
+      const errorMessage = err.response?.data?.message || 'Failed to delete appointment. Please try again later.';
+      setError(errorMessage);
       setDeleteModalOpen(false);
     }
   };

@@ -4,6 +4,7 @@ const Customer = require('../models/Customer');
 const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { parseLocalDate } = require('../utils/dateUtils');
 const emailService = require('../services/emailService');
 
 // Get all invoices
@@ -22,8 +23,8 @@ exports.getAllInvoices = catchAsync(async (req, res, next) => {
   // Date range filter
   if (startDate || endDate) {
     query.invoiceDate = {};
-    if (startDate) query.invoiceDate.$gte = new Date(startDate);
-    if (endDate) query.invoiceDate.$lte = new Date(endDate);
+    if (startDate) query.invoiceDate.$gte = parseLocalDate(startDate);
+    if (endDate) query.invoiceDate.$lte = parseLocalDate(endDate);
   }
   
   const invoices = await Invoice.find(query)
@@ -157,7 +158,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
   ];
   
   // Calculate due date if not provided
-  let dueDate = invoiceDueDate ? new Date(invoiceDueDate) : new Date(invoiceDate || Date.now());
+  let dueDate = invoiceDueDate ? parseLocalDate(invoiceDueDate) : parseLocalDate(invoiceDate) || new Date();
   
   // Adjust due date based on payment terms if due date not provided
   if (!invoiceDueDate) {
@@ -181,7 +182,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     customer: customerId,
     vehicle: vehicleId,
     workOrder: workOrderId,
-    invoiceDate: invoiceDate || Date.now(),
+    invoiceDate: invoiceDate ? parseLocalDate(invoiceDate) : new Date(),
     dueDate,
     items,
     subtotal,

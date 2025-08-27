@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../../utils/formatters'; // Import centralized formatter
+import { formatCurrency, parseLocalDate } from '../../utils/formatters'; // Import centralized formatter
 import workOrderNotesService from '../../services/workOrderNotesService';
 
 const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref) => {
@@ -106,7 +106,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
         <div className="text-right">
           <h2 className="text-3xl font-bold text-gray-800">INVOICE</h2>
           <p className="text-md"><span className="font-semibold">Invoice #: </span>{invoiceNumber}</p>
-          <p><span className="font-semibold">Date: </span>{new Date(invoiceDate).toLocaleDateString()}</p>
+          <p><span className="font-semibold">Date: </span>{parseLocalDate(invoiceDate).toLocaleDateString()}</p>
           {/* Work Order # removed as per request */}
         </div>
       </div>

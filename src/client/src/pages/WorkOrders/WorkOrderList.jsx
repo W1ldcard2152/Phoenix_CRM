@@ -8,16 +8,20 @@ import WorkOrderService from '../../services/workOrderService';
 import MediaService from '../../services/mediaService';
 
 const WorkOrderList = () => {
-  const [workOrders, setWorkOrders] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]); // Active work orders only
+  const [invoicedWorkOrders, setInvoicedWorkOrders] = useState([]); // Separate state for invoiced
+  const [onHoldCancelledWorkOrders, setOnHoldCancelledWorkOrders] = useState([]); // Separate state for on hold/cancelled
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [isSearching, setIsSearching] = useState(false);
-  const [showInvoicedTable, setShowInvoicedTable] = useState(false); // Added for collapsible invoiced table
-  const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false); // Added for collapsible on hold & cancelled table
-  const [statusUpdating, setStatusUpdating] = useState(null); // Track which work order status is being updated
-  const [attachmentCounts, setAttachmentCounts] = useState({}); // Track attachment counts for each work order
+  const [showInvoicedTable, setShowInvoicedTable] = useState(false);
+  const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false);
+  const [invoicedLoading, setInvoicedLoading] = useState(false); // Loading state for invoiced section
+  const [onHoldCancelledLoading, setOnHoldCancelledLoading] = useState(false); // Loading state for on hold/cancelled section
+  const [statusUpdating, setStatusUpdating] = useState(null);
+  const [attachmentCounts, setAttachmentCounts] = useState({});
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -35,7 +39,8 @@ const WorkOrderList = () => {
         const filters = {};
         if (customerParam) filters.customer = customerParam;
         if (vehicleParam) filters.vehicle = vehicleParam;
-        // Don't filter by status on the API level - we'll filter client-side
+        // Exclude statuses that have their own sections at the database level
+        filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
         const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
@@ -76,7 +81,8 @@ const WorkOrderList = () => {
           const filters = {};
           if (customerParam) filters.customer = customerParam;
           if (vehicleParam) filters.vehicle = vehicleParam;
-          // Don't filter by status on the API level - we'll filter client-side
+          // Exclude statuses that have their own sections at the database level
+          filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
           
           const response = await WorkOrderService.getAllWorkOrders(filters);
           const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
@@ -113,6 +119,74 @@ const WorkOrderList = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [searchQuery, customerParam, vehicleParam]);
+
+  // Fetch invoiced work orders when section is toggled
+  const fetchInvoicedWorkOrders = async () => {
+    try {
+      setInvoicedLoading(true);
+      const filters = { status: 'Repair Complete - Invoiced' };
+      if (customerParam) filters.customer = customerParam;
+      if (vehicleParam) filters.vehicle = vehicleParam;
+      
+      const response = await WorkOrderService.getAllWorkOrders(filters);
+      setInvoicedWorkOrders(response.data.workOrders || []);
+      
+      // Fetch attachment counts for invoiced work orders
+      await fetchAttachmentCounts(response.data.workOrders || []);
+      setInvoicedLoading(false);
+    } catch (err) {
+      console.error('Error fetching invoiced work orders:', err);
+      setInvoicedLoading(false);
+    }
+  };
+
+  // Fetch on hold/cancelled work orders when section is toggled
+  const fetchOnHoldCancelledWorkOrders = async () => {
+    try {
+      setOnHoldCancelledLoading(true);
+      
+      // Need to fetch both statuses - make two separate calls since API doesn't support multiple status filters
+      const filters = { customer: customerParam, vehicle: vehicleParam };
+      const [onHoldResponse, cancelledResponse] = await Promise.all([
+        WorkOrderService.getAllWorkOrders({ ...filters, status: 'On Hold' }),
+        WorkOrderService.getAllWorkOrders({ ...filters, status: 'Cancelled' })
+      ]);
+      
+      const combinedOrders = [
+        ...(onHoldResponse.data.workOrders || []),
+        ...(cancelledResponse.data.workOrders || [])
+      ];
+      
+      setOnHoldCancelledWorkOrders(combinedOrders);
+      
+      // Fetch attachment counts for on hold/cancelled work orders
+      await fetchAttachmentCounts(combinedOrders);
+      setOnHoldCancelledLoading(false);
+    } catch (err) {
+      console.error('Error fetching on hold/cancelled work orders:', err);
+      setOnHoldCancelledLoading(false);
+    }
+  };
+
+  // Toggle invoiced table and fetch data if needed
+  const toggleInvoicedTable = async () => {
+    const newShowState = !showInvoicedTable;
+    setShowInvoicedTable(newShowState);
+    
+    if (newShowState && invoicedWorkOrders.length === 0) {
+      await fetchInvoicedWorkOrders();
+    }
+  };
+
+  // Toggle on hold/cancelled table and fetch data if needed  
+  const toggleOnHoldCancelledTable = async () => {
+    const newShowState = !showOnHoldCancelledTable;
+    setShowOnHoldCancelledTable(newShowState);
+    
+    if (newShowState && onHoldCancelledWorkOrders.length === 0) {
+      await fetchOnHoldCancelledWorkOrders();
+    }
+  };
 
   const fetchAttachmentCounts = async (workOrdersList) => {
     try {
@@ -266,14 +340,24 @@ const WorkOrderList = () => {
     { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
   ];
 
-  // Filter work orders based on selected category
+  // Filter work orders based on selected category, excluding statuses that have their own sections
   const getFilteredWorkOrders = () => {
-    if (statusFilter === 'All') return workOrders;
+    // Always exclude these statuses from the main view since they have separate sections
+    const excludedStatuses = ['Repair Complete - Invoiced', 'On Hold', 'Cancelled'];
+    
+    if (statusFilter === 'All') {
+      return workOrders.filter(wo => !excludedStatuses.includes(wo.status));
+    }
     
     const selectedCategory = statusCategories.find(cat => cat.key === statusFilter);
-    if (!selectedCategory) return workOrders;
+    if (!selectedCategory) {
+      return workOrders.filter(wo => !excludedStatuses.includes(wo.status));
+    }
     
-    return workOrders.filter(wo => selectedCategory.statuses.includes(wo.status));
+    return workOrders.filter(wo => 
+      selectedCategory.statuses.includes(wo.status) && 
+      !excludedStatuses.includes(wo.status)
+    );
   };
 
   // Format currency
@@ -357,12 +441,16 @@ const WorkOrderList = () => {
   
   // Calculate status counts (memoized so they update when workOrders changes)
   const statusCounts = useMemo(() => {
+    // Exclude statuses that have their own separate sections
+    const excludedStatuses = ['Repair Complete - Invoiced', 'On Hold', 'Cancelled'];
+    const mainViewWorkOrders = workOrders.filter(wo => !excludedStatuses.includes(wo.status));
+    
     const counts = {};
     statusCategories.forEach(category => {
       if (category.key === 'All') {
-        counts[category.key] = workOrders.length;
+        counts[category.key] = mainViewWorkOrders.length;
       } else {
-        counts[category.key] = workOrders.filter(wo => 
+        counts[category.key] = mainViewWorkOrders.filter(wo => 
           category.statuses.includes(wo.status)
         ).length;
       }
@@ -370,9 +458,8 @@ const WorkOrderList = () => {
     return counts;
   }, [workOrders]);
   
-  // Keep existing logic for invoiced and on hold/cancelled tables
-  const invoicedWorkOrders = workOrders.filter(wo => wo.status === 'Repair Complete - Invoiced');
-  const onHoldCancelledWorkOrders = workOrders.filter(wo => wo.status === 'On Hold' || wo.status === 'Cancelled');
+  // invoicedWorkOrders and onHoldCancelledWorkOrders are now separate state variables
+  // that are fetched on-demand when their sections are toggled
 
   return (
     <div className="container mx-auto">
@@ -734,7 +821,7 @@ const WorkOrderList = () => {
         <Card className="mt-6">
           <div 
             className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
-            onClick={() => setShowInvoicedTable(!showInvoicedTable)}
+            onClick={toggleInvoicedTable}
           >
             <h2 className="text-xl font-semibold text-gray-700">
               Invoiced Work Orders ({invoicedWorkOrders.length})
@@ -748,9 +835,12 @@ const WorkOrderList = () => {
             </span>
           </div>
           {showInvoicedTable && (
-            loading ? (
+            invoicedLoading ? (
               <div className="flex justify-center items-center h-48 p-4">
-                <p>Loading...</p> {/* Should ideally not show if main table is already loaded */}
+                <div className="flex items-center">
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  <p>Loading invoiced work orders...</p>
+                </div>
               </div>
             ) : invoicedWorkOrders.length === 0 ? (
               <div className="text-center py-6 text-gray-500 p-4">
@@ -793,35 +883,9 @@ const WorkOrderList = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="relative">
-                            <select
-                              value={workOrder.status}
-                              onChange={(e) => handleWorkOrderStatusUpdate(workOrder._id, e.target.value)}
-                              disabled={statusUpdating === workOrder._id}
-                              className={`
-                                text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
-                                ${getStatusColor(workOrder.status)}
-                                ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
-                              `}
-                              style={{ 
-                                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
-                                backgroundPosition: 'right 4px center',
-                                backgroundRepeat: 'no-repeat',
-                                backgroundSize: '12px'
-                              }}
-                            >
-                              {workOrderStatusOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            {statusUpdating === workOrder._id && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                              </div>
-                            )}
-                          </div>
+                          <span className={`inline-flex px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}>
+                            {workOrder.status}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
@@ -862,7 +926,7 @@ const WorkOrderList = () => {
         <Card className="mt-6">
           <div 
             className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
-            onClick={() => setShowOnHoldCancelledTable(!showOnHoldCancelledTable)}
+            onClick={toggleOnHoldCancelledTable}
           >
             <h2 className="text-xl font-semibold text-gray-700">
               On Hold & Cancelled Work Orders ({onHoldCancelledWorkOrders.length})
@@ -876,9 +940,12 @@ const WorkOrderList = () => {
             </span>
           </div>
           {showOnHoldCancelledTable && (
-            loading ? (
+            onHoldCancelledLoading ? (
               <div className="flex justify-center items-center h-48 p-4">
-                <p>Loading...</p>
+                <div className="flex items-center">
+                  <i className="fas fa-spinner fa-spin mr-2"></i>
+                  <p>Loading on hold & cancelled work orders...</p>
+                </div>
               </div>
             ) : onHoldCancelledWorkOrders.length === 0 ? (
               <div className="text-center py-6 text-gray-500 p-4">
@@ -921,35 +988,9 @@ const WorkOrderList = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="relative">
-                            <select
-                              value={workOrder.status}
-                              onChange={(e) => handleWorkOrderStatusUpdate(workOrder._id, e.target.value)}
-                              disabled={statusUpdating === workOrder._id}
-                              className={`
-                                text-xs rounded-full px-2 py-1 border-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 appearance-none pr-6
-                                ${getStatusColor(workOrder.status)}
-                                ${statusUpdating === workOrder._id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}
-                              `}
-                              style={{ 
-                                backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
-                                backgroundPosition: 'right 4px center',
-                                backgroundRepeat: 'no-repeat',
-                                backgroundSize: '12px'
-                              }}
-                            >
-                              {workOrderStatusOptions.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            {statusUpdating === workOrder._id && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                              </div>
-                            )}
-                          </div>
+                          <span className={`inline-flex px-2 py-1 text-xs rounded-full ${getStatusColor(workOrder.status)}`}>
+                            {workOrder.status}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
