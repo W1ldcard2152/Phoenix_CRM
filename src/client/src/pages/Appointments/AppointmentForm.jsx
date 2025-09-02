@@ -336,10 +336,18 @@ const AppointmentForm = () => {
     .map(c => ({ value: c._id, label: c.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
   const vehicleOptions = vehicles.map(v => ({ value: v._id, label: `${v.year} ${v.make} ${v.model} ${v.licensePlate ? `(${v.licensePlate})` : ''}` }));
-  const statusOptions = [ 
-    { value: 'Scheduled', label: 'Scheduled' }, { value: 'Confirmed', label: 'Confirmed' },
-    { value: 'In Progress', label: 'In Progress' }, { value: 'Completed', label: 'Completed' },
-    { value: 'Cancelled', label: 'Cancelled' }, { value: 'No-Show', label: 'No-Show' }
+  const statusOptions = [
+    { value: 'Scheduled', label: 'Scheduled' },
+    { value: 'Confirmed', label: 'Confirmed' },
+    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
+    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
+    { value: 'Repair In Progress', label: 'Repair In Progress' },
+    { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
+    { value: 'Completed', label: 'Completed' },
+    { value: 'Cancelled', label: 'Cancelled' },
+    { value: 'No-Show', label: 'No-Show' }
   ];
   const technicianOptions = [{ value: '', label: 'Select Technician (Optional)' }, ...technicians.map(t => ({ value: t._id, label: `${t.name}${t.specialization ? ` (${t.specialization})` : ''}` }))];
   const validateTimes = (startD, startT, endD, endT) => !startD || !startT || !endD || !endT || new Date(`${startD}T${startT}`) < new Date(`${endD}T${endT}`);

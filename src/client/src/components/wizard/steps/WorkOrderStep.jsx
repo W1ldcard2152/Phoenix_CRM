@@ -44,7 +44,7 @@ const WorkOrderStep = ({ customer, vehicle, onWorkOrderCreate, onError, setLoadi
         services: values.services,
         serviceRequested: values.services.map(s => s.description).join('\n'),
         priority: values.priority,
-        status: values.skipDiagnostics ? 'Inspection/Diag Complete' : 'Work Order Created',
+        // Status will be determined by server based on skipDiagnostics flag
         diagnosticNotes: values.diagnosticNotes,
         skipDiagnostics: values.skipDiagnostics,
         parts: [],

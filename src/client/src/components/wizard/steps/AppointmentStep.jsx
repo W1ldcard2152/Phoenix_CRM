@@ -115,8 +115,9 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
 
       const response = await AppointmentService.createAppointment(appointmentData);
       
-      // Update work order status to Inspection/Diag Scheduled (since this is a new service request)
-      await WorkOrderService.updateStatus(workOrder._id, 'Inspection/Diag Scheduled');
+      // Update work order status based on skipDiagnostics flag
+      const newStatus = workOrder.skipDiagnostics ? 'Repair Scheduled' : 'Inspection/Diag Scheduled';
+      await WorkOrderService.updateStatus(workOrder._id, newStatus);
       
       onAppointmentCreate(response.data.appointment);
     } catch (err) {

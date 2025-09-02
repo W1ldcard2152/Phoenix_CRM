@@ -332,11 +332,11 @@ const WorkOrderList = () => {
   // Status filter categories
   const statusCategories = [
     { key: 'All', label: 'All', statuses: [] },
-    { key: 'Created', label: 'Created', statuses: ['Work Order Created'] },
-    { key: 'In Progress', label: 'In Progress', statuses: ['Inspection/Diag Scheduled', 'Inspection In Progress', 'Repair Scheduled', 'Repair In Progress'] },
+    { key: 'Created', label: 'Created', statuses: ['Work Order Created', 'Inspection/Diag Scheduled'] },
+    { key: 'In Progress', label: 'In Progress', statuses: ['Inspection In Progress', 'Repair In Progress'] },
     { key: 'Needs Parts', label: 'Needs Parts', statuses: ['Inspection/Diag Complete'] },
     { key: 'Parts Ordered', label: 'Parts Ordered', statuses: ['Parts Ordered'] },
-    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received'] },
+    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received', 'Repair Scheduled'] },
     { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
   ];
 
@@ -567,7 +567,7 @@ const WorkOrderList = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Amount
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-80">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -644,8 +644,9 @@ const WorkOrderList = () => {
                           : 'Estimate'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2 min-w-[280px]">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex justify-end gap-2">
+                        {/* Always visible buttons */}
                         <Button
                           to={`/work-orders/${workOrder._id}`}
                           variant="outline"
@@ -653,6 +654,7 @@ const WorkOrderList = () => {
                         >
                           View
                         </Button>
+                        
                         <Button
                           to={`/work-orders/${workOrder._id}/edit`}
                           variant="outline"
@@ -660,6 +662,40 @@ const WorkOrderList = () => {
                         >
                           Edit
                         </Button>
+                        
+                        {/* Status-specific Action Button with fixed width */}
+                        <div className="w-40">
+                          {(workOrder.status === 'Work Order Created' || workOrder.status === 'Parts Received') ? (
+                            <Button
+                              onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
+                              variant="primary"
+                              size="sm"
+                              className="w-full"
+                            >
+                              Schedule Work Order
+                            </Button>
+                          ) : workOrder.status === 'Inspection/Diag Complete' ? (
+                            <Button
+                              onClick={() => navigate(`/work-orders/${workOrder._id}#parts`)}
+                              variant="primary"
+                              size="sm"
+                              className="w-full"
+                            >
+                              Order Parts
+                            </Button>
+                          ) : workOrder.status === 'Parts Ordered' ? (
+                            <Button
+                              onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
+                              variant="primary"
+                              size="sm"
+                              className="w-full"
+                            >
+                              Schedule Repair
+                            </Button>
+                          ) : null}
+                        </div>
+                        
+                        {/* Additional Schedule button if needed */}
                         {needsSchedulingParam && (
                           <Button
                             onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
@@ -667,34 +703,6 @@ const WorkOrderList = () => {
                             size="sm"
                           >
                             Schedule
-                          </Button>
-                        )}
-                        {/* Quick Action Buttons based on status */}
-                        {(workOrder.status === 'Work Order Created' || workOrder.status === 'Parts Received') && (
-                          <Button
-                            onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
-                            variant="primary"
-                            size="sm"
-                          >
-                            Schedule Work Order
-                          </Button>
-                        )}
-                        {workOrder.status === 'Inspection/Diag Complete' && (
-                          <Button
-                            onClick={() => navigate(`/work-orders/${workOrder._id}#parts`)}
-                            variant="primary"
-                            size="sm"
-                          >
-                            Order Parts
-                          </Button>
-                        )}
-                        {workOrder.status === 'Parts Ordered' && (
-                          <Button
-                            onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
-                            variant="primary"
-                            size="sm"
-                          >
-                            Schedule Repair
                           </Button>
                         )}
                       </div>
@@ -817,14 +825,13 @@ const WorkOrderList = () => {
       </Card>
 
       {/* Collapsible Table for Invoiced Work Orders */}
-      {invoicedWorkOrders.length > 0 || showInvoicedTable ? ( // Render this section if there are invoiced orders or if it's manually toggled open (even if empty after a filter)
-        <Card className="mt-6">
+      <Card className="mt-6">
           <div 
             className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
             onClick={toggleInvoicedTable}
           >
             <h2 className="text-xl font-semibold text-gray-700">
-              Invoiced Work Orders ({invoicedWorkOrders.length})
+              Invoiced Work Orders{showInvoicedTable ? ` (${invoicedWorkOrders.length})` : ''}
             </h2>
             <span className="text-sm font-medium text-primary-600">
               {showInvoicedTable ? 'Collapse' : 'Expand'}
@@ -919,17 +926,15 @@ const WorkOrderList = () => {
             )
           )}
         </Card>
-      ) : null}
 
       {/* Collapsible Table for On Hold & Cancelled Work Orders */}
-      {onHoldCancelledWorkOrders.length > 0 || showOnHoldCancelledTable ? (
-        <Card className="mt-6">
+      <Card className="mt-6">
           <div 
             className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
             onClick={toggleOnHoldCancelledTable}
           >
             <h2 className="text-xl font-semibold text-gray-700">
-              On Hold & Cancelled Work Orders ({onHoldCancelledWorkOrders.length})
+              On Hold & Cancelled Work Orders{showOnHoldCancelledTable ? ` (${onHoldCancelledWorkOrders.length})` : ''}
             </h2>
             <span className="text-sm font-medium text-primary-600">
               {showOnHoldCancelledTable ? 'Collapse' : 'Expand'}
@@ -1023,7 +1028,6 @@ const WorkOrderList = () => {
             )
           )}
         </Card>
-      ) : null}
     </div>
   );
 };

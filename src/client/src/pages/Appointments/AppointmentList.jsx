@@ -117,6 +117,12 @@ const AppointmentList = () => {
     { value: 'Scheduled', label: 'Scheduled' },
     { value: 'Confirmed', label: 'Confirmed' },
     { value: 'In Progress', label: 'In Progress' },
+    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
+    { value: 'Inspection In Progress', label: 'Inspection In Progress' },
+    { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
+    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
+    { value: 'Repair In Progress', label: 'Repair In Progress' },
+    { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Completed', label: 'Completed' },
     { value: 'Cancelled', label: 'Cancelled' },
     { value: 'No-Show', label: 'No-Show' }

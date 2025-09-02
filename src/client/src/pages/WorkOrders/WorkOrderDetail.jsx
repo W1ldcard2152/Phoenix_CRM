@@ -16,6 +16,21 @@ import FileList from '../../components/common/FileList';
 const WorkOrderDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  
+  // Predefined vendors list
+  const predefinedVendors = [
+    'Walmart',
+    'Tractor Supply',
+    'Advance Auto Parts',
+    'Autozone',
+    'Napa Auto Parts',
+    'Rock Auto',
+    'eBay.com',
+    'Amazon.com',
+    'ECS Tuning',
+    'FCP Euro',
+    'Other'
+  ];
   const [workOrder, setWorkOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -52,6 +67,65 @@ const WorkOrderDetail = () => {
     vendor: '',
     purchaseOrderNumber: ''
   });
+  const [isOtherVendor, setIsOtherVendor] = useState(false);
+  const [bulkOrderModalOpen, setBulkOrderModalOpen] = useState(false);
+  const [bulkOrderData, setBulkOrderData] = useState({
+    vendor: '',
+    orderNumber: ''
+  });
+  
+  // Handler for vendor selection
+  const handleVendorChange = (selectedVendor) => {
+    if (selectedVendor === 'Other') {
+      setIsOtherVendor(true);
+      setNewPart({ ...newPart, vendor: '' });
+    } else {
+      setIsOtherVendor(false);
+      setNewPart({ ...newPart, vendor: selectedVendor });
+    }
+  };
+  
+  // Get unique vendors from parts
+  const getUniqueVendors = () => {
+    if (!workOrder?.parts) return [];
+    const vendors = [...new Set(workOrder.parts.map(part => part.vendor).filter(vendor => vendor && vendor.trim() !== ''))];
+    return vendors.sort();
+  };
+  
+  // Handle bulk order number assignment
+  const handleBulkOrderAssignment = async () => {
+    if (!bulkOrderData.vendor || !bulkOrderData.orderNumber) {
+      setError('Please select a vendor and enter an order number');
+      return;
+    }
+    
+    try {
+      const updatedWorkOrder = { ...workOrder };
+      let updatedCount = 0;
+      
+      updatedWorkOrder.parts = workOrder.parts.map(part => {
+        if (part.vendor === bulkOrderData.vendor) {
+          updatedCount++;
+          return { ...part, purchaseOrderNumber: bulkOrderData.orderNumber };
+        }
+        return part;
+      });
+      
+      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      setWorkOrder(response.data.workOrder);
+      
+      setBulkOrderModalOpen(false);
+      setBulkOrderData({ vendor: '', orderNumber: '' });
+      setError(null);
+      
+      // Show success message
+      alert(`Successfully updated ${updatedCount} parts with order number ${bulkOrderData.orderNumber}`);
+    } catch (err) {
+      console.error('Error updating bulk order numbers:', err);
+      setError('Failed to update order numbers. Please try again.');
+    }
+  };
+  
   const [newLabor, setNewLabor] = useState({
     description: '',
     hours: 1,
@@ -284,6 +358,9 @@ const WorkOrderDetail = () => {
 
   const openEditPartModal = (part, index) => {
     setEditingPart({ ...part, index });
+    const vendor = part.vendor || '';
+    const isCustomVendor = vendor && !predefinedVendors.slice(0, -1).includes(vendor);
+    
     setNewPart({
       name: part.name || '',
       partNumber: part.partNumber || '',
@@ -291,9 +368,10 @@ const WorkOrderDetail = () => {
       price: part.price || 0,
       ordered: part.ordered || false,
       received: part.received || false,
-      vendor: part.vendor || '',
+      vendor: vendor,
       purchaseOrderNumber: part.purchaseOrderNumber || ''
     });
+    setIsOtherVendor(isCustomVendor);
     setPartModalOpen(true);
   };
 
@@ -351,6 +429,7 @@ const WorkOrderDetail = () => {
         vendor: '',
         purchaseOrderNumber: ''
       });
+      setIsOtherVendor(false);
     } catch (err) {
       console.error('Error adding part:', err);
       setError('Failed to add part. Please try again later.');
@@ -383,6 +462,7 @@ const WorkOrderDetail = () => {
         vendor: '',
         purchaseOrderNumber: ''
       });
+      setIsOtherVendor(false);
     } catch (err) {
       console.error('Error updating part:', err);
       setError('Failed to update part. Please try again later.');
@@ -1012,6 +1092,16 @@ const WorkOrderDetail = () => {
           title="Parts" 
           headerActions={
             <div className="flex space-x-2">
+              {workOrder?.parts?.length > 0 && getUniqueVendors().length > 0 && (
+                <Button
+                  onClick={() => setBulkOrderModalOpen(true)}
+                  variant="secondary"
+                  size="sm"
+                >
+                  <i className="fas fa-list-ul mr-1"></i>
+                  Bulk Order #
+                </Button>
+              )}
               <Button
                 onClick={() => setPartsSelectorOpen(true)}
                 variant="primary"
@@ -1346,12 +1436,27 @@ const WorkOrderDetail = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Vendor / Purchase Location
                 </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newPart.vendor}
-                  onChange={(e) => setNewPart({ ...newPart, vendor: e.target.value })}
-                />
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 mb-2"
+                  value={isOtherVendor ? 'Other' : newPart.vendor}
+                  onChange={(e) => handleVendorChange(e.target.value)}
+                >
+                  <option value="">Select a vendor...</option>
+                  {predefinedVendors.map(vendor => (
+                    <option key={vendor} value={vendor}>
+                      {vendor}
+                    </option>
+                  ))}
+                </select>
+                {isOtherVendor && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom vendor name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.vendor}
+                    onChange={(e) => setNewPart({ ...newPart, vendor: e.target.value })}
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1564,6 +1669,77 @@ const WorkOrderDetail = () => {
           onPartSelect={handlePartFromInventory}
           onClose={() => setPartsSelectorOpen(false)}
         />
+      )}
+
+      {/* Bulk Order Number Modal */}
+      {bulkOrderModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Assign Order Number by Vendor
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Vendor
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={bulkOrderData.vendor}
+                  onChange={(e) => setBulkOrderData({ ...bulkOrderData, vendor: e.target.value })}
+                >
+                  <option value="">Select a vendor...</option>
+                  {getUniqueVendors().map(vendor => {
+                    const partsCount = workOrder.parts.filter(part => part.vendor === vendor).length;
+                    return (
+                      <option key={vendor} value={vendor}>
+                        {vendor} ({partsCount} part{partsCount !== 1 ? 's' : ''})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Order Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter order number"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={bulkOrderData.orderNumber}
+                  onChange={(e) => setBulkOrderData({ ...bulkOrderData, orderNumber: e.target.value })}
+                />
+              </div>
+              {bulkOrderData.vendor && (
+                <div className="bg-blue-50 p-3 rounded-md">
+                  <p className="text-sm text-blue-800">
+                    This will update the order number for all parts from <strong>{bulkOrderData.vendor}</strong> 
+                    ({workOrder.parts.filter(part => part.vendor === bulkOrderData.vendor).length} part{workOrder.parts.filter(part => part.vendor === bulkOrderData.vendor).length !== 1 ? 's' : ''}).
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button
+                variant="light"
+                onClick={() => {
+                  setBulkOrderModalOpen(false);
+                  setBulkOrderData({ vendor: '', orderNumber: '' });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleBulkOrderAssignment}
+                disabled={!bulkOrderData.vendor || !bulkOrderData.orderNumber}
+              >
+                Apply Order Number
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Split Work Order Modal */}

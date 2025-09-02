@@ -56,7 +56,7 @@ const VehicleForm = () => {
   
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',
-    year: new Date().getFullYear(),
+    year: '',
     make: '',
     model: '',
     vin: 'N/A',
@@ -86,7 +86,7 @@ const VehicleForm = () => {
             customer: typeof vehicleData.customer === 'object' 
               ? vehicleData.customer._id 
               : vehicleData.customer,
-            year: vehicleData.year || new Date().getFullYear(),
+            year: vehicleData.year || '',
             make: vehicleData.make || '',
             model: vehicleData.model || '',
             vin: vehicleData.vin || '',

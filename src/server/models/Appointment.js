@@ -37,7 +37,20 @@ const AppointmentSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ['Scheduled', 'Confirmed', 'In Progress', 'Completed', 'Cancelled', 'No-Show'],
+      enum: [
+        'Scheduled', 
+        'Confirmed', 
+        'In Progress', 
+        'Inspection/Diag Scheduled',
+        'Inspection In Progress', 
+        'Inspection/Diag Complete',
+        'Repair Scheduled',
+        'Repair In Progress', 
+        'Repair Complete - Awaiting Payment',
+        'Completed', 
+        'Cancelled', 
+        'No-Show'
+      ],
       default: 'Scheduled'
     },
     workOrder: {
@@ -97,7 +110,7 @@ AppointmentSchema.statics.checkConflicts = async function(startTime, endTime, te
         endTime: { $lte: endTime }
       }
     ],
-    status: { $nin: ['Cancelled', 'Completed', 'No-Show'] }
+    status: { $nin: ['Cancelled', 'Completed', 'No-Show', 'Repair Complete - Awaiting Payment'] }
   };
   
   if (technician) {

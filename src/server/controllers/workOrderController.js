@@ -18,7 +18,23 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   // Build query based on filters
   const query = {};
   
-  if (status) {
+  if (status && excludeStatuses) {
+    // Handle both status inclusion and exclusion
+    const statusAliases = {
+      'Work Order Created': ['Work Order Created', 'Created'],
+      'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
+      'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
+      'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
+      'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
+    };
+    
+    const aliasesForStatus = statusAliases[status] || [status];
+    const statusesToExclude = excludeStatuses.split(',').map(s => s.trim());
+    
+    // Include the specified status but exclude the blacklisted ones
+    const allowedStatuses = aliasesForStatus.filter(s => !statusesToExclude.includes(s));
+    query.status = { $in: allowedStatuses };
+  } else if (status) {
     // Handle both old and new status names for backward compatibility
     const statusAliases = {
       'Work Order Created': ['Work Order Created', 'Created'],
@@ -159,11 +175,12 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   }
   
   // Handle skip diagnostics logic and status assignment
+  // Always set status based on skipDiagnostics flag, regardless of what client sends
   if (workOrderData.skipDiagnostics === true) {
     // If skip diagnostics is checked, set status to 'Inspection/Diag Complete'
     workOrderData.status = 'Inspection/Diag Complete';
-  } else if (!workOrderData.status || workOrderData.status === 'Work Order Created') {
-    // If skip diagnostics is not checked, ensure status is 'Work Order Created'
+  } else {
+    // If skip diagnostics is not checked, set status to 'Work Order Created'
     workOrderData.status = 'Work Order Created';
   }
   

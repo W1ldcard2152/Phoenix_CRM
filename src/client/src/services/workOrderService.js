@@ -13,6 +13,7 @@ const WorkOrderService = {
       if (filters.vehicle) params.append('vehicle', filters.vehicle);
       if (filters.startDate) params.append('startDate', filters.startDate);
       if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.excludeStatuses) params.append('excludeStatuses', filters.excludeStatuses);
       
       const response = await API.get(`/workorders?${params.toString()}`);
       return response.data;
