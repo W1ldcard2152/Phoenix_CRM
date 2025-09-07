@@ -106,7 +106,11 @@ const WorkOrderDetail = () => {
       updatedWorkOrder.parts = workOrder.parts.map(part => {
         if (part.vendor === bulkOrderData.vendor) {
           updatedCount++;
-          return { ...part, purchaseOrderNumber: bulkOrderData.orderNumber };
+          return { 
+            ...part, 
+            purchaseOrderNumber: bulkOrderData.orderNumber,
+            ordered: true  // Automatically mark as ordered when assigning order number
+          };
         }
         return part;
       });

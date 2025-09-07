@@ -22,7 +22,12 @@
       "Bash(set PORT=3001)",
       "Bash(set PORT=5001)",
       "Bash(del test-date-fix.js)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\client\\src\\pages\\WorkOrders/**)",
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\client\\src\\pages\\WorkOrders/**)",
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\client\\src\\pages\\WorkOrders/**)",
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\client\\src\\pages\\WorkOrders/**)",
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\client\\src\\pages\\WorkOrders/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",
