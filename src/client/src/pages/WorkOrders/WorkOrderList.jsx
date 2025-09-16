@@ -6,6 +6,7 @@ import Input from '../../components/common/Input';
 import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import WorkOrderService from '../../services/workOrderService';
 import MediaService from '../../services/mediaService';
+import customerInteractionService from '../../services/customerInteractionService';
 
 const WorkOrderList = () => {
   const [workOrders, setWorkOrders] = useState([]); // Active work orders only
@@ -22,6 +23,7 @@ const WorkOrderList = () => {
   const [onHoldCancelledLoading, setOnHoldCancelledLoading] = useState(false); // Loading state for on hold/cancelled section
   const [statusUpdating, setStatusUpdating] = useState(null);
   const [attachmentCounts, setAttachmentCounts] = useState({});
+  const [interactionStats, setInteractionStats] = useState({});
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
@@ -60,6 +62,9 @@ const WorkOrderList = () => {
         // Fetch attachment counts for each work order
         await fetchAttachmentCounts(sortedWorkOrders);
         
+        // Fetch interaction stats for each work order
+        await fetchInteractionStats(sortedWorkOrders);
+        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching work orders:', err);
@@ -97,6 +102,7 @@ const WorkOrderList = () => {
           });
           setWorkOrders(sortedWorkOrders);
           await fetchAttachmentCounts(sortedWorkOrders);
+          await fetchInteractionStats(sortedWorkOrders);
           setIsSearching(false);
         } catch (err) {
           console.error('Error fetching work orders:', err);
@@ -221,6 +227,92 @@ const WorkOrderList = () => {
     }
   };
 
+  const fetchInteractionStats = async (workOrdersList) => {
+    try {
+      const stats = {};
+      
+      // Process work orders in batches to avoid rate limiting
+      const batchSize = 5;
+      for (let i = 0; i < workOrdersList.length; i += batchSize) {
+        const batch = workOrdersList.slice(i, i + batchSize);
+        
+        await Promise.all(
+          batch.map(async (workOrder) => {
+            try {
+              const response = await customerInteractionService.getInteractionStats(workOrder._id);
+              stats[workOrder._id] = response;
+            } catch (err) {
+              console.error(`Error fetching interaction stats for work order ${workOrder._id}:`, err);
+              stats[workOrder._id] = null;
+            }
+          })
+        );
+        
+        // Add delay between batches to prevent rate limiting
+        if (i + batchSize < workOrdersList.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      setInteractionStats(stats);
+    } catch (err) {
+      console.error('Error fetching interaction stats:', err);
+    }
+  };
+
+  // Helper function to render interaction badges
+  const renderInteractionBadges = (workOrderId) => {
+    const stats = interactionStats[workOrderId];
+    if (!stats) return null;
+
+    const badges = [];
+    
+    if (stats.totalInteractions > 0) {
+      const lastContactDate = new Date(stats.lastContact);
+      const hoursAgo = Math.floor((new Date() - lastContactDate) / (1000 * 60 * 60));
+      
+      let timeText = '';
+      let colorClass = '';
+      
+      if (hoursAgo < 24) {
+        timeText = hoursAgo < 1 ? 'Just now' : `${hoursAgo}h ago`;
+        colorClass = 'bg-green-100 text-green-800';
+      } else {
+        const daysAgo = Math.floor(hoursAgo / 24);
+        timeText = `${daysAgo}d ago`;
+        colorClass = daysAgo > 7 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+      }
+      
+      badges.push(
+        <span key="last-contact" className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
+          📞 {timeText}
+        </span>
+      );
+    }
+    
+    if (stats.pendingFollowUps > 0) {
+      badges.push(
+        <span key="follow-ups" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+          ⏰ {stats.pendingFollowUps} follow-up{stats.pendingFollowUps > 1 ? 's' : ''}
+        </span>
+      );
+    }
+    
+    if (stats.overdueFollowUps > 0) {
+      badges.push(
+        <span key="overdue" className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          🚨 {stats.overdueFollowUps} overdue
+        </span>
+      );
+    }
+    
+    return badges.length > 0 ? (
+      <div className="flex flex-wrap gap-1 mt-1">
+        {badges}
+      </div>
+    ) : null;
+  };
+
   const performSearch = useCallback(async (query) => {
     try {
       setIsSearching(true);
@@ -237,6 +329,7 @@ const WorkOrderList = () => {
       });
       setWorkOrders(sortedWorkOrders);
       await fetchAttachmentCounts(sortedWorkOrders);
+      await fetchInteractionStats(sortedWorkOrders);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching work orders:', err);
@@ -587,6 +680,7 @@ const WorkOrderList = () => {
                       <div className="text-sm text-gray-500">
                         {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
                       </div>
+                      {renderInteractionBadges(workOrder._id)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">

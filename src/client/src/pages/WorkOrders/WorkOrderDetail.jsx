@@ -11,6 +11,7 @@ import PartsSelector from '../../components/parts/PartsSelector';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
+import CustomerInteractions from '../../components/workorders/CustomerInteractions';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -93,6 +94,29 @@ const WorkOrderDetail = () => {
   };
   
   // Handle bulk order number assignment
+  // Helper function to check if all parts are ordered and update status
+  const checkAndUpdatePartsOrderedStatus = async (updatedWorkOrder) => {
+    // Only update status if there are parts and all are ordered
+    if (updatedWorkOrder.parts && updatedWorkOrder.parts.length > 0) {
+      const allPartsOrdered = updatedWorkOrder.parts.every(part => part.ordered === true);
+      
+      // Check current status - only update if we're in a pre-ordering status
+      const preOrderStatuses = [
+        'Work Order Created',
+        'Inspection/Diag Scheduled',
+        'Inspection In Progress',
+        'Inspection/Diag Complete'
+      ];
+      
+      if (allPartsOrdered && preOrderStatuses.includes(updatedWorkOrder.status)) {
+        // Update to Parts Ordered status
+        updatedWorkOrder.status = 'Parts Ordered';
+      }
+    }
+    
+    return updatedWorkOrder;
+  };
+
   const handleBulkOrderAssignment = async () => {
     if (!bulkOrderData.vendor || !bulkOrderData.orderNumber) {
       setError('Please select a vendor and enter an order number');
@@ -100,7 +124,7 @@ const WorkOrderDetail = () => {
     }
     
     try {
-      const updatedWorkOrder = { ...workOrder };
+      let updatedWorkOrder = { ...workOrder };
       let updatedCount = 0;
       
       updatedWorkOrder.parts = workOrder.parts.map(part => {
@@ -114,6 +138,9 @@ const WorkOrderDetail = () => {
         }
         return part;
       });
+      
+      // Check if all parts are now ordered and update status if needed
+      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
       
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
       setWorkOrder(response.data.workOrder);
@@ -421,7 +448,19 @@ const WorkOrderDetail = () => {
   const handleAddPart = async () => {
     try {
       const response = await WorkOrderService.addPart(id, newPart);
-      setWorkOrder(response.data.workOrder);
+      let updatedWorkOrder = response.data.workOrder;
+      
+      // Check if all parts are now ordered and update status if needed
+      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
+      
+      // If status was updated, save the change
+      if (updatedWorkOrder.status !== response.data.workOrder.status) {
+        const statusResponse = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+        setWorkOrder(statusResponse.data.workOrder);
+      } else {
+        setWorkOrder(updatedWorkOrder);
+      }
+      
       setPartModalOpen(false);
       setNewPart({
         name: '',
@@ -443,13 +482,16 @@ const WorkOrderDetail = () => {
   const handleEditPart = async () => {
     try {
       // Create an updated work order with the edited part
-      const updatedWorkOrder = { ...workOrder };
+      let updatedWorkOrder = { ...workOrder };
       const updatedParts = [...updatedWorkOrder.parts];
       updatedParts[editingPart.index] = {
         ...updatedParts[editingPart.index],
         ...newPart
       };
       updatedWorkOrder.parts = updatedParts;
+      
+      // Check if all parts are now ordered and update status if needed
+      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
 
       // Send the entire updated work order to the server
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
@@ -544,7 +586,7 @@ const WorkOrderDetail = () => {
 
   const handlePartStatusChange = async (partIndex, field, value) => {
     try {
-      const updatedWorkOrder = { ...workOrder };
+      let updatedWorkOrder = { ...workOrder };
       const updatedParts = [...updatedWorkOrder.parts];
       
       // Update the specific field
@@ -559,6 +601,9 @@ const WorkOrderDetail = () => {
       }
 
       updatedWorkOrder.parts = updatedParts;
+      
+      // Check if all parts are now ordered and update status if needed
+      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
 
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
       setWorkOrder(response.data.workOrder);
@@ -912,8 +957,15 @@ const WorkOrderDetail = () => {
         </Card>
       </div>
 
-      {/* Work Order Notes Section */}
+      {/* Customer Interactions Section */}
       <div className="space-y-6">
+        <CustomerInteractions 
+          workOrderId={id}
+          customerId={workOrder?.customer?._id}
+          workOrderStatus={workOrder?.status}
+        />
+        
+        {/* Work Order Notes Section */}
         <Card title="Work Order Notes">
           <div className="space-y-4">
             {/* Add New Note Form */}

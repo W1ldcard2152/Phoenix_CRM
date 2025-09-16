@@ -112,84 +112,62 @@ const TechnicianPortal = () => {
   const renderWorkOrderCard = (workOrder) => (
     <div 
       key={workOrder._id}
-      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+      className="border border-gray-200 rounded p-2 hover:shadow-md transition-shadow cursor-pointer"
       onClick={() => handleWorkOrderClick(workOrder._id, workOrder.status)}
     >
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg text-gray-900">
-            {workOrder.services && workOrder.services.length > 0 
-              ? workOrder.services[0].description 
-              : workOrder.serviceRequested || 'No Description'}
-          </h3>
-          <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
-            <span>
-              <i className="fas fa-calendar mr-1"></i>
-              {new Date(workOrder.date).toLocaleDateString()}
-            </span>
-            <span className={`font-medium ${getPriorityColor(workOrder.priority)}`}>
-              <i className="fas fa-exclamation-circle mr-1"></i>
-              {workOrder.priority} Priority
-            </span>
-          </div>
+      {/* First Row */}
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-3 flex-1 min-w-0">
+          <span className="font-semibold text-gray-900 truncate">
+            #{workOrder._id.slice(-6)}
+          </span>
+          <span className="text-gray-700 truncate flex-1">
+            {workOrder.customer?.name || 'Unknown'}
+          </span>
+          <span className="text-gray-600 hidden sm:inline truncate">
+            {workOrder.vehicle ? 
+              `${workOrder.vehicle.year} ${workOrder.vehicle.make} ${workOrder.vehicle.model}` : 
+              'No Vehicle'
+            }
+          </span>
         </div>
-        <div className="flex flex-col items-end space-y-2">
-          <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(workOrder.status)}`}>
-            {workOrder.status}
+        <div className="flex items-center space-x-2">
+          <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(workOrder.status)}`}>
+            {workOrder.status.replace('Inspection/Diag', 'Insp.')}
           </span>
           <Button
             variant="primary"
             size="sm"
+            className="px-2 py-1 text-xs"
             onClick={(e) => {
               e.stopPropagation();
               handleWorkOrderClick(workOrder._id, workOrder.status);
             }}
           >
-            Start Work
+            Start
           </Button>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-        <div>
-          <p className="text-gray-500">Customer</p>
-          <p className="font-medium">
-            {workOrder.customer?.name || 'Unknown Customer'}
-          </p>
-          {workOrder.customer?.phone && (
-            <p className="text-gray-600">{workOrder.customer.phone}</p>
-          )}
+      
+      {/* Second Row */}
+      <div className="flex items-center justify-between text-xs text-gray-600 mt-1">
+        <div className="flex items-center space-x-3">
+          <span>
+            <i className="fas fa-calendar mr-1"></i>
+            {new Date(workOrder.date).toLocaleDateString()}
+          </span>
+          <span className={`font-medium ${getPriorityColor(workOrder.priority)}`}>
+            {workOrder.priority}
+          </span>
+          <span className="truncate max-w-xs">
+            {workOrder.services && workOrder.services.length > 0 
+              ? workOrder.services[0].description 
+              : workOrder.serviceRequested || 'No Description'}
+          </span>
         </div>
-        <div>
-          <p className="text-gray-500">Vehicle</p>
-          <p className="font-medium">
-            {workOrder.vehicle ? 
-              `${workOrder.vehicle.year} ${workOrder.vehicle.make} ${workOrder.vehicle.model}` : 
-              'No Vehicle Assigned'
-            }
-          </p>
-          {workOrder.vehicle?.licensePlate && (
-            <p className="text-gray-600">Plate: {workOrder.vehicle.licensePlate}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Quick Status Indicators */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex justify-between items-center text-xs text-gray-500">
-          <div className="flex space-x-4">
-            <span>
-              <i className="fas fa-cogs mr-1"></i>
-              {workOrder.parts?.length || 0} Parts
-            </span>
-            <span>
-              <i className="fas fa-tools mr-1"></i>
-              {workOrder.labor?.length || 0} Labor Items
-            </span>
-          </div>
-          <div>
-            Work Order #{workOrder._id.slice(-6)}
-          </div>
+        <div className="flex space-x-2">
+          <span>{workOrder.parts?.length || 0} parts</span>
+          <span>{workOrder.labor?.length || 0} labor</span>
         </div>
       </div>
     </div>
@@ -263,7 +241,7 @@ const TechnicianPortal = () => {
             <p className="text-sm">Check back later for new assignments</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {inspectionWorkOrders.map(renderWorkOrderCard)}
           </div>
         )}
@@ -278,7 +256,7 @@ const TechnicianPortal = () => {
             <p className="text-sm">Check back later for new assignments</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {repairWorkOrders.map(renderWorkOrderCard)}
           </div>
         )}

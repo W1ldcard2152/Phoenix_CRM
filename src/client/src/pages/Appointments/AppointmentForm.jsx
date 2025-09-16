@@ -27,7 +27,7 @@ const AppointmentSchema = Yup.object().shape({
   endDate: Yup.string().required('End date is required'),
   endTime: Yup.string().required('End time is required'),
   status: Yup.string().required('Status is required'),
-  technician: Yup.string()
+  technician: Yup.string().required('Technician is required')
 });
 
 const AppointmentForm = () => {
@@ -349,7 +349,7 @@ const AppointmentForm = () => {
     { value: 'Cancelled', label: 'Cancelled' },
     { value: 'No-Show', label: 'No-Show' }
   ];
-  const technicianOptions = [{ value: '', label: 'Select Technician (Optional)' }, ...technicians.map(t => ({ value: t._id, label: `${t.name}${t.specialization ? ` (${t.specialization})` : ''}` }))];
+  const technicianOptions = [{ value: '', label: 'Select Technician' }, ...technicians.map(t => ({ value: t._id, label: `${t.name}${t.specialization ? ` (${t.specialization})` : ''}` }))];
   const validateTimes = (startD, startT, endD, endT) => !startD || !startT || !endD || !endT || new Date(`${startD}T${startT}`) < new Date(`${endD}T${endT}`);
 
   return (
@@ -416,7 +416,7 @@ const AppointmentForm = () => {
                 </div>
                 
                 <div>
-                  <SelectInput label="Technician" name="technician" options={technicianOptions} value={values.technician} onChange={(e) => { const newTech = e.target.value; setFieldValue('technician', newTech); if (values.startDate && values.startTime && values.endDate && values.endTime) checkForConflicts({...values, technician: newTech}); }} onBlur={handleBlur} error={errors.technician} touched={touched.technician} />
+                  <SelectInput label="Technician" name="technician" options={technicianOptions} value={values.technician} onChange={(e) => { const newTech = e.target.value; setFieldValue('technician', newTech); if (values.startDate && values.startTime && values.endDate && values.endTime) checkForConflicts({...values, technician: newTech}); }} onBlur={handleBlur} error={errors.technician} touched={touched.technician} required />
                 </div>
                 <div>
                   <SelectInput label="Status" name="status" options={statusOptions} value={values.status} onChange={handleChange} onBlur={handleBlur} error={errors.status} touched={touched.status} required />

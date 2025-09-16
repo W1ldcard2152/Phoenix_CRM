@@ -1,0 +1,157 @@
+.customer-interactions-card {
+  margin-bottom: 1rem;
+}
+
+.interaction-stats {
+  font-size: 0.85rem;
+}
+
+.quick-templates {
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-radius: 0.375rem;
+}
+
+.interaction-form {
+  background-color: #f8f9fa;
+}
+
+.follow-up-section {
+  padding: 1rem;
+  background-color: #fff3cd;
+  border-radius: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.interactions-timeline {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.interaction-item {
+  position: relative;
+  padding: 1rem;
+  border-left: 3px solid #dee2e6;
+  margin-left: 10px;
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+
+.interaction-item:hover {
+  background-color: #f8f9fa;
+  border-left-color: #0d6efd;
+}
+
+.interaction-item:before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 1.2rem;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 2px solid #dee2e6;
+}
+
+.interaction-item:hover:before {
+  border-color: #0d6efd;
+}
+
+.interaction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.interaction-icon {
+  font-size: 1.2rem;
+  margin-right: 0.25rem;
+}
+
+.interaction-meta {
+  text-align: right;
+}
+
+.interaction-body {
+  margin-left: 2rem;
+}
+
+.interaction-reason {
+  color: #495057;
+}
+
+.interaction-notes {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+  border: 1px solid #dee2e6;
+}
+
+.follow-up-info {
+  border-left: 3px solid #ffc107;
+}
+
+.interaction-actions {
+  margin-top: 0.5rem;
+  margin-left: 2rem;
+}
+
+.interaction-actions .btn-link {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* Badge customizations */
+.badge.bg-success {
+  background-color: #198754 !important;
+}
+
+.badge.bg-warning {
+  background-color: #ffc107 !important;
+  color: #000;
+}
+
+.badge.bg-danger {
+  background-color: #dc3545 !important;
+}
+
+.badge.bg-info {
+  background-color: #0dcaf0 !important;
+  color: #000;
+}
+
+.badge.bg-secondary {
+  background-color: #6c757d !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .quick-templates .btn {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .interaction-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .interaction-meta {
+    text-align: left;
+    margin-top: 0.25rem;
+  }
+
+  .interaction-form .row {
+    margin: 0;
+  }
+
+  .interaction-form .col-md-3,
+  .interaction-form .col-md-4,
+  .interaction-form .col-md-9,
+  .interaction-form .col-md-12 {
+    padding: 0;
+  }
+}
