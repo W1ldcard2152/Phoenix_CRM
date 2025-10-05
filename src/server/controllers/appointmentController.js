@@ -5,6 +5,8 @@ const WorkOrder = require('../models/WorkOrder');
 const moment = require('moment-timezone');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { applyPopulation } = require('../utils/populationHelpers');
+const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 
@@ -32,12 +34,11 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
     }
   }
   
-  const appointments = await Appointment.find(query)
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model')
-  .populate('technician', 'name specialization') // Populate technician
-  .populate({ path: 'workOrder', select: 'status' }) // Populate workOrder status
-  .sort({ startTime: 1 });
+  const appointments = await applyPopulation(
+    Appointment.find(query).sort({ startTime: 1 }),
+    'appointment',
+    'standard'
+  );
   
   res.status(200).json({
     status: 'success',
@@ -50,45 +51,30 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
 
 // Get a single appointment
 exports.getAppointment = catchAsync(async (req, res, next) => {
-  const appointment = await Appointment.findById(req.params.id)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin')
-    .populate('workOrder')
-    .populate('technician', 'name specialization'); // Populate technician
-  
+  const appointment = await applyPopulation(
+    Appointment.findById(req.params.id),
+    'appointment',
+    'detailed'
+  );
+
   if (!appointment) {
     return next(new AppError('No appointment found with that ID', 404));
   }
-  
+
   res.status(200).json({
     status: 'success',
-    data: {
-      appointment
-    }
+    data: { appointment }
   });
 });
 
 // Create a new appointment
 exports.createAppointment = catchAsync(async (req, res, next) => {
-  // Verify customer exists
-  const customer = await Customer.findById(req.body.customer);
-  if (!customer) {
-    return next(new AppError('No customer found with that ID', 404));
-  }
+  const customer = await validateEntityExists(Customer, req.body.customer, 'Customer');
 
   let vehicle = null;
-  // Only attempt to find vehicle if a vehicle ID is provided and not empty
   if (req.body.vehicle && req.body.vehicle !== '') {
-    vehicle = await Vehicle.findById(req.body.vehicle);
-    if (!vehicle) {
-      return next(new AppError('No vehicle found with that ID', 404));
-    }
-    // Verify that the vehicle belongs to the customer
-    if (vehicle.customer.toString() !== customer._id.toString()) {
-      return next(
-        new AppError('The vehicle does not belong to this customer', 400)
-      );
-    }
+    vehicle = await validateEntityExists(Vehicle, req.body.vehicle, 'Vehicle');
+    validateVehicleOwnership(vehicle, customer);
   }
   
   // Check for scheduling conflicts
@@ -202,18 +188,11 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
   }
   
   // Repopulate newAppointment fully before sending the response
-  const fullyPopulatedAppointment = await Appointment.findById(newAppointment._id)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin') // Added vin
-    .populate('technician', 'name specialization')
-    .populate({ // Populate workOrder and its relevant fields
-      path: 'workOrder',
-      populate: [
-        { path: 'assignedTechnician', select: 'name specialization' },
-        { path: 'customer', select: 'name' }, // Example, add more as needed
-        { path: 'vehicle', select: 'year make model' } // Example
-      ]
-    });
+  const fullyPopulatedAppointment = await applyPopulation(
+    Appointment.findById(newAppointment._id),
+    'appointment',
+    'detailed'
+  );
   
   res.status(201).json({
     status: 'success',
@@ -301,16 +280,14 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     }
   }
   
-  const updatedAppointment = await Appointment.findByIdAndUpdate(
-    req.params.id,
-    req.body,
-    {
+  const updatedAppointment = await applyPopulation(
+    Appointment.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
-    }
-  ).populate('customer', 'name phone email communicationPreference')
-   .populate('vehicle', 'year make model')
-   .populate('technician', 'name specialization'); // Populate technician
+    }),
+    'appointment',
+    'withCommunication'
+  );
 
   // If technician was changed and there's an associated work order, update it
   if (req.body.technician && updatedAppointment.workOrder) {
@@ -438,14 +415,11 @@ exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
     );
   }
   
-  const appointments = await Appointment.find({
-    startTime: { $gte: start, $lte: end }
-  })
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model')
-  .populate('technician', 'name specialization') // Populate technician
-  .populate({ path: 'workOrder', select: 'status' }) // Populate workOrder status
-  .sort({ startTime: 1 });
+  const appointments = await applyPopulation(
+    Appointment.find({ startTime: { $gte: start, $lte: end } }).sort({ startTime: 1 }),
+    'appointment',
+    'standard'
+  );
   
   res.status(200).json({
     status: 'success',
@@ -550,13 +524,11 @@ exports.getTodayAppointments = catchAsync(async (req, res, next) => {
   const todayStart = moment.tz(AMERICA_NEW_YORK).startOf('day').utc().toDate();
   const tomorrowStart = moment.tz(AMERICA_NEW_YORK).add(1, 'day').startOf('day').utc().toDate();
   
-  const appointments = await Appointment.find({
-    startTime: { $gte: todayStart, $lt: tomorrowStart }
-  })
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model')
-  .populate('technician', 'name specialization') // Populate technician
-  .sort({ startTime: 1 });
+  const appointments = await applyPopulation(
+    Appointment.find({ startTime: { $gte: todayStart, $lt: tomorrowStart } }).sort({ startTime: 1 }),
+    'appointment',
+    'standard'
+  );
   
   res.status(200).json({
     status: 'success',
@@ -570,17 +542,14 @@ exports.getTodayAppointments = catchAsync(async (req, res, next) => {
 // Get appointments by customer
 exports.getCustomerAppointments = catchAsync(async (req, res, next) => {
   const { customerId } = req.params;
-  
-  const customer = await Customer.findById(customerId);
-  
-  if (!customer) {
-    return next(new AppError('No customer found with that ID', 404));
-  }
-  
-  const appointments = await Appointment.find({ customer: customerId })
-    .populate('vehicle', 'year make model')
-    .populate('technician', 'name specialization') // Populate technician
-    .sort({ startTime: -1 });
+
+  const customer = await validateEntityExists(Customer, customerId, 'Customer');
+
+  const appointments = await applyPopulation(
+    Appointment.find({ customer: customerId }).sort({ startTime: -1 }),
+    'appointment',
+    'standard'
+  );
   
   res.status(200).json({
     status: 'success',
@@ -595,16 +564,22 @@ exports.getCustomerAppointments = catchAsync(async (req, res, next) => {
 // Get appointments by vehicle
 exports.getVehicleAppointments = catchAsync(async (req, res, next) => {
   const { vehicleId } = req.params;
-  
-  const vehicle = await Vehicle.findById(vehicleId).populate('customer', 'name');
-  
+
+  const vehicle = await applyPopulation(
+    Vehicle.findById(vehicleId),
+    'vehicle',
+    'standard'
+  );
+
   if (!vehicle) {
     return next(new AppError('No vehicle found with that ID', 404));
   }
-  
-  const appointments = await Appointment.find({ vehicle: vehicleId })
-    .populate('technician', 'name specialization') // Populate technician
-    .sort({ startTime: -1 });
+
+  const appointments = await applyPopulation(
+    Appointment.find({ vehicle: vehicleId }).sort({ startTime: -1 }),
+    'appointment',
+    'standard'
+  );
   
   res.status(200).json({
     status: 'success',

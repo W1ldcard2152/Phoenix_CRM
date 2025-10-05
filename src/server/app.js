@@ -12,7 +12,6 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const mongoSanitize = require('express-mongo-sanitize');
-const { xss } = require('express-xss-sanitizer');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 
@@ -50,25 +49,15 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Limit requests from same IP - modified for development vs production
-if (process.env.NODE_ENV === 'production') {
-  // Stricter limits for production
-  const limiter = rateLimit({
-    max: 100, // 100 requests
-    windowMs: 60 * 60 * 1000, // 1 hour
-    message: 'Too many requests from this IP, please try again in an hour!'
-  });
-  app.use('/api', limiter);
-} else {
-  // More lenient for development
-  const devLimiter = rateLimit({
-    max: 1000, // Much higher limit for development
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  });
-  app.use('/api', devLimiter);
-}
+// Limit requests from same IP
+const limiter = rateLimit({
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
+  windowMs: process.env.NODE_ENV === 'production' ? 60 * 60 * 1000 : 15 * 60 * 1000,
+  message: 'Too many requests from this IP, please try again later!',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api', limiter);
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10mb' })); // Increased for image uploads

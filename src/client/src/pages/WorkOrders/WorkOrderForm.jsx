@@ -225,17 +225,17 @@ const WorkOrderForm = () => {
         // Generate serviceRequested for backward compatibility
         serviceRequested: values.services.map(s => s.description).join('\n')
       };
-      
+
       if (id) {
         // Update existing work order
         await WorkOrderService.updateWorkOrder(id, finalData);
+        navigate(`/work-orders/${id}`);
       } else {
         // Create new work order
-        await WorkOrderService.createWorkOrder(finalData);
+        const response = await WorkOrderService.createWorkOrder(finalData);
+        const newWorkOrderId = response.data.workOrder._id;
+        navigate(`/work-orders/${newWorkOrderId}`);
       }
-      
-      // Redirect to work order list or detail page
-      navigate('/work-orders');
     } catch (err) {
       console.error('Error saving work order:', err);
       setError('Failed to save work order. Please try again later.');

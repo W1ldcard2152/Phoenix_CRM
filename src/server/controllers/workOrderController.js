@@ -6,137 +6,87 @@ const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { parseLocalDate } = require('../utils/dateUtils');
+const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault } = require('../utils/dateUtils');
+const { applyPopulation } = require('../utils/populationHelpers');
+const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
+const { calculateWorkOrderTotal, getWorkOrderCostBreakdown } = require('../utils/calculationHelpers');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 
+// Status aliases for backward compatibility - defined once at module level
+const STATUS_ALIASES = {
+  'Work Order Created': ['Work Order Created', 'Created'],
+  'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
+  'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
+  'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
+  'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
+};
+
 // Get all work orders
 exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
-  // Allow filtering by status, customer, vehicle, date range
   const { status, customer, vehicle, startDate, endDate, excludeStatuses } = req.query;
-  
+
   // Build query based on filters
   const query = {};
-  
+
   if (status && excludeStatuses) {
-    // Handle both status inclusion and exclusion
-    const statusAliases = {
-      'Work Order Created': ['Work Order Created', 'Created'],
-      'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
-      'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
-      'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
-      'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
-    };
-    
-    const aliasesForStatus = statusAliases[status] || [status];
+    const aliasesForStatus = STATUS_ALIASES[status] || [status];
     const statusesToExclude = excludeStatuses.split(',').map(s => s.trim());
-    
-    // Include the specified status but exclude the blacklisted ones
     const allowedStatuses = aliasesForStatus.filter(s => !statusesToExclude.includes(s));
     query.status = { $in: allowedStatuses };
   } else if (status) {
-    // Handle both old and new status names for backward compatibility
-    const statusAliases = {
-      'Work Order Created': ['Work Order Created', 'Created'],
-      'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
-      'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
-      'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
-      'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
-    };
-    
-    const aliasesForStatus = statusAliases[status] || [status];
+    const aliasesForStatus = STATUS_ALIASES[status] || [status];
     query.status = { $in: aliasesForStatus };
   } else if (excludeStatuses) {
-    // Support excluding specific statuses (comma-separated)
     const statusesToExclude = excludeStatuses.split(',').map(s => s.trim());
     query.status = { $nin: statusesToExclude };
   }
+
   if (customer) query.customer = customer;
   if (vehicle) query.vehicle = vehicle;
-  
-  // Date range filter
-  if (startDate || endDate) {
-    query.date = {};
-    if (startDate) query.date.$gte = parseLocalDate(startDate);
-    if (endDate) query.date.$lte = parseLocalDate(endDate);
-  }
-  
-  const workOrders = await WorkOrder.find(query)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', 'name specialization') // Populate assignedTechnician
-    .sort({ date: -1 });
-  
+  Object.assign(query, buildDateRangeQuery(startDate, endDate, 'date'));
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find(query).sort({ date: -1 }),
+    'workOrder',
+    'standard'
+  );
+
   res.status(200).json({
     status: 'success',
     results: workOrders.length,
-    data: {
-      workOrders
-    }
+    data: { workOrders }
   });
 });
 
 // Get a single work order
 exports.getWorkOrder = catchAsync(async (req, res, next) => {
-  try {
-    // Validate the work order ID format
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return next(new AppError('Invalid work order ID format', 400));
-    }
-    
-    const workOrder = await WorkOrder.findById(req.params.id)
-      .populate('customer', 'name phone email')
-      .populate('vehicle', 'year make model vin licensePlate')
-      .populate({
-        path: 'appointmentId',
-        select: '_id technician startTime endTime status', // _id first
-        populate: { 
-          path: 'technician',
-          select: '_id name specialization' // _id first
-        }
-      })
-      .populate('assignedTechnician', '_id name specialization'); // _id first
-    
-    if (!workOrder) {
-      return next(new AppError('No work order found with that ID', 404));
-    }
-    
-    // The explicit check and manual population for appointmentId can be removed
-    // as Mongoose's populate should handle this correctly with the specified path and select.
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        workOrder
-      }
-    });
-  } catch (err) {
-    console.error(`Error fetching work order ${req.params.id}:`, err);
-    return next(new AppError(`Failed to fetch work order details: ${err.message}`, 500));
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return next(new AppError('Invalid work order ID format', 400));
   }
+
+  const workOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  if (!workOrder) {
+    return next(new AppError('No work order found with that ID', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder }
+  });
 });
 
 // Create a new work order
 exports.createWorkOrder = catchAsync(async (req, res, next) => {
   // Verify that customer and vehicle exist and are related
-  const vehicle = await Vehicle.findById(req.body.vehicle);
-  
-  if (!vehicle) {
-    return next(new AppError('No vehicle found with that ID', 404));
-  }
-  
-  const customer = await Customer.findById(req.body.customer);
-  
-  if (!customer) {
-    return next(new AppError('No customer found with that ID', 404));
-  }
-  
-  // Verify that the vehicle belongs to the customer
-  if (vehicle.customer.toString() !== customer._id.toString()) {
-    return next(
-      new AppError('The vehicle does not belong to this customer', 400)
-    );
-  }
+  const vehicle = await validateEntityExists(Vehicle, req.body.vehicle, 'Vehicle');
+  const customer = await validateEntityExists(Customer, req.body.customer, 'Customer');
+  validateVehicleOwnership(vehicle, customer);
   
   // Handle services array if provided
   let workOrderData = { ...req.body };
@@ -186,15 +136,10 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   
   // Calculate total estimate if parts and labor are provided
   if (!workOrderData.totalEstimate) {
-    const partsCost = (workOrderData.parts || []).reduce((total, part) => {
-      return total + (part.price * part.quantity);
-    }, 0);
-    
-    const laborCost = (workOrderData.labor || []).reduce((total, labor) => {
-      return total + (labor.hours * labor.rate);
-    }, 0);
-    
-    workOrderData.totalEstimate = partsCost + laborCost;
+    workOrderData.totalEstimate = calculateWorkOrderTotal(
+      workOrderData.parts,
+      workOrderData.labor
+    );
   }
   
   const newWorkOrder = await WorkOrder.create(workOrderData);
@@ -221,13 +166,11 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   // Update vehicle mileage if currentMileage is provided
   if (workOrderData.currentMileage && !isNaN(parseFloat(workOrderData.currentMileage))) {
     const mileageValue = parseFloat(workOrderData.currentMileage);
-    // Add to mileage history
     vehicle.mileageHistory.push({
-      date: workOrderData.date ? parseLocalDate(workOrderData.date) : new Date(), // Use WO date or current date
+      date: parseDateOrDefault(workOrderData.date),
       mileage: mileageValue,
-      source: `Work Order #${newWorkOrder.id}` // Optional: add source
+      source: `Work Order #${newWorkOrder.id}`
     });
-    // Update vehicle's main currentMileage
     vehicle.currentMileage = mileageValue;
   }
   
@@ -275,45 +218,11 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   
   // Recalculate total estimate/actual if parts or labor changed
   if (workOrderData.parts || workOrderData.labor) {
-    const workOrder = await WorkOrder.findById(req.params.id);
-    
-    if (!workOrder) {
-      return next(new AppError('No work order found with that ID', 404));
-    }
-    
-    if (workOrderData.parts) {
-      const partsCost = workOrderData.parts.reduce((total, part) => {
-        return total + (part.price * part.quantity);
-      }, 0);
-      
-      // Always recalculate totalEstimate when parts are updated
-      const laborCost = workOrderData.labor 
-        ? workOrderData.labor.reduce((total, labor) => {
-            return total + (labor.hours * labor.rate);
-          }, 0)
-        : workOrder.labor.reduce((total, labor) => {
-            return total + (labor.hours * labor.rate);
-          }, 0);
-          
-      workOrderData.totalEstimate = partsCost + laborCost;
-    }
-    
-    if (workOrderData.labor) {
-      const laborCost = workOrderData.labor.reduce((total, labor) => {
-        return total + (labor.hours * labor.rate);
-      }, 0);
-      
-      // Always recalculate totalEstimate when labor is updated
-      const partsCost = workOrderData.parts 
-        ? workOrderData.parts.reduce((total, part) => {
-            return total + (part.price * part.quantity);
-          }, 0)
-        : workOrder.parts.reduce((total, part) => {
-            return total + (part.price * part.quantity);
-          }, 0);
-          
-      workOrderData.totalEstimate = partsCost + laborCost;
-    }
+    const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+
+    const parts = workOrderData.parts || workOrder.parts;
+    const labor = workOrderData.labor || workOrder.labor;
+    workOrderData.totalEstimate = calculateWorkOrderTotal(parts, labor);
   }
   
   
@@ -321,19 +230,22 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   if (workOrderData.currentMileage && !isNaN(parseFloat(workOrderData.currentMileage))) {
     const mileageValue = parseFloat(workOrderData.currentMileage);
     const workOrderForVehicle = await WorkOrder.findById(req.params.id).populate('vehicle');
-    if (workOrderForVehicle && workOrderForVehicle.vehicle) {
+
+    if (workOrderForVehicle?.vehicle) {
       const vehicleToUpdate = await Vehicle.findById(workOrderForVehicle.vehicle._id);
       if (vehicleToUpdate) {
-        // Check if this mileage entry already exists to avoid duplicates from simple re-saves
+        const entryDate = parseDateOrDefault(workOrderData.date);
+
+        // Check if this mileage entry already exists to avoid duplicates
         const existingMileageEntry = vehicleToUpdate.mileageHistory.find(
-          entry => entry.mileage === mileageValue && 
-                   new Date(entry.date).toDateString() === (workOrderData.date ? parseLocalDate(workOrderData.date) : new Date()).toDateString() &&
+          entry => entry.mileage === mileageValue &&
+                   new Date(entry.date).toDateString() === entryDate.toDateString() &&
                    (entry.source || '').includes(`Work Order #${req.params.id}`)
         );
 
         if (!existingMileageEntry) {
-           vehicleToUpdate.mileageHistory.push({
-            date: workOrderData.date ? parseLocalDate(workOrderData.date) : new Date(),
+          vehicleToUpdate.mileageHistory.push({
+            date: entryDate,
             mileage: mileageValue,
             source: `Work Order #${req.params.id}`
           });
@@ -422,20 +334,14 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   }
 
-  const updatedWorkOrderPopulated = await WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
-    new: true,
-    runValidators: true
-  }).populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', '_id name specialization') // _id first
-    .populate({
-        path: 'appointmentId',
-        select: '_id technician startTime endTime status', // _id first
-        populate: {
-          path: 'technician',
-          select: '_id name specialization' // _id first
-        }
-      });
+  const updatedWorkOrderPopulated = await applyPopulation(
+    WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
+      new: true,
+      runValidators: true
+    }),
+    'workOrder',
+    'detailed'
+  );
 
   if (!updatedWorkOrderPopulated) {
     return next(new AppError('No work order found with that ID', 404));
@@ -486,56 +392,35 @@ exports.deleteWorkOrder = catchAsync(async (req, res, next) => {
 // Update work order status
 exports.updateStatus = catchAsync(async (req, res, next) => {
   const { status } = req.body;
-  
+
   if (!status) {
     return next(new AppError('Please provide a status', 400));
   }
-  
-  const workOrder = await WorkOrder.findById(req.params.id);
-  
-  if (!workOrder) {
-    return next(new AppError('No work order found with that ID', 404));
-  }
-  
-  // Update the status
+
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+
   workOrder.status = status;
-  
+
   // If the status is "Parts Received", mark all parts as received
   if (status === 'Parts Received') {
     workOrder.parts.forEach(part => {
       part.received = true;
     });
   }
-  
+
   // If the status is "Invoiced", set the totalActual
   if (status === 'Repair Complete - Invoiced') {
-    // Calculate total from parts and labor
-    const partsCost = workOrder.parts.reduce((total, part) => {
-      return total + (part.price * part.quantity);
-    }, 0);
-    
-    const laborCost = workOrder.labor.reduce((total, labor) => {
-      return total + (labor.hours * labor.rate);
-    }, 0);
-    
-    workOrder.totalActual = partsCost + laborCost;
+    workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
   }
-  
+
   await workOrder.save();
-  
+
   // Get populated work order
-  const populatedWorkOrder = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name phone email') // Match getWorkOrder population
-    .populate('vehicle', 'year make model vin licensePlate') // Match getWorkOrder population
-    .populate('assignedTechnician', '_id name specialization') // Match getWorkOrder population
-    .populate({
-      path: 'appointmentId',
-      select: '_id technician startTime endTime status',
-      populate: {
-        path: 'technician',
-        select: '_id name specialization'
-      }
-    });
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
   
   // Send notification if customer has communication preference set
   if (populatedWorkOrder.customer && 
@@ -570,136 +455,74 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
 
 // Add part to work order
 exports.addPart = catchAsync(async (req, res, next) => {
-  const workOrder = await WorkOrder.findById(req.params.id);
-  
-  if (!workOrder) {
-    return next(new AppError('No work order found with that ID', 404));
-  }
-  
-  // Add the part
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+
   workOrder.parts.push(req.body);
-  
-  // Recalculate total estimate
-  const partsCost = workOrder.parts.reduce((total, part) => {
-    return total + (part.price * part.quantity);
-  }, 0);
-  
-  const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
-  }, 0);
-  
-  workOrder.totalEstimate = partsCost + laborCost;
-  
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
   await workOrder.save();
-  
-  // Re-fetch and populate fully to ensure client receives consistent data
-  const populatedWorkOrderAfterAdd = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', '_id name specialization')
-    .populate({
-      path: 'appointmentId',
-      select: '_id technician startTime endTime status',
-      populate: {
-        path: 'technician',
-        select: '_id name specialization'
-      }
-    });
+
+  const populatedWorkOrderAfterAdd = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
 
   res.status(200).json({
     status: 'success',
-    data: {
-      workOrder: populatedWorkOrderAfterAdd
-    }
+    data: { workOrder: populatedWorkOrderAfterAdd }
   });
 });
 
 // Add labor to work order
 exports.addLabor = catchAsync(async (req, res, next) => {
-  const workOrder = await WorkOrder.findById(req.params.id);
-  
-  if (!workOrder) {
-    return next(new AppError('No work order found with that ID', 404));
-  }
-  
-  // Add the labor
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+
   workOrder.labor.push(req.body);
-  
-  // Recalculate total estimate
-  const partsCost = workOrder.parts.reduce((total, part) => {
-    return total + (part.price * part.quantity);
-  }, 0);
-  
-  const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
-  }, 0);
-  
-  workOrder.totalEstimate = partsCost + laborCost;
-  
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
   await workOrder.save();
 
-  // Re-fetch and populate fully to ensure client receives consistent data
-  const populatedWorkOrderAfterAddLabor = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', '_id name specialization')
-    .populate({
-      path: 'appointmentId',
-      select: '_id technician startTime endTime status',
-      populate: {
-        path: 'technician',
-        select: '_id name specialization'
-      }
-    });
-  
+  const populatedWorkOrderAfterAddLabor = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
   res.status(200).json({
     status: 'success',
-    data: {
-      workOrder: populatedWorkOrderAfterAddLabor
-    }
+    data: { workOrder: populatedWorkOrderAfterAddLabor }
   });
 });
 
 // Get work orders by status
 exports.getWorkOrdersByStatus = catchAsync(async (req, res, next) => {
   const { status } = req.params;
-  
-  const workOrders = await WorkOrder.find({ status })
-    .populate('customer', 'name phone email')
-    .populate('vehicle', 'year make model vin licensePlate')
-    .populate('assignedTechnician', 'name specialization') // Populate assignedTechnician
-    .sort({ date: -1 });
-  
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find({ status }).sort({ date: -1 }),
+    'workOrder',
+    'standard'
+  );
+
   res.status(200).json({
     status: 'success',
     results: workOrders.length,
-    data: {
-      workOrders
-    }
+    data: { workOrders }
   });
 });
 
 // Generate invoice
 exports.generateInvoice = catchAsync(async (req, res, next) => {
-  const workOrder = await WorkOrder.findById(req.params.id)
-    .populate('customer', 'name email phone address')
-    .populate('vehicle', 'year make model vin')
-    .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
-  
+  const workOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'invoice'
+  );
+
   if (!workOrder) {
     return next(new AppError('No work order found with that ID', 404));
   }
-  
-  // Calculate totals
-  const partsCost = workOrder.parts.reduce((total, part) => {
-    return total + (part.price * part.quantity);
-  }, 0);
-  
-  const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
-  }, 0);
-  
-  const totalCost = partsCost + laborCost;
+
+  const { partsCost, laborCost, total: totalCost } = getWorkOrderCostBreakdown(workOrder);
   
   // In a real application, you would generate a PDF here
   // For now, we'll just return the invoice data
@@ -727,44 +550,39 @@ exports.generateInvoice = catchAsync(async (req, res, next) => {
 // Search work orders - Updated to search in services array
 exports.searchWorkOrders = catchAsync(async (req, res, next) => {
   const { query } = req.query;
-  
+
   if (!query) {
     return next(new AppError('Please provide a search query', 400));
   }
-  
-  // Search work orders by service requested, services array, status, or diagnostic notes
-  const workOrders = await WorkOrder.find({
-    $or: [
-      { serviceRequested: { $regex: query, $options: 'i' } },
-      { 'services.description': { $regex: query, $options: 'i' } }, // Search in services array
-      { status: { $regex: query, $options: 'i' } },
-      { diagnosticNotes: { $regex: query, $options: 'i' } }
-    ]
-  })
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model vin licensePlate')
-  .populate('assignedTechnician', 'name specialization'); // Populate assignedTechnician
-  
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find({
+      $or: [
+        { serviceRequested: { $regex: query, $options: 'i' } },
+        { 'services.description': { $regex: query, $options: 'i' } },
+        { status: { $regex: query, $options: 'i' } },
+        { diagnosticNotes: { $regex: query, $options: 'i' } }
+      ]
+    }),
+    'workOrder',
+    'standard'
+  );
+
   res.status(200).json({
     status: 'success',
     results: workOrders.length,
-    data: {
-      workOrders
-    }
+    data: { workOrders }
   });
 });
 
 // Get work orders awaiting scheduling (Parts Received status with no future appointments)
 exports.getWorkOrdersAwaitingScheduling = catchAsync(async (req, res, next) => {
-  const Appointment = require('../models/Appointment');
-  
   // Get all work orders with "Parts Received" status
-  const partsReceivedWorkOrders = await WorkOrder.find({ 
-    status: 'Parts Received' 
-  })
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model vin licensePlate')
-  .populate('assignedTechnician', 'name specialization');
+  const partsReceivedWorkOrders = await applyPopulation(
+    WorkOrder.find({ status: 'Parts Received' }),
+    'workOrder',
+    'standard'
+  );
   
   // Get all future appointments (starting from now)
   const now = new Date();
@@ -795,16 +613,13 @@ exports.getWorkOrdersAwaitingScheduling = catchAsync(async (req, res, next) => {
 
 // Get all work orders that need scheduling (for appointments page)
 exports.getWorkOrdersNeedingScheduling = catchAsync(async (req, res, next) => {
-  const Appointment = require('../models/Appointment');
-  
   // Get all work orders with statuses that typically need scheduling
   const needsSchedulingStatuses = ['Created', 'Inspected/Parts Ordered', 'Parts Received'];
-  const workOrders = await WorkOrder.find({ 
-    status: { $in: needsSchedulingStatuses }
-  })
-  .populate('customer', 'name phone email')
-  .populate('vehicle', 'year make model vin licensePlate')
-  .populate('assignedTechnician', 'name specialization');
+  const workOrders = await applyPopulation(
+    WorkOrder.find({ status: { $in: needsSchedulingStatuses } }),
+    'workOrder',
+    'standard'
+  );
   
   // Get all future appointments (starting from now)
   const now = new Date();
@@ -896,26 +711,18 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   });
 
   // Calculate totals for new work order
-  const newPartsCost = newWorkOrder.parts.reduce((total, part) => 
-    total + (part.price * part.quantity), 0);
-  const newLaborCost = newWorkOrder.labor.reduce((total, labor) => 
-    total + (labor.hours * labor.rate), 0);
-  newWorkOrder.totalEstimate = newPartsCost + newLaborCost;
+  newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor);
 
   // Remove moved items from original work order
-  originalWorkOrder.parts = originalWorkOrder.parts.filter(part => 
+  originalWorkOrder.parts = originalWorkOrder.parts.filter(part =>
     !partsToMoveIds.includes(part._id.toString())
   );
-  originalWorkOrder.labor = originalWorkOrder.labor.filter(labor => 
+  originalWorkOrder.labor = originalWorkOrder.labor.filter(labor =>
     !laborToMoveIds.includes(labor._id.toString())
   );
 
   // Update totals for original work order
-  const remainingPartsCost = originalWorkOrder.parts.reduce((total, part) => 
-    total + (part.price * part.quantity), 0);
-  const remainingLaborCost = originalWorkOrder.labor.reduce((total, labor) => 
-    total + (labor.hours * labor.rate), 0);
-  originalWorkOrder.totalEstimate = remainingPartsCost + remainingLaborCost;
+  originalWorkOrder.totalEstimate = calculateWorkOrderTotal(originalWorkOrder.parts, originalWorkOrder.labor);
 
   // Add note to original work order about the split
   if (!originalWorkOrder.diagnosticNotes) {
