@@ -164,6 +164,17 @@ const WorkOrderService = {
       console.error(`Error splitting work order ${id}:`, error);
       throw error;
     }
+  },
+
+  // Get Service Writer's Corner data
+  getServiceWritersCorner: async () => {
+    try {
+      const response = await API.get('/workorders/service-writers-corner');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching Service Writer\'s Corner data:', error);
+      throw error;
+    }
   }
 };
 

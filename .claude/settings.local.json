@@ -44,7 +44,8 @@
       "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)",
       "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)",
       "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)",
-      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)"
+      "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

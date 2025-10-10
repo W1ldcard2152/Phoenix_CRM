@@ -12,6 +12,9 @@ router.get('/awaiting-scheduling', workOrderController.getWorkOrdersAwaitingSche
 // Get all work orders that need scheduling (for appointments page)
 router.get('/needing-scheduling', workOrderController.getWorkOrdersNeedingScheduling);
 
+// Get Service Writer's Corner data
+router.get('/service-writers-corner', workOrderController.getServiceWritersCorner);
+
 // Get work orders by status
 router.get('/status/:status', workOrderController.getWorkOrdersByStatus);
 

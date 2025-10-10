@@ -751,3 +751,95 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Get Service Writer's Corner data - all work orders requiring service writer action
+exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
+  // Get only today and future appointments (not past)
+  const now = new Date();
+  // Set to start of today to include appointments scheduled for today
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const appointments = await Appointment.find({
+    workOrder: { $exists: true },
+    startTime: { $gte: startOfToday },
+    status: { $nin: ['Cancelled', 'No-Show'] }
+  }).select('workOrder startTime status');
+
+  // Create a map of work order IDs to their future appointments
+  const workOrderAppointments = new Map();
+  appointments.forEach(apt => {
+    const woId = apt.workOrder.toString();
+    if (!workOrderAppointments.has(woId)) {
+      workOrderAppointments.set(woId, []);
+    }
+    workOrderAppointments.get(woId).push(apt);
+  });
+
+  // Get work order IDs that have future appointments (for Parts Received filtering)
+  const scheduledWorkOrderIds = new Set(
+    appointments.map(apt => apt.workOrder.toString())
+  );
+
+  // Helper function to add appointment info to work orders
+  const addAppointmentInfo = (workOrders) => {
+    return workOrders.map(wo => {
+      const woAppointments = workOrderAppointments.get(wo._id.toString()) || [];
+      // Get the next upcoming appointment (sorted by startTime ascending)
+      const nextAppointment = woAppointments.sort((a, b) =>
+        new Date(a.startTime) - new Date(b.startTime)
+      )[0];
+
+      return {
+        ...wo.toObject(),
+        appointmentId: nextAppointment?._id || null,
+        hasAppointment: !!nextAppointment
+      };
+    });
+  };
+
+  // 1. Inspection/Diag Complete - Parts need to be ordered and/or customer needs to be called
+  const diagCompleteRaw = await applyPopulation(
+    WorkOrder.find({ status: 'Inspection/Diag Complete' }),
+    'workOrder',
+    'standard'
+  );
+  const diagComplete = addAppointmentInfo(diagCompleteRaw);
+
+  // 2. Parts Received - Customer needs to be called for appointments (exclude those already scheduled)
+  const partsReceivedAll = await applyPopulation(
+    WorkOrder.find({ status: 'Parts Received' }),
+    'workOrder',
+    'standard'
+  );
+
+  const partsReceivedFiltered = partsReceivedAll.filter(
+    wo => !scheduledWorkOrderIds.has(wo._id.toString())
+  );
+  const partsReceived = addAppointmentInfo(partsReceivedFiltered);
+
+  // 3. Repair Complete - Awaiting Payment - Customer needs to be contacted for payment and pickup
+  const awaitingPaymentRaw = await applyPopulation(
+    WorkOrder.find({ status: 'Repair Complete - Awaiting Payment' }),
+    'workOrder',
+    'standard'
+  );
+  const awaitingPayment = addAppointmentInfo(awaitingPaymentRaw);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      diagComplete: {
+        workOrders: diagComplete,
+        count: diagComplete.length
+      },
+      partsReceived: {
+        workOrders: partsReceived,
+        count: partsReceived.length
+      },
+      awaitingPayment: {
+        workOrders: awaitingPayment,
+        count: awaitingPayment.length
+      }
+    }
+  });
+});
