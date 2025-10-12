@@ -62,6 +62,34 @@ exports.createVehicle = catchAsync(async (req, res, next) => {
       return next(new AppError('No customer found with that ID', 404));
     }
 
+    // Check for duplicate VIN if VIN is provided and not "N/A"
+    if (req.body.vin && req.body.vin.trim() !== '' && req.body.vin.trim().toUpperCase() !== 'N/A') {
+      const normalizedVin = req.body.vin.trim().toUpperCase();
+
+      // Search for existing vehicle with this VIN
+      const existingVehicle = await Vehicle.findOne({
+        vin: { $regex: new RegExp(`^${normalizedVin}$`, 'i') }
+      }).populate('customer', 'name phone email _id');
+
+      if (existingVehicle) {
+        // Return a 409 Conflict status with details about the existing vehicle
+        return res.status(409).json({
+          status: 'fail',
+          message: 'A vehicle with this VIN already exists in the system.',
+          data: {
+            existingVehicle: {
+              _id: existingVehicle._id,
+              year: existingVehicle.year,
+              make: existingVehicle.make,
+              model: existingVehicle.model,
+              vin: existingVehicle.vin,
+              customer: existingVehicle.customer
+            }
+          }
+        });
+      }
+    }
+
     const newVehicle = await Vehicle.create(req.body);
 
     // Add the vehicle to the customer's vehicles array
@@ -161,6 +189,8 @@ exports.searchVehicles = catchAsync(async (req, res, next) => {
 
 // Get vehicle service history
 exports.getVehicleServiceHistory = catchAsync(async (req, res, next) => {
+  const Appointment = require('../models/Appointment');
+
   const vehicle = await Vehicle.findById(req.params.id);
 
   if (!vehicle) {
@@ -170,12 +200,39 @@ exports.getVehicleServiceHistory = catchAsync(async (req, res, next) => {
   const workOrders = await WorkOrder.find({ vehicle: req.params.id })
     .sort({ date: -1 });
 
+  // For each work order, find the most recent appointment date
+  const workOrdersWithAppointmentDates = await Promise.all(
+    workOrders.map(async (workOrder) => {
+      // Find all appointments that reference this work order
+      const appointments = await Appointment.find({ workOrder: workOrder._id })
+        .sort({ startTime: -1 })
+        .limit(1);
+
+      // Convert to plain object so we can add properties
+      const workOrderObj = workOrder.toObject();
+
+      // Add the most recent appointment date if it exists
+      if (appointments.length > 0) {
+        workOrderObj.mostRecentAppointmentDate = appointments[0].startTime;
+      }
+
+      return workOrderObj;
+    })
+  );
+
+  // Sort by most recent appointment date (or work order date if no appointment)
+  workOrdersWithAppointmentDates.sort((a, b) => {
+    const dateA = a.mostRecentAppointmentDate || a.date;
+    const dateB = b.mostRecentAppointmentDate || b.date;
+    return new Date(dateB) - new Date(dateA);
+  });
+
   res.status(200).json({
     status: 'success',
-    results: workOrders.length,
+    results: workOrdersWithAppointmentDates.length,
     data: {
       vehicle,
-      serviceHistory: workOrders
+      serviceHistory: workOrdersWithAppointmentDates
     }
   });
 });

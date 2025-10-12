@@ -381,7 +381,7 @@ const VehicleDetail = () => {
                     <div>
                       <p className="font-medium">{workOrder.serviceRequested}</p>
                       <p className="text-sm text-gray-500">
-                        {formatDate(workOrder.date)}
+                        {formatDate(workOrder.mostRecentAppointmentDate || workOrder.date)}
                       </p>
                       {workOrder.diagnosticNotes && (
                         <p className="text-sm text-gray-600 mt-1">
@@ -391,10 +391,10 @@ const VehicleDetail = () => {
                       )}
                     </div>
                     <div>
-                      <span 
+                      <span
                         className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          workOrder.status.includes('Completed') 
-                            ? 'bg-green-100 text-green-800' 
+                          workOrder.status.includes('Completed')
+                            ? 'bg-green-100 text-green-800'
                             : workOrder.status === 'Cancelled'
                               ? 'bg-red-100 text-red-800'
                               : 'bg-blue-100 text-blue-800'
@@ -405,8 +405,8 @@ const VehicleDetail = () => {
                     </div>
                   </div>
                   <div className="mt-2 flex justify-end space-x-2">
-                    <Button 
-                      to={`/work-orders/${workOrder._id}`} 
+                    <Button
+                      to={`/work-orders/${workOrder._id}`}
                       variant="outline"
                       size="sm"
                     >

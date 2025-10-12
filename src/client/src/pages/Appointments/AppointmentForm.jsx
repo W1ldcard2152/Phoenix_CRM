@@ -385,7 +385,7 @@ const AppointmentForm = () => {
                   <SelectInput label="Vehicle" name="vehicle" options={[{ value: '', label: 'Select Vehicle'}, ...vehicleOptions]} value={values.vehicle} onChange={handleChange} onBlur={handleBlur} error={errors.vehicle} touched={touched.vehicle} disabled={!values.customer || !!workOrderContext || vehicles.length === 0} required={!!values.workOrder} />
                 </div>
                 <div className="md:col-span-2">
-                  <Input label="Service Type" name="serviceType" value={values.serviceType} onChange={handleChange} onBlur={handleBlur} error={errors.serviceType} touched={touched.serviceType} disabled={!!workOrderContext} required placeholder="Oil Change, Brake Service, etc." />
+                  <Input label="Service Type" name="serviceType" value={values.serviceType} onChange={handleChange} onBlur={handleBlur} error={errors.serviceType} touched={touched.serviceType} required placeholder="Oil Change, Brake Service, etc." />
                 </div>
                 
                 <div className="md:col-span-2">

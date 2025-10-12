@@ -50,6 +50,7 @@ const VehicleForm = () => {
   const [vinError, setVinError] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [scanSuccess, setScanSuccess] = useState(null);
+  const [duplicateVinWarning, setDuplicateVinWarning] = useState(null);
   
   // Get customer ID from URL query parameter if present
   const customerIdParam = searchParams.get('customer'); // Look for 'customer' parameter from CustomerDetail
@@ -120,10 +121,10 @@ const VehicleForm = () => {
       // Add current mileage to history if provided and no existing record for today
       if (values.currentMileage) {
         const today = getTodayForInput();
-        const hasTodayRecord = values.mileageHistory.some(record => 
+        const hasTodayRecord = values.mileageHistory.some(record =>
           formatDateForInputLocal(record.date) === today
         );
-        
+
         if (!hasTodayRecord) {
           values.mileageHistory.push({
             date: today,
@@ -132,10 +133,10 @@ const VehicleForm = () => {
           });
         }
       }
-      
+
       // Sort mileage history by date (newest first)
       values.mileageHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
-      
+
       if (id) {
         // Update existing vehicle
         await VehicleService.updateVehicle(id, values);
@@ -143,7 +144,7 @@ const VehicleForm = () => {
         // Create new vehicle
         await VehicleService.createVehicle(values);
       }
-      
+
       // Redirect to vehicle list or detail page
       if (values.customer) {
         navigate(`/customers/${values.customer}`);
@@ -152,9 +153,18 @@ const VehicleForm = () => {
       }
     } catch (err) {
       console.error('Error saving vehicle:', err);
-      
+
+      // Check for duplicate VIN error (409 Conflict)
+      if (err.response && err.response.status === 409 && err.response.data.data?.existingVehicle) {
+        const existing = err.response.data.data.existingVehicle;
+        setDuplicateVinWarning({
+          message: err.response.data.message,
+          vehicle: existing
+        });
+        setError(null);
+      }
       // Handle validation errors from server
-      if (err.errors) {
+      else if (err.errors) {
         const formErrors = {};
         Object.keys(err.errors).forEach(key => {
           formErrors[key] = err.errors[key].message;
@@ -163,7 +173,7 @@ const VehicleForm = () => {
       } else {
         setError('Failed to save vehicle. Please try again later.');
       }
-      
+
       setSubmitting(false);
     }
   };
@@ -279,6 +289,48 @@ const VehicleForm = () => {
         </div>
       )}
 
+      {duplicateVinWarning && (
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3 flex-1">
+              <h3 className="text-sm font-bold">Duplicate VIN Detected</h3>
+              <p className="text-sm mt-1">{duplicateVinWarning.message}</p>
+              <div className="mt-2 text-sm">
+                <p className="font-medium">Existing Vehicle:</p>
+                <p>{duplicateVinWarning.vehicle.year} {duplicateVinWarning.vehicle.make} {duplicateVinWarning.vehicle.model}</p>
+                <p className="mt-1">
+                  <span className="font-medium">Owner: </span>
+                  {duplicateVinWarning.vehicle.customer ? (
+                    <a
+                      href={`/customers/${duplicateVinWarning.vehicle.customer._id}`}
+                      className="text-blue-700 hover:text-blue-900 underline font-medium"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {duplicateVinWarning.vehicle.customer.name}
+                    </a>
+                  ) : (
+                    'Unknown'
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="mt-3 text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
+                onClick={() => setDuplicateVinWarning(null)}
+              >
+                Dismiss Warning
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card>
         <Formik
           initialValues={initialValues}
@@ -335,6 +387,7 @@ const VehicleForm = () => {
                       onChange={(e) => {
                         handleChange(e);
                         setVinError(null); // Clear error when user types
+                        setDuplicateVinWarning(null); // Clear duplicate warning when VIN is changed
                       }}
                       onBlur={handleBlur}
                       error={errors.vin || vinError}

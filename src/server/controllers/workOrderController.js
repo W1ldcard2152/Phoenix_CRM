@@ -334,6 +334,26 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   }
 
+  // Check if diagnosticNotes have been updated and create a customer-facing note if they have
+  if (workOrderData.diagnosticNotes && workOrderData.diagnosticNotes.trim()) {
+    const currentWorkOrder = await WorkOrder.findById(req.params.id);
+    // Only create a new note if diagnosticNotes have changed
+    if (currentWorkOrder && currentWorkOrder.diagnosticNotes !== workOrderData.diagnosticNotes) {
+      try {
+        await WorkOrderNote.create({
+          workOrder: req.params.id,
+          content: workOrderData.diagnosticNotes.trim(),
+          isCustomerFacing: true,
+          createdBy: 'System', // Could be enhanced to use actual user
+          createdAt: new Date()
+        });
+      } catch (noteError) {
+        console.error('Error creating note from updated diagnostic notes:', noteError);
+        // Don't fail the work order update if note creation fails
+      }
+    }
+  }
+
   const updatedWorkOrderPopulated = await applyPopulation(
     WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
       new: true,

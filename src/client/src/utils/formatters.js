@@ -123,21 +123,28 @@ export const parseDateFromInput = (dateString) => {
 /**
  * Safe date parsing for server-side use that avoids timezone conversion issues
  * Parses YYYY-MM-DD strings as local dates instead of UTC
- * @param {string} dateString - Date string in YYYY-MM-DD format
+ * @param {string} dateString - Date string in YYYY-MM-DD format or ISO format
  * @returns {Date} Date object representing the local date
  */
 export const parseLocalDate = (dateString) => {
   if (!dateString) return null;
-  
+
   // If it's already a Date object, return as is
   if (dateString instanceof Date) return dateString;
-  
+
+  // Convert to string and trim
+  const dateStr = String(dateString).trim();
+
+  // Extract just the date portion from ISO strings (e.g., "2025-10-12T00:00:00.000Z" -> "2025-10-12")
+  // This prevents timezone conversion issues with MongoDB dates
+  const dateOnly = dateStr.split('T')[0];
+
   // Check if it's a YYYY-MM-DD format string
-  if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
-    const [year, month, day] = dateString.trim().split('-').map(Number);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    const [year, month, day] = dateOnly.split('-').map(Number);
     return new Date(year, month - 1, day); // month is 0-indexed
   }
-  
+
   // Fallback to standard Date parsing for other formats
   return new Date(dateString);
 };
