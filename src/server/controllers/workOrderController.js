@@ -141,18 +141,21 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
       workOrderData.labor
     );
   }
-  
+
+  // Store diagnosticNotes temporarily and remove from workOrderData before creating
+  const initialNotes = workOrderData.diagnosticNotes;
+  delete workOrderData.diagnosticNotes;
+
   const newWorkOrder = await WorkOrder.create(workOrderData);
-  
-  // Create a note from diagnostic notes if provided
-  if (workOrderData.diagnosticNotes && workOrderData.diagnosticNotes.trim()) {
+
+  // Create a note from initial notes if provided
+  if (initialNotes && initialNotes.trim()) {
     try {
       await WorkOrderNote.create({
         workOrder: newWorkOrder._id,
-        content: workOrderData.diagnosticNotes.trim(),
+        content: initialNotes.trim(),
         isCustomerFacing: true, // Default to customer facing as requested
-        createdBy: 'System', // Could be enhanced to use actual user
-        createdAt: new Date()
+        createdByName: 'System' // System-generated note
       });
     } catch (noteError) {
       console.error('Error creating note from diagnostic notes:', noteError);
@@ -335,24 +338,23 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   }
 
   // Check if diagnosticNotes have been updated and create a customer-facing note if they have
-  if (workOrderData.diagnosticNotes && workOrderData.diagnosticNotes.trim()) {
-    const currentWorkOrder = await WorkOrder.findById(req.params.id);
-    // Only create a new note if diagnosticNotes have changed
-    if (currentWorkOrder && currentWorkOrder.diagnosticNotes !== workOrderData.diagnosticNotes) {
-      try {
-        await WorkOrderNote.create({
-          workOrder: req.params.id,
-          content: workOrderData.diagnosticNotes.trim(),
-          isCustomerFacing: true,
-          createdBy: 'System', // Could be enhanced to use actual user
-          createdAt: new Date()
-        });
-      } catch (noteError) {
-        console.error('Error creating note from updated diagnostic notes:', noteError);
-        // Don't fail the work order update if note creation fails
-      }
+  // Store diagnosticNotes temporarily
+  const updateNotes = workOrderData.diagnosticNotes;
+  if (updateNotes && updateNotes.trim()) {
+    try {
+      await WorkOrderNote.create({
+        workOrder: req.params.id,
+        content: updateNotes.trim(),
+        isCustomerFacing: true,
+        createdByName: 'System' // System-generated note
+      });
+    } catch (noteError) {
+      console.error('Error creating note from updated diagnostic notes:', noteError);
+      // Don't fail the work order update if note creation fails
     }
   }
+  // Always clear diagnosticNotes field - set to empty string to ensure it's cleared in DB
+  workOrderData.diagnosticNotes = '';
 
   const updatedWorkOrderPopulated = await applyPopulation(
     WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
@@ -390,19 +392,30 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
 // Delete a work order
 exports.deleteWorkOrder = catchAsync(async (req, res, next) => {
   const workOrder = await WorkOrder.findById(req.params.id);
-  
+
   if (!workOrder) {
     return next(new AppError('No work order found with that ID', 404));
   }
-  
+
+  // Delete any appointments associated with this work order
+  try {
+    const deletedAppointments = await Appointment.deleteMany({ workOrder: req.params.id });
+    if (deletedAppointments.deletedCount > 0) {
+      console.log(`Deleted ${deletedAppointments.deletedCount} appointment(s) associated with work order ${req.params.id}`);
+    }
+  } catch (appointmentError) {
+    console.error('Error deleting associated appointments:', appointmentError);
+    // Continue with work order deletion even if appointment deletion fails
+  }
+
   // Remove from vehicle's service history
   await Vehicle.findByIdAndUpdate(
     workOrder.vehicle,
     { $pull: { serviceHistory: req.params.id } }
   );
-  
+
   await WorkOrder.findByIdAndDelete(req.params.id);
-  
+
   res.status(204).json({
     status: 'success',
     data: null

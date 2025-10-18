@@ -51,6 +51,7 @@ const VehicleForm = () => {
   const [scanError, setScanError] = useState(null);
   const [scanSuccess, setScanSuccess] = useState(null);
   const [duplicateVinWarning, setDuplicateVinWarning] = useState(null);
+  const [vinCheckTimeout, setVinCheckTimeout] = useState(null);
   
   // Get customer ID from URL query parameter if present
   const customerIdParam = searchParams.get('customer'); // Look for 'customer' parameter from CustomerDetail
@@ -178,6 +179,31 @@ const VehicleForm = () => {
     }
   };
 
+  // Check for duplicate VIN
+  const checkVinDuplicate = async (vin) => {
+    // Skip check if VIN is empty, N/A, or less than 17 characters
+    if (!vin || vin.trim() === '' || vin.trim().toUpperCase() === 'N/A' || vin.length < 17) {
+      setDuplicateVinWarning(null);
+      return;
+    }
+
+    try {
+      const result = await VehicleService.checkVinExists(vin);
+
+      if (result.data.exists) {
+        setDuplicateVinWarning({
+          message: 'A vehicle with this VIN already exists in the system.',
+          vehicle: result.data.vehicle
+        });
+      } else {
+        setDuplicateVinWarning(null);
+      }
+    } catch (error) {
+      console.error('Error checking VIN:', error);
+      // Don't show error to user, just log it
+    }
+  };
+
   // VIN decode function
   const handleVinDecode = async (vin, setFieldValue) => {
     if (!vin || vin.trim().length !== 17) {
@@ -190,7 +216,7 @@ const VehicleForm = () => {
 
     try {
       const result = await vinService.decodeVIN(vin);
-      
+
       if (result.success) {
         // Auto-populate the fields
         if (result.data.year) {
@@ -202,14 +228,14 @@ const VehicleForm = () => {
         if (result.data.model) {
           setFieldValue('model', result.data.model);
         }
-        
+
         // Show success message
         setVinError(null);
-        
+
         // Optional: Show a success message
         const vehicleName = vinService.getVehicleDisplayName(result.data);
         console.log(`VIN decoded successfully: ${vehicleName}`);
-        
+
       } else {
         setVinError(result.error || 'Failed to decode VIN');
       }
@@ -388,8 +414,27 @@ const VehicleForm = () => {
                         handleChange(e);
                         setVinError(null); // Clear error when user types
                         setDuplicateVinWarning(null); // Clear duplicate warning when VIN is changed
+
+                        // Debounce VIN check (check 500ms after user stops typing)
+                        if (vinCheckTimeout) {
+                          clearTimeout(vinCheckTimeout);
+                        }
+
+                        const newVin = e.target.value;
+                        if (newVin && newVin.length === 17) {
+                          const timeout = setTimeout(() => {
+                            checkVinDuplicate(newVin);
+                          }, 500);
+                          setVinCheckTimeout(timeout);
+                        }
                       }}
-                      onBlur={handleBlur}
+                      onBlur={(e) => {
+                        handleBlur(e);
+                        // Also check on blur if VIN is 17 characters
+                        if (e.target.value && e.target.value.length === 17) {
+                          checkVinDuplicate(e.target.value);
+                        }
+                      }}
                       error={errors.vin || vinError}
                       touched={touched.vin}
                       placeholder="17-character VIN"

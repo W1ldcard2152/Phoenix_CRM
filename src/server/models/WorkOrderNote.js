@@ -21,7 +21,11 @@ const WorkOrderNoteSchema = new Schema(
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User', // Assuming you'll have a User model eventually
-      required: true
+      required: false // Allow system-generated notes without a user
+    },
+    createdByName: {
+      type: String,
+      trim: true
     }
   },
   {

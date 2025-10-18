@@ -2,6 +2,9 @@ const express = require('express');
 const vehicleController = require('../controllers/vehicleController');
 const router = express.Router();
 
+// Check if VIN exists
+router.get('/check-vin', vehicleController.checkVinExists);
+
 // Search vehicles
 router.get('/search', vehicleController.searchVehicles);
 

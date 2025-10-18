@@ -152,6 +152,17 @@ const VehicleService = {
     }
   },
   
+  // Check if VIN exists in database
+  checkVinExists: async (vin) => {
+    try {
+      const response = await API.get(`/vehicles/check-vin?vin=${encodeURIComponent(vin)}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error checking VIN:', error);
+      throw error;
+    }
+  },
+
   // Get mileage at a specific date (estimated if exact date not available)
   getMileageAtDate: async (id, date) => {
     try {

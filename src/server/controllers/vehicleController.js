@@ -326,3 +326,48 @@ exports.getMileageHistory = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+// Check if VIN exists
+exports.checkVinExists = catchAsync(async (req, res, next) => {
+  const { vin } = req.query;
+
+  if (!vin || vin.trim() === '' || vin.trim().toUpperCase() === 'N/A') {
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        exists: false
+      }
+    });
+  }
+
+  const normalizedVin = vin.trim().toUpperCase();
+
+  // Search for existing vehicle with this VIN
+  const existingVehicle = await Vehicle.findOne({
+    vin: { $regex: new RegExp(`^${normalizedVin}$`, 'i') }
+  }).populate('customer', 'name phone email _id');
+
+  if (existingVehicle) {
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        exists: true,
+        vehicle: {
+          _id: existingVehicle._id,
+          year: existingVehicle.year,
+          make: existingVehicle.make,
+          model: existingVehicle.model,
+          vin: existingVehicle.vin,
+          customer: existingVehicle.customer
+        }
+      }
+    });
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      exists: false
+    }
+  });
+});

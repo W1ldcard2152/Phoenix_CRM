@@ -14,6 +14,8 @@ const CustomerDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [showAllWorkOrders, setShowAllWorkOrders] = useState(false);
+  const [showAllVehicles, setShowAllVehicles] = useState(false);
 
   useEffect(() => {
     const fetchCustomerData = async () => {
@@ -170,30 +172,42 @@ const CustomerDetail = () => {
               <p>No vehicles found for this customer.</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {vehicles.map((vehicle) => (
-                <div key={vehicle._id} className="py-3 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium">
-                      {vehicle.year} {vehicle.make} {vehicle.model}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {vehicle.vin ? `VIN: ${vehicle.vin}` : 'No VIN'} 
-                      {vehicle.licensePlate ? ` • License: ${vehicle.licensePlate}` : ''}
-                    </p>
+            <>
+              <div className="divide-y divide-gray-200">
+                {(showAllVehicles ? vehicles : vehicles.slice(0, 5)).map((vehicle) => (
+                  <div key={vehicle._id} className="py-3 flex justify-between items-center">
+                    <div>
+                      <p className="font-medium">
+                        {vehicle.year} {vehicle.make} {vehicle.model}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {vehicle.vin ? `VIN: ${vehicle.vin}` : 'No VIN'}
+                        {vehicle.licensePlate ? ` • License: ${vehicle.licensePlate}` : ''}
+                      </p>
+                    </div>
+                    <div>
+                      <Button
+                        to={`/vehicles/${vehicle._id}`}
+                        variant="outline"
+                        size="sm"
+                      >
+                        View
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <Button 
-                      to={`/vehicles/${vehicle._id}`} 
-                      variant="outline"
-                      size="sm"
-                    >
-                      View
-                    </Button>
-                  </div>
+                ))}
+              </div>
+              {vehicles.length > 5 && (
+                <div className="pt-3 text-center">
+                  <Button
+                    onClick={() => setShowAllVehicles(!showAllVehicles)}
+                    variant="link"
+                  >
+                    {showAllVehicles ? 'Show less' : `View ${vehicles.length - 5} more vehicle${vehicles.length - 5 > 1 ? 's' : ''}`}
+                  </Button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </Card>
 
@@ -214,57 +228,59 @@ const CustomerDetail = () => {
               <p>No work orders found for this customer.</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {workOrders.slice(0, 5).map((workOrder) => (
-                <div key={workOrder._id} className="py-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">
-                        {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
-                      </p>
-                      <p className="text-sm text-gray-600 truncate max-w-xs">
-                        {workOrder.serviceRequested}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(workOrder.date).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div>
-                      <span 
-                        className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          workOrder.status.includes('Completed') 
-                            ? 'bg-green-100 text-green-800' 
-                            : workOrder.status === 'Cancelled'
+            <>
+              <div className="divide-y divide-gray-200">
+                {(showAllWorkOrders ? workOrders : workOrders.slice(0, 5)).map((workOrder) => (
+                  <div key={workOrder._id} className="py-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">
+                          {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
+                        </p>
+                        <p className="text-sm text-gray-600 truncate max-w-xs">
+                          {workOrder.serviceRequested}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {new Date(workOrder.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div>
+                        <span
+                          className={`inline-block px-2 py-1 text-xs rounded-full ${
+                            workOrder.status.includes('Completed')
+                              ? 'bg-green-100 text-green-800'
+                              : workOrder.status === 'Cancelled'
                               ? 'bg-red-100 text-red-800'
                               : 'bg-blue-100 text-blue-800'
-                        }`}
+                          }`}
+                        >
+                          {workOrder.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex justify-end space-x-2">
+                      <Button
+                        to={`/work-orders/${workOrder._id}`}
+                        variant="outline"
+                        size="sm"
                       >
-                        {workOrder.status}
-                      </span>
+                        View
+                      </Button>
                     </div>
                   </div>
-                  <div className="mt-2 flex justify-end space-x-2">
-                    <Button 
-                      to={`/work-orders/${workOrder._id}`} 
-                      variant="outline"
-                      size="sm"
-                    >
-                      View
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
               {workOrders.length > 5 && (
                 <div className="pt-3 text-center">
-                  <Button 
-                    to={`/work-orders?customer=${id}`}
+                  <Button
+                    onClick={() => setShowAllWorkOrders(!showAllWorkOrders)}
                     variant="link"
                   >
-                    View {workOrders.length - 5} more work orders
+                    {showAllWorkOrders ? 'Show less' : `View ${workOrders.length - 5} more work order${workOrders.length - 5 > 1 ? 's' : ''}`}
                   </Button>
                 </div>
               )}
-            </div>
+            </>
           )}
         </Card>
       </div>

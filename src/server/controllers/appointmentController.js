@@ -500,7 +500,7 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
   }
   
   // Optional appointmentId to exclude from conflict check (for updates)
-  const { appointmentId } = req.query;
+  const { appointmentId } = req.body;
   
   const conflicts = await Appointment.checkConflicts(
     start,

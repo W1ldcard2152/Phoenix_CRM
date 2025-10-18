@@ -245,11 +245,18 @@ const AppointmentForm = () => {
       return false;
     }
     try {
-      const response = await AppointmentService.checkConflicts({
+      const conflictCheckData = {
         startTime: startDateTime,
         endTime: endDateTime,
         technician: values.technician
-      }, id ? { appointmentId: id } : {});
+      };
+
+      // Include appointmentId when editing to exclude current appointment from conflict check
+      if (id) {
+        conflictCheckData.appointmentId = id;
+      }
+
+      const response = await AppointmentService.checkConflicts(conflictCheckData);
       setHasConflicts(response.data.hasConflicts);
       setConflictMessage(response.data.hasConflicts ? (response.data.conflicts?.length > 0 ? `Found ${response.data.conflicts.length} scheduling conflict(s).` : 'Scheduling conflict detected.') : '');
       return response.data.hasConflicts;
