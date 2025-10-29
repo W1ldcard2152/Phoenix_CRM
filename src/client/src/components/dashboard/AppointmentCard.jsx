@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactDOM from 'react-dom';
 import { Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
@@ -20,14 +19,24 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   const cardRef = useRef(null);
   const popoverRef = useRef(null);
   const hideTimeoutRef = useRef(null);
+  const isOverPopoverRef = useRef(false);
 
   // Get color classes based on work order status if available, otherwise appointment status
   // This ensures all appointments for the same work order show the same color
-  const statusToUse = appointment.workOrder?.status || appointment.status;
+  // Handle both populated workOrder (object) and unpopulated (string ID)
+  const workOrderStatus = typeof appointment.workOrder === 'object' ? appointment.workOrder?.status : null;
+  const statusToUse = workOrderStatus || appointment.status;
   const colorClasses = getAppointmentColorClasses(statusToUse);
 
-  // Handle mouse enter - show popover immediately and cancel any pending hide
-  const handleMouseEnter = () => {
+  // Show popover immediately
+  const handleCardEnter = () => {
+    console.log('Popover show attempt:', {
+      appointmentId: appointment._id,
+      serviceType: appointment.serviceType,
+      hasWorkOrder: !!appointment.workOrder,
+      hasCustomer: !!appointment.customer,
+      hasVehicle: !!appointment.vehicle
+    });
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -35,12 +44,39 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     setShowPopover(true);
   };
 
-  // Handle mouse leave - delay hiding to allow moving between card and popover
-  const handleMouseLeave = () => {
+  // Delay hiding to allow moving to popover
+  const handleCardLeave = () => {
     hideTimeoutRef.current = setTimeout(() => {
-      setShowPopover(false);
-    }, 150); // Small delay to allow smooth transitions
+      if (!isOverPopoverRef.current) {
+        setShowPopover(false);
+      }
+    }, 100);
   };
+
+  // Keep popover open when hovering it
+  const handlePopoverEnter = () => {
+    isOverPopoverRef.current = true;
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  // Hide when leaving popover
+  const handlePopoverLeave = () => {
+    console.log('Popover leave - hiding:', appointment._id);
+    isOverPopoverRef.current = false;
+    setShowPopover(false);
+  };
+
+  // Log whenever showPopover changes
+  useEffect(() => {
+    console.log('showPopover state changed:', {
+      appointmentId: appointment._id,
+      showPopover,
+      isOverPopover: isOverPopoverRef.current
+    });
+  }, [showPopover, appointment._id]);
 
   // Format time for display
   const formatTime = (dateTime) => {
@@ -73,42 +109,63 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     : 'No vehicle';
 
   // Add service type in parentheses if available
-  const displayTitle = appointment.serviceType
-    ? `${vehicleInfo} (${appointment.serviceType})`
+  // Ensure serviceType is a string to avoid rendering issues
+  const serviceType = appointment.serviceType ? String(appointment.serviceType) : '';
+  const displayTitle = serviceType
+    ? `${vehicleInfo} (${serviceType})`
     : vehicleInfo;
 
   // Check if popover would go off-screen and adjust position
   useEffect(() => {
-    if (showPopover && cardRef.current && popoverRef.current) {
-      const cardRect = cardRef.current.getBoundingClientRect();
-      const popoverRect = popoverRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
+    if (showPopover) {
+      if (cardRef.current && popoverRef.current) {
+        const cardRect = cardRef.current.getBoundingClientRect();
+        const popoverRect = popoverRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
 
-      // Check vertical position
-      if (cardRect.bottom + popoverRect.height > viewportHeight) {
-        setPopoverPosition('top');
+        console.log('Popover positioning:', {
+          appointmentId: appointment._id,
+          cardRect: { left: cardRect.left, top: cardRect.top, bottom: cardRect.bottom },
+          popoverRect: { width: popoverRect.width, height: popoverRect.height },
+          calculatedLeft: cardRect.left,
+          calculatedTop: cardRect.bottom + 8,
+          viewportHeight
+        });
+
+        // Check vertical position
+        if (cardRect.bottom + popoverRect.height > viewportHeight) {
+          setPopoverPosition('top');
+        } else {
+          setPopoverPosition('bottom');
+        }
       } else {
-        setPopoverPosition('bottom');
+        console.warn('Missing refs for popover:', {
+          appointmentId: appointment._id,
+          hasCardRef: !!cardRef.current,
+          hasPopoverRef: !!popoverRef.current
+        });
       }
     }
-  }, [showPopover]);
+  }, [showPopover, appointment._id]);
 
-  // Clean up timeout on unmount
+  // Component mount/unmount logging
   useEffect(() => {
+    console.log('AppointmentCard MOUNTED:', appointment._id);
     return () => {
+      console.log('AppointmentCard UNMOUNTED:', appointment._id);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
       }
     };
-  }, []);
+  }, [appointment._id]);
 
   return (
     <div
       ref={cardRef}
       className="relative cursor-pointer"
-      style={style}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      style={{...style, zIndex: showPopover ? 100000 : style.zIndex || 10}}
+      onMouseEnter={handleCardEnter}
+      onMouseLeave={handleCardLeave}
     >
       {/* Appointment Card */}
       <div
@@ -140,22 +197,19 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
         )}
       </div>
 
-      {/* Popover on Hover - Rendered as Portal */}
-      {showPopover && ReactDOM.createPortal(
+      {/* Popover on Hover */}
+      {showPopover && (
         <div
           ref={popoverRef}
-          className={`fixed w-80 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-4 ${
-            popoverPosition === 'top' ? 'mb-2' : 'mt-2'
-          }`}
+          className="absolute w-80 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-4"
           style={{
-            left: cardRef.current ? `${cardRef.current.getBoundingClientRect().left}px` : 0,
-            top: popoverPosition === 'top'
-              ? cardRef.current ? `${cardRef.current.getBoundingClientRect().top - popoverRef.current?.offsetHeight - 8}px` : 0
-              : cardRef.current ? `${cardRef.current.getBoundingClientRect().bottom + 8}px` : 0,
+            left: '0',
+            top: '100%',
+            marginTop: '8px',
             zIndex: 99999
           }}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+          onMouseEnter={handlePopoverEnter}
+          onMouseLeave={handlePopoverLeave}
         >
           {/* Customer Info */}
           <div className="mb-3">
@@ -180,7 +234,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
           {/* Service Info */}
           <div className="mb-3">
             <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service</div>
-            <div className="text-base text-gray-900">{appointment.serviceType}</div>
+            <div className="text-base text-gray-900">{serviceType || 'Not specified'}</div>
           </div>
 
           {/* Time Info */}
@@ -229,7 +283,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
             </Link>
             {appointment.workOrder && (
               <Link
-                to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : appointment.workOrder._id}`}
+                to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : (appointment.workOrder._id || appointment.workOrder)}`}
                 className="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -237,8 +291,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
               </Link>
             )}
           </div>
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   );
