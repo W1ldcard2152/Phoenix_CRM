@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import AppointmentCalendar from '../../components/dashboard/AppointmentCalendar';
+import SwimmingLaneCalendar from '../../components/dashboard/SwimmingLaneCalendar';
 import WorkflowSummary from '../../components/dashboard/WorkflowSummary';
 import GlobalSearch from '../../components/common/GlobalSearch';
 import WorkOrderService from '../../services/workOrderService';
@@ -526,7 +526,7 @@ const Dashboard = () => {
       
       {/* Calendar Section */}
       <div className="mb-6">
-        <AppointmentCalendar />
+        <SwimmingLaneCalendar />
       </div>
     </div>
   );
