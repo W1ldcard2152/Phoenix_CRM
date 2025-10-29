@@ -21,8 +21,10 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   const popoverRef = useRef(null);
   const hideTimeoutRef = useRef(null);
 
-  // Get color classes based on appointment status
-  const colorClasses = getAppointmentColorClasses(appointment.status);
+  // Get color classes based on work order status if available, otherwise appointment status
+  // This ensures all appointments for the same work order show the same color
+  const statusToUse = appointment.workOrder?.status || appointment.status;
+  const colorClasses = getAppointmentColorClasses(statusToUse);
 
   // Handle mouse enter - show popover immediately and cancel any pending hide
   const handleMouseEnter = () => {
@@ -65,10 +67,15 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     }
   };
 
-  // Format vehicle info
+  // Format vehicle info with appointment type
   const vehicleInfo = appointment.vehicle
     ? `${appointment.vehicle.year || ''} ${appointment.vehicle.make || ''} ${appointment.vehicle.model || ''}`.trim()
     : 'No vehicle';
+
+  // Add service type in parentheses if available
+  const displayTitle = appointment.serviceType
+    ? `${vehicleInfo} (${appointment.serviceType})`
+    : vehicleInfo;
 
   // Check if popover would go off-screen and adjust position
   useEffect(() => {
@@ -107,14 +114,14 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
       <div
         className={`h-full rounded border-l-4 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1.5 transition-colors shadow-sm overflow-hidden`}
       >
-        {/* Vehicle Info - Always show first, bold */}
+        {/* Vehicle Info with Service Type - Always show first, bold */}
         {viewType === 'daily' ? (
-          <div className="text-xs font-bold leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis" title={vehicleInfo}>
-            {vehicleInfo}
+          <div className="text-xs font-bold leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis" title={displayTitle}>
+            {displayTitle}
           </div>
         ) : (
-          <div className="text-xs font-bold leading-tight mb-0.5 truncate" title={vehicleInfo}>
-            {vehicleInfo}
+          <div className="text-xs font-bold leading-tight mb-0.5 truncate" title={displayTitle}>
+            {displayTitle}
           </div>
         )}
 
@@ -199,7 +206,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
           <div className="mb-3">
             <div className="text-xs font-bold text-gray-500 uppercase mb-1">Status</div>
             <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border}`}>
-              {appointment.status}
+              {statusToUse}
             </span>
           </div>
 
@@ -222,7 +229,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
             </Link>
             {appointment.workOrder && (
               <Link
-                to={`/workorders/${appointment.workOrder}`}
+                to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : appointment.workOrder._id}`}
                 className="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors"
                 onClick={(e) => e.stopPropagation()}
               >

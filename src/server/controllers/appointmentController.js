@@ -132,8 +132,20 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     const workOrderToUpdate = await WorkOrder.findById(newAppointment.workOrder);
     if (workOrderToUpdate) {
       let woNeedsSave = false;
+      // Backward compatibility: keep appointmentId for first/primary appointment
       if (workOrderToUpdate.appointmentId?.toString() !== newAppointment._id.toString()) {
-        workOrderToUpdate.appointmentId = newAppointment._id;
+        if (!workOrderToUpdate.appointmentId) {
+          // If no appointmentId exists, set this as the primary
+          workOrderToUpdate.appointmentId = newAppointment._id;
+          woNeedsSave = true;
+        }
+      }
+      // Add to appointments array if not already present
+      if (!workOrderToUpdate.appointments) {
+        workOrderToUpdate.appointments = [];
+      }
+      if (!workOrderToUpdate.appointments.some(apptId => apptId.toString() === newAppointment._id.toString())) {
+        workOrderToUpdate.appointments.push(newAppointment._id);
         woNeedsSave = true;
       }
       if (newAppointment.technician && workOrderToUpdate.assignedTechnician?.toString() !== newAppointment.technician.toString()) {
@@ -350,11 +362,20 @@ exports.deleteAppointment = catchAsync(async (req, res, next) => {
   
   // Update related work order if it exists
   if (appointment.workOrder) {
-    await WorkOrder.findByIdAndUpdate(
-      appointment.workOrder,
-      { appointmentId: null },
-      { new: true }
-    );
+    const workOrder = await WorkOrder.findById(appointment.workOrder);
+    if (workOrder) {
+      // Clear appointmentId if it matches this appointment
+      if (workOrder.appointmentId?.toString() === appointment._id.toString()) {
+        workOrder.appointmentId = null;
+      }
+      // Remove from appointments array
+      if (workOrder.appointments && workOrder.appointments.length > 0) {
+        workOrder.appointments = workOrder.appointments.filter(
+          apptId => apptId.toString() !== appointment._id.toString()
+        );
+      }
+      await workOrder.save();
+    }
   }
   
   await Appointment.findByIdAndDelete(req.params.id);

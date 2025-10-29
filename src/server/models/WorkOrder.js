@@ -164,6 +164,12 @@ const WorkOrderSchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Appointment'
     },
+    // New appointments array for one-to-many relationship
+    // Kept appointmentId above for backward compatibility
+    appointments: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Appointment'
+    }],
     assignedTechnician: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Technician'

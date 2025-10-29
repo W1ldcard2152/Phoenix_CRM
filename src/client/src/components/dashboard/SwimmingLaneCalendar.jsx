@@ -43,15 +43,12 @@ const SwimmingLaneCalendar = () => {
         if (response && response.data) {
           const fetchedAppointments = response.data.appointments || [];
 
-          // Filter out invoiced work orders
-          const filteredAppointments = fetchedAppointments.filter(
-            appointment => appointment.workOrderStatus !== 'Invoiced'
-          );
-          setAppointments(filteredAppointments);
+          // Show all appointments regardless of work order status
+          setAppointments(fetchedAppointments);
 
           // Check if we need to show weekends (weekly view only)
           if (viewType === 'weekly') {
-            const hasWeekendAppointments = filteredAppointments.some(appointment => {
+            const hasWeekendAppointments = fetchedAppointments.some(appointment => {
               const day = moment.utc(appointment.startTime).tz('America/New_York').day();
               return day === 0 || day === 6;
             });

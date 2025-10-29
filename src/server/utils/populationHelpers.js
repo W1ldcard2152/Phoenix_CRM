@@ -14,7 +14,15 @@ const populationConfigs = {
       { path: 'assignedTechnician', select: '_id name specialization' },
       {
         path: 'appointmentId',
-        select: '_id technician startTime endTime status',
+        select: '_id technician startTime endTime status serviceType',
+        populate: {
+          path: 'technician',
+          select: '_id name specialization'
+        }
+      },
+      {
+        path: 'appointments',
+        select: '_id technician startTime endTime status serviceType',
         populate: {
           path: 'technician',
           select: '_id name specialization'

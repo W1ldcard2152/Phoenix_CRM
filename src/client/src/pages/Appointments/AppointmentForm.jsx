@@ -58,6 +58,7 @@ const AppointmentForm = () => {
     customer: '',
     vehicle: '',
     serviceType: '',
+    serviceTypeCustom: '', // For "Other" option
     startDate: '', // Will be set in useEffect
     startTime: '', // Will be set in useEffect
     endDate: '',   // Will be set in useEffect
@@ -275,9 +276,12 @@ const AppointmentForm = () => {
       ...values,
       startTime: startTimeForServer,
       endTime: endTimeForServer,
+      // Use custom service type if "Other" is selected
+      serviceType: values.serviceType === 'Other' ? values.serviceTypeCustom : values.serviceType
     };
     delete formattedValues.startDate;
     delete formattedValues.endDate;
+    delete formattedValues.serviceTypeCustom; // Don't send this to server
 
     // Call checkForConflicts to update the warning message, but don't block submission
     await checkForConflicts(values); 
@@ -392,7 +396,43 @@ const AppointmentForm = () => {
                   <SelectInput label="Vehicle" name="vehicle" options={[{ value: '', label: 'Select Vehicle'}, ...vehicleOptions]} value={values.vehicle} onChange={handleChange} onBlur={handleBlur} error={errors.vehicle} touched={touched.vehicle} disabled={!values.customer || !!workOrderContext || vehicles.length === 0} required={!!values.workOrder} />
                 </div>
                 <div className="md:col-span-2">
-                  <Input label="Service Type" name="serviceType" value={values.serviceType} onChange={handleChange} onBlur={handleBlur} error={errors.serviceType} touched={touched.serviceType} required placeholder="Oil Change, Brake Service, etc." />
+                  <SelectInput
+                    label="Service Type"
+                    name="serviceType"
+                    options={[
+                      { value: '', label: 'Select Service Type' },
+                      { value: 'Inspection', label: 'Inspection' },
+                      { value: 'Repair', label: 'Repair' },
+                      { value: 'Diagnostic Work', label: 'Diagnostic Work' },
+                      { value: 'Road Test', label: 'Road Test' },
+                      { value: 'Other', label: 'Other' }
+                    ]}
+                    value={values.serviceType}
+                    onChange={(e) => {
+                      handleChange(e);
+                      // Clear custom field if not "Other"
+                      if (e.target.value !== 'Other') {
+                        setFieldValue('serviceTypeCustom', '');
+                      }
+                    }}
+                    onBlur={handleBlur}
+                    error={errors.serviceType}
+                    touched={touched.serviceType}
+                    required
+                  />
+                  {values.serviceType === 'Other' && (
+                    <div className="mt-2">
+                      <Input
+                        label="Custom Service Type"
+                        name="serviceTypeCustom"
+                        value={values.serviceTypeCustom}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        placeholder="Enter custom service type"
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 <div className="md:col-span-2">

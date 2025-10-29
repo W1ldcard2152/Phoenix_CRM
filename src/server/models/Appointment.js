@@ -141,7 +141,8 @@ AppointmentSchema.methods.createWorkOrder = async function() {
   newWorkOrder.serviceRequested = this.serviceType; 
   
   newWorkOrder.status = 'Scheduled'; // Default status for WO created from an appointment
-  newWorkOrder.appointmentId = this._id; // Link this appointment to the work order
+  newWorkOrder.appointmentId = this._id; // Link this appointment to the work order (backward compatibility)
+  newWorkOrder.appointments = [this._id]; // Add to appointments array for one-to-many relationship
 
   if (this.technician) {
     newWorkOrder.assignedTechnician = this.technician; // Assign technician from appointment

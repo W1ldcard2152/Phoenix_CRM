@@ -885,19 +885,10 @@ const WorkOrderDetail = () => {
                 />
               </div>
             </div>
-            {/* Appointment Link Section */}
+            {/* Appointments Section */}
             <div className="pt-2">
-              <p className="text-sm text-gray-500">Associated Appointment</p>
-              {appointmentExists && appointmentIdToLink ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => navigate(`/appointments/${appointmentIdToLink}`)}
-                  className="mt-1"
-                >
-                  View Appointment
-                </Button>
-              ) : (
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-medium text-gray-700">Appointments</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -906,10 +897,53 @@ const WorkOrderDetail = () => {
                     console.log('Navigating to AppointmentForm with URL:', targetUrl);
                     navigate(targetUrl);
                   }}
-                  className="mt-1"
                 >
-                  Schedule Work Order
+                  + Schedule Appointment
                 </Button>
+              </div>
+              {workOrder.appointments && workOrder.appointments.length > 0 ? (
+                <div className="space-y-2">
+                  {workOrder.appointments
+                    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+                    .map((appointment) => (
+                    <div key={appointment._id} className="bg-gray-50 border border-gray-200 rounded p-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            {appointment.serviceType || 'Appointment'}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {new Date(appointment.startTime).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                            {' at '}
+                            {new Date(appointment.startTime).toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                          {appointment.technician && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Tech: {appointment.technician.name}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => navigate(`/appointments/${appointment._id}`)}
+                        >
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">No appointments scheduled</p>
               )}
             </div>
           </div>
