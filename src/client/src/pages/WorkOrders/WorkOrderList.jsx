@@ -390,12 +390,11 @@ const WorkOrderList = () => {
   // Status options for inline status change (without "All Statuses")
   const workOrderStatusOptions = [
     { value: 'Work Order Created', label: 'Work Order Created' },
-    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
+    { value: 'Appointment Scheduled', label: 'Appointment Scheduled' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
     { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
     { value: 'Parts Ordered', label: 'Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
-    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
@@ -407,17 +406,16 @@ const WorkOrderList = () => {
   const getStatusPriority = (status) => {
     const priorities = {
       'Work Order Created': 1,
-      'Inspection/Diag Scheduled': 2,
+      'Appointment Scheduled': 2,
       'Inspection In Progress': 3,
       'Inspection/Diag Complete': 4,
       'Parts Ordered': 5,
       'Parts Received': 6,
-      'Repair Scheduled': 7,
-      'Repair In Progress': 8,
-      'Repair Complete - Awaiting Payment': 9,
-      'Repair Complete - Invoiced': 10,
-      'On Hold': 11,
-      'Cancelled': 12
+      'Repair In Progress': 7,
+      'Repair Complete - Awaiting Payment': 8,
+      'Repair Complete - Invoiced': 9,
+      'On Hold': 10,
+      'Cancelled': 11
     };
     return priorities[status] || 99;
   };
@@ -425,11 +423,11 @@ const WorkOrderList = () => {
   // Status filter categories
   const statusCategories = [
     { key: 'All', label: 'All', statuses: [] },
-    { key: 'Created', label: 'Created', statuses: ['Work Order Created', 'Inspection/Diag Scheduled'] },
+    { key: 'Created', label: 'Created', statuses: ['Work Order Created', 'Appointment Scheduled'] },
     { key: 'In Progress', label: 'In Progress', statuses: ['Inspection In Progress', 'Repair In Progress'] },
     { key: 'Needs Parts', label: 'Needs Parts', statuses: ['Inspection/Diag Complete'] },
     { key: 'Parts Ordered', label: 'Parts Ordered', statuses: ['Parts Ordered'] },
-    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received', 'Repair Scheduled'] },
+    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received'] },
     { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
   ];
 
@@ -461,33 +459,39 @@ const WorkOrderList = () => {
     }).format(amount || 0);
   };
 
-  // Helper function to get status color
+  // Helper function to get status color (matches dashboard calendar color scheme)
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Created':
-        return 'bg-gray-100 text-gray-800';
-      case 'Scheduled':
-        return 'bg-blue-100 text-blue-800';
-      case 'In Progress':
-        return 'bg-indigo-100 text-indigo-800';
-      case 'Inspected - Need Parts Ordered':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Parts Ordered':
-        return 'bg-orange-100 text-orange-800'; // Using orange for parts ordered
-      case 'Parts Received':
-        return 'bg-lime-100 text-lime-800'; // Using lime for parts received
-      case 'Repair In Progress':
-        return 'bg-purple-100 text-purple-800';
-      case 'Completed - Need Payment':
-        return 'bg-teal-100 text-teal-800'; // Using teal for need payment
-      case 'Completed - Paid':
+      // GREEN SCALE - Waiting/Automated
+      case 'Work Order Created':
         return 'bg-green-100 text-green-800';
+      case 'Appointment Scheduled':
+        return 'bg-green-100 text-green-800';
+      case 'Parts Ordered':
+        return 'bg-green-100 text-green-800';
+      case 'Repair Complete - Invoiced':
+        return 'bg-green-300 text-green-950';
+
+      // BLUE SCALE - Service Writer Action Needed
+      case 'Inspection/Diag Complete':
+        return 'bg-blue-100 text-blue-800';
+      case 'Parts Received':
+        return 'bg-blue-200 text-blue-900';
+      case 'Repair Complete - Awaiting Payment':
+        return 'bg-blue-300 text-blue-950';
+
+      // YELLOW/ORANGE SCALE - Technician Action Needed
+      case 'Inspection In Progress':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'Repair In Progress':
+        return 'bg-orange-200 text-orange-900';
+
+      // GREY SCALE - Customer/Stopped
       case 'On Hold':
-        return 'bg-pink-100 text-pink-800';
+        return 'bg-gray-200 text-gray-700';
       case 'Cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'Invoiced': // Added status for Invoiced
-        return 'bg-slate-100 text-slate-800';
+        return 'bg-gray-400 text-gray-800';
+
       default:
         return 'bg-gray-100 text-gray-800';
     }

@@ -63,17 +63,11 @@ export const getAppointmentColorClasses = (status) => {
       text: 'text-green-900',
       hover: 'hover:bg-green-300'
     },
-    'Inspection/Diag Scheduled': {
+    'Appointment Scheduled': {
       bg: 'bg-green-200',
       border: 'border-green-400',
       text: 'text-green-900',
       hover: 'hover:bg-green-300'
-    },
-    'Repair Scheduled': {
-      bg: 'bg-green-400',
-      border: 'border-green-600',
-      text: 'text-green-950',
-      hover: 'hover:bg-green-500'
     },
     'Completed': {
       bg: 'bg-green-600',
@@ -125,8 +119,7 @@ export const getStatusBadgeColor = (status) => {
     'In Progress': 'bg-orange-200 text-orange-900',
     'Scheduled': 'bg-green-100 text-green-800',
     'Confirmed': 'bg-green-100 text-green-800',
-    'Inspection/Diag Scheduled': 'bg-green-100 text-green-800',
-    'Repair Scheduled': 'bg-green-200 text-green-900',
+    'Appointment Scheduled': 'bg-green-100 text-green-800',
     'Completed': 'bg-green-300 text-green-950',
     'On Hold': 'bg-gray-200 text-gray-700',
     'Cancelled': 'bg-gray-400 text-gray-800',

@@ -12,11 +12,12 @@ const { validateEntityExists, validateVehicleOwnership } = require('../utils/val
 const { calculateWorkOrderTotal, getWorkOrderCostBreakdown } = require('../utils/calculationHelpers');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
+const cacheService = require('../services/cacheService');
 
 // Status aliases for backward compatibility - defined once at module level
 const STATUS_ALIASES = {
   'Work Order Created': ['Work Order Created', 'Created'],
-  'Inspection/Diag Scheduled': ['Inspection/Diag Scheduled', 'Scheduled'],
+  'Appointment Scheduled': ['Appointment Scheduled', 'Scheduled', 'Inspection/Diag Scheduled', 'Repair Scheduled'],
   'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
   'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
   'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
@@ -387,6 +388,11 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
       workOrder: updatedWorkOrderPopulated
     }
   });
+
+  // Invalidate appointment cache if work order status changed (appointments display work order status)
+  if (workOrderData.status && oldWorkOrder && oldWorkOrder.status !== workOrderData.status) {
+    cacheService.invalidateAllAppointments();
+  }
 });
 
 // Delete a work order
@@ -484,6 +490,9 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
       workOrder: populatedWorkOrder
     }
   });
+
+  // Invalidate appointment cache since work order status changed (appointments display work order status)
+  cacheService.invalidateAllAppointments();
 });
 
 // Add part to work order

@@ -125,22 +125,32 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
 
   /**
    * Group appointments by technician
+   * Only include technicians with appointments during the displayed week
    */
   const getTechnicianSchedules = () => {
+    const weekStart = week.clone().startOf('week');
+    const weekEnd = week.clone().endOf('week');
     const techMap = new Map();
 
+    // Only build technician list from appointments that fall within the displayed week
     appointments.forEach(appointment => {
       if (appointment.technician && appointment.technician._id) {
-        const techId = appointment.technician._id;
+        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
+        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
 
-        if (!techMap.has(techId)) {
-          techMap.set(techId, {
-            technician: appointment.technician,
-            appointments: []
-          });
+        // Check if appointment overlaps with this week
+        if (apptStart.isBefore(weekEnd) && apptEnd.isAfter(weekStart)) {
+          const techId = appointment.technician._id;
+
+          if (!techMap.has(techId)) {
+            techMap.set(techId, {
+              technician: appointment.technician,
+              appointments: []
+            });
+          }
+
+          techMap.get(techId).appointments.push(appointment);
         }
-
-        techMap.get(techId).appointments.push(appointment);
       }
     });
 

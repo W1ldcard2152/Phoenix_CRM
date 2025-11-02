@@ -17,7 +17,9 @@ const WorkOrder = mongoose.model('WorkOrder', WorkOrderSchema);
 // Status mapping from old to new
 const statusMapping = {
   'Created': 'Work Order Created',
-  'Scheduled': 'Inspection/Diag Scheduled',
+  'Scheduled': 'Appointment Scheduled',
+  'Inspection/Diag Scheduled': 'Appointment Scheduled',
+  'Repair Scheduled': 'Appointment Scheduled',
   'Inspected/Parts Ordered': 'Inspection/Diag Complete',
   'Completed - Awaiting Payment': 'Repair Complete - Awaiting Payment',
   'Invoiced': 'Repair Complete - Invoiced'

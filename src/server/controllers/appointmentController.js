@@ -9,6 +9,7 @@ const { applyPopulation } = require('../utils/populationHelpers');
 const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
+const cacheService = require('../services/cacheService');
 
 const AMERICA_NEW_YORK = "America/New_York";
 
@@ -154,12 +155,12 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       }
       // Update work order status based on current status when scheduling
       if (workOrderToUpdate.status === 'Work Order Created') {
-        // New work orders need inspection/diagnosis first
-        workOrderToUpdate.status = 'Inspection/Diag Scheduled'; 
+        // New work orders get scheduled for initial inspection/diagnosis
+        workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       } else if (workOrderToUpdate.status === 'Inspection/Diag Complete' || workOrderToUpdate.status === 'Parts Received') {
-        // Work orders that have completed inspection or have parts ready need repair scheduling
-        workOrderToUpdate.status = 'Repair Scheduled';
+        // Work orders that have completed inspection or have parts ready get scheduled for repair
+        workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       }
       if (woNeedsSave) {
@@ -212,6 +213,9 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
       appointment: fullyPopulatedAppointment
     }
   });
+
+  // Invalidate appointment cache after creating new appointment
+  cacheService.invalidateAllAppointments();
 });
 
 // Update an appointment
@@ -276,7 +280,7 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     }
   }
 
-  // If appointment status is 'Scheduled' or 'Confirmed', ensure linked WorkOrder is 'Scheduled'
+  // If appointment status is 'Scheduled' or 'Confirmed', ensure linked WorkOrder is 'Appointment Scheduled'
   if (
     (req.body.status === 'Scheduled' || req.body.status === 'Confirmed') &&
     appointment.workOrder
@@ -286,7 +290,7 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     if (workOrder && (workOrder.status === 'Created' || workOrder.status === 'On Hold')) {
       await WorkOrder.findByIdAndUpdate(
         appointment.workOrder,
-        { status: 'Scheduled' },
+        { status: 'Appointment Scheduled' },
         { new: true, runValidators: true } // Added runValidators
       );
     }
@@ -350,6 +354,9 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       appointment: updatedAppointment
     }
   });
+
+  // Invalidate appointment cache after updating appointment
+  cacheService.invalidateAllAppointments();
 });
 
 // Delete an appointment
@@ -379,7 +386,10 @@ exports.deleteAppointment = catchAsync(async (req, res, next) => {
   }
   
   await Appointment.findByIdAndDelete(req.params.id);
-  
+
+  // Invalidate appointment cache after deleting appointment
+  cacheService.invalidateAllAppointments();
+
   res.status(204).json({
     status: 'success',
     data: null
@@ -420,28 +430,37 @@ exports.createWorkOrderFromAppointment = catchAsync(async (req, res, next) => {
 // Get appointments by date range
 exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
   const { startDate, endDate } = req.params;
-  
+
   if (!startDate || !endDate) {
     return next(
       new AppError('Please provide both start date and end date', 400)
     );
   }
-  
+
   const start = moment.tz(startDate, AMERICA_NEW_YORK).startOf('day').utc().toDate();
   const end = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
-  
+
   if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
       new AppError('Please provide valid dates in ISO format (YYYY-MM-DD)', 400)
     );
   }
-  
-  const appointments = await applyPopulation(
-    Appointment.find({ startTime: { $gte: start, $lte: end } }).sort({ startTime: 1 }),
-    'appointment',
-    'standard'
-  );
-  
+
+  // Check cache first
+  let appointments = cacheService.getAppointmentsByDateRange(startDate, endDate);
+
+  if (!appointments) {
+    // Cache miss - query database
+    appointments = await applyPopulation(
+      Appointment.find({ startTime: { $gte: start, $lte: end } }).sort({ startTime: 1 }),
+      'appointment',
+      'standard'
+    );
+
+    // Store in cache
+    cacheService.setAppointmentsByDateRange(startDate, endDate, appointments);
+  }
+
   res.status(200).json({
     status: 'success',
     results: appointments.length,

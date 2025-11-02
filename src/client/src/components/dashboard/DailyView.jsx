@@ -94,11 +94,13 @@ const DailyView = ({ date, appointments }) => {
 
   /**
    * Group appointments by technician
+   * Only include technicians with appointments on this specific day
    */
   const getTechnicianSchedules = () => {
     const dayAppointments = getDayAppointments();
     const techMap = new Map();
 
+    // Only build technician list from appointments that are actually on this day
     dayAppointments.forEach(appointment => {
       if (appointment.technician && appointment.technician._id) {
         const techId = appointment.technician._id;

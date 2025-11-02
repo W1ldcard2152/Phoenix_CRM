@@ -38,17 +38,11 @@ const AppointmentSchema = new Schema(
     status: {
       type: String,
       enum: [
-        'Scheduled', 
-        'Confirmed', 
-        'In Progress', 
-        'Inspection/Diag Scheduled',
-        'Inspection In Progress', 
-        'Inspection/Diag Complete',
-        'Repair Scheduled',
-        'Repair In Progress', 
-        'Repair Complete - Awaiting Payment',
-        'Completed', 
-        'Cancelled', 
+        'Scheduled',
+        'Confirmed',
+        'In Progress',
+        'Completed',
+        'Cancelled',
         'No-Show'
       ],
       default: 'Scheduled'

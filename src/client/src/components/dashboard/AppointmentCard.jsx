@@ -30,13 +30,6 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
 
   // Show popover immediately
   const handleCardEnter = () => {
-    console.log('Popover show attempt:', {
-      appointmentId: appointment._id,
-      serviceType: appointment.serviceType,
-      hasWorkOrder: !!appointment.workOrder,
-      hasCustomer: !!appointment.customer,
-      hasVehicle: !!appointment.vehicle
-    });
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -64,19 +57,9 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
 
   // Hide when leaving popover
   const handlePopoverLeave = () => {
-    console.log('Popover leave - hiding:', appointment._id);
     isOverPopoverRef.current = false;
     setShowPopover(false);
   };
-
-  // Log whenever showPopover changes
-  useEffect(() => {
-    console.log('showPopover state changed:', {
-      appointmentId: appointment._id,
-      showPopover,
-      isOverPopover: isOverPopoverRef.current
-    });
-  }, [showPopover, appointment._id]);
 
   // Format time for display
   const formatTime = (dateTime) => {
@@ -123,36 +106,19 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
         const popoverRect = popoverRef.current.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
 
-        console.log('Popover positioning:', {
-          appointmentId: appointment._id,
-          cardRect: { left: cardRect.left, top: cardRect.top, bottom: cardRect.bottom },
-          popoverRect: { width: popoverRect.width, height: popoverRect.height },
-          calculatedLeft: cardRect.left,
-          calculatedTop: cardRect.bottom + 8,
-          viewportHeight
-        });
-
         // Check vertical position
         if (cardRect.bottom + popoverRect.height > viewportHeight) {
           setPopoverPosition('top');
         } else {
           setPopoverPosition('bottom');
         }
-      } else {
-        console.warn('Missing refs for popover:', {
-          appointmentId: appointment._id,
-          hasCardRef: !!cardRef.current,
-          hasPopoverRef: !!popoverRef.current
-        });
       }
     }
   }, [showPopover, appointment._id]);
 
-  // Component mount/unmount logging
+  // Cleanup on unmount
   useEffect(() => {
-    console.log('AppointmentCard MOUNTED:', appointment._id);
     return () => {
-      console.log('AppointmentCard UNMOUNTED:', appointment._id);
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current);
       }

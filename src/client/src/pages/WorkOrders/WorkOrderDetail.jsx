@@ -103,7 +103,7 @@ const WorkOrderDetail = () => {
       // Check current status - only update if we're in a pre-ordering status
       const preOrderStatuses = [
         'Work Order Created',
-        'Inspection/Diag Scheduled',
+        'Appointment Scheduled',
         'Inspection In Progress',
         'Inspection/Diag Complete'
       ];
@@ -680,12 +680,11 @@ const WorkOrderDetail = () => {
   // Status options for dropdown
   const statusOptions = [
     { value: 'Work Order Created', label: 'Work Order Created' },
-    { value: 'Inspection/Diag Scheduled', label: 'Inspection/Diag Scheduled' },
+    { value: 'Appointment Scheduled', label: 'Appointment Scheduled' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
     { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
     { value: 'Parts Ordered', label: 'Parts Ordered' },
     { value: 'Parts Received', label: 'Parts Received' },
-    { value: 'Repair Scheduled', label: 'Repair Scheduled' },
     { value: 'Repair In Progress', label: 'Repair In Progress' },
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
