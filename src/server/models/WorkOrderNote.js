@@ -18,6 +18,14 @@ const WorkOrderNoteSchema = new Schema(
       type: Boolean,
       default: false
     },
+    noteType: {
+      type: String,
+      enum: ['customer-facing', 'internal', 'interaction'],
+      default: function() {
+        // For backward compatibility: if isCustomerFacing is true, default to 'customer-facing', else 'internal'
+        return this.isCustomerFacing ? 'customer-facing' : 'internal';
+      }
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User', // Assuming you'll have a User model eventually
@@ -50,6 +58,16 @@ WorkOrderNoteSchema.virtual('formattedCreatedAt').get(function() {
 
 // Ensure virtuals are included when converting to JSON
 WorkOrderNoteSchema.set('toJSON', { virtuals: true });
+
+// Pre-save hook to keep isCustomerFacing in sync with noteType for backward compatibility
+WorkOrderNoteSchema.pre('save', function(next) {
+  if (this.noteType === 'customer-facing') {
+    this.isCustomerFacing = true;
+  } else {
+    this.isCustomerFacing = false;
+  }
+  next();
+});
 
 const WorkOrderNote = mongoose.model('WorkOrderNote', WorkOrderNoteSchema);
 

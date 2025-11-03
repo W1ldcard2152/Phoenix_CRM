@@ -5,11 +5,17 @@ const WorkOrder = require('../models/WorkOrder');
 const getWorkOrderNotes = async (req, res) => {
   try {
     const { workOrderId } = req.params;
-    const { customerFacing } = req.query;
+    const { customerFacing, noteType } = req.query;
 
     // Build query
     const query = { workOrder: workOrderId };
-    if (customerFacing === 'true') {
+
+    // Support noteType filtering (preferred)
+    if (noteType) {
+      query.noteType = noteType;
+    }
+    // Backward compatibility: support customerFacing filtering
+    else if (customerFacing === 'true') {
       query.isCustomerFacing = true;
     } else if (customerFacing === 'false') {
       query.isCustomerFacing = false;
@@ -39,7 +45,7 @@ const getWorkOrderNotes = async (req, res) => {
 const createWorkOrderNote = async (req, res) => {
   try {
     const { workOrderId } = req.params;
-    const { content, isCustomerFacing = false } = req.body;
+    const { content, isCustomerFacing = false, noteType } = req.body;
 
     // Verify work order exists
     const workOrder = await WorkOrder.findById(workOrderId);
@@ -54,12 +60,19 @@ const createWorkOrderNote = async (req, res) => {
     // TODO: Replace with actual authenticated user ID when auth is implemented
     const createdBy = req.user?.id || '507f1f77bcf86cd799439011'; // Placeholder ObjectId
 
-    const note = new WorkOrderNote({
+    const noteData = {
       workOrder: workOrderId,
       content: content.trim(),
       isCustomerFacing,
       createdBy
-    });
+    };
+
+    // If noteType is provided, use it (preferred)
+    if (noteType) {
+      noteData.noteType = noteType;
+    }
+
+    const note = new WorkOrderNote(noteData);
 
     await note.save();
 
@@ -86,7 +99,7 @@ const createWorkOrderNote = async (req, res) => {
 const updateWorkOrderNote = async (req, res) => {
   try {
     const { noteId } = req.params;
-    const { content, isCustomerFacing } = req.body;
+    const { content, isCustomerFacing, noteType } = req.body;
 
     const note = await WorkOrderNote.findById(noteId);
     if (!note) {
@@ -102,6 +115,9 @@ const updateWorkOrderNote = async (req, res) => {
     }
     if (isCustomerFacing !== undefined) {
       note.isCustomerFacing = isCustomerFacing;
+    }
+    if (noteType !== undefined) {
+      note.noteType = noteType;
     }
 
     await note.save();

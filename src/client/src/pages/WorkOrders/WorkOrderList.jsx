@@ -420,15 +420,13 @@ const WorkOrderList = () => {
     return priorities[status] || 99;
   };
 
-  // Status filter categories
+  // Status filter categories - aligned with color coding
   const statusCategories = [
     { key: 'All', label: 'All', statuses: [] },
-    { key: 'Created', label: 'Created', statuses: ['Work Order Created', 'Appointment Scheduled'] },
-    { key: 'In Progress', label: 'In Progress', statuses: ['Inspection In Progress', 'Repair In Progress'] },
-    { key: 'Needs Parts', label: 'Needs Parts', statuses: ['Inspection/Diag Complete'] },
-    { key: 'Parts Ordered', label: 'Parts Ordered', statuses: ['Parts Ordered'] },
-    { key: 'Ready for Repair', label: 'Ready for Repair', statuses: ['Parts Received'] },
-    { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
+    { key: 'Created', label: 'Created', statuses: ['Work Order Created'] },
+    { key: 'Service Writer Action', label: 'Service Writer Action', statuses: ['Inspection/Diag Complete', 'Parts Received', 'Repair Complete - Awaiting Payment'] },
+    { key: 'Technician Action', label: 'Technician Action', statuses: ['Inspection In Progress', 'Repair In Progress'] },
+    { key: 'Waiting/Scheduled', label: 'Waiting/Scheduled', statuses: ['Work Order Created', 'Appointment Scheduled', 'Parts Ordered'] }
   ];
 
   // Filter work orders based on selected category, excluding statuses that have their own sections

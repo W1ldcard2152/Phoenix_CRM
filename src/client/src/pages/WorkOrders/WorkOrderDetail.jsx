@@ -11,7 +11,6 @@ import PartsSelector from '../../components/parts/PartsSelector';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
-import CustomerInteractions from '../../components/workorders/CustomerInteractions';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -50,6 +49,13 @@ const WorkOrderDetail = () => {
   const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false });
   const [addingNote, setAddingNote] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+
+  // Customer Interactions state
+  const [interactionNotes, setInteractionNotes] = useState([]);
+  const [interactionNotesLoading, setInteractionNotesLoading] = useState(false);
+  const [newInteraction, setNewInteraction] = useState({ content: '' });
+  const [addingInteraction, setAddingInteraction] = useState(false);
+  const [editingInteraction, setEditingInteraction] = useState(null);
   
   // File attachment state
   const [attachedFiles, setAttachedFiles] = useState([]);
@@ -185,12 +191,16 @@ const WorkOrderDetail = () => {
   const fetchNotes = useCallback(async () => {
     try {
       setNotesLoading(true);
-      const response = await workOrderNotesService.getNotes(id);
-      
-      if (response && response.data && response.data.notes) {
-        setNotes(response.data.notes);
+      // Fetch regular notes (customer-facing and internal, but not interaction notes)
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data && data.data && data.data.notes) {
+        // Filter out interaction notes
+        const regularNotes = data.data.notes.filter(note => note.noteType !== 'interaction');
+        setNotes(regularNotes);
       } else {
-        console.warn('No notes found in response:', response);
         setNotes([]);
       }
     } catch (err) {
@@ -202,13 +212,36 @@ const WorkOrderDetail = () => {
     }
   }, [id]);
 
+  const fetchInteractionNotes = useCallback(async () => {
+    try {
+      setInteractionNotesLoading(true);
+      // Fetch only interaction notes
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes?noteType=interaction`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data && data.data && data.data.notes) {
+        setInteractionNotes(data.data.notes);
+      } else {
+        setInteractionNotes([]);
+      }
+    } catch (err) {
+      console.error('Error fetching interaction notes:', err);
+      setError('Failed to load interaction notes');
+      setInteractionNotes([]);
+    } finally {
+      setInteractionNotesLoading(false);
+    }
+  }, [id]);
+
   // Fetch work order notes and files
   useEffect(() => {
     if (workOrder) {
       fetchNotes();
+      fetchInteractionNotes();
       fetchAttachedFiles();
     }
-  }, [workOrder, fetchNotes]);
+  }, [workOrder, fetchNotes, fetchInteractionNotes]);
 
   const fetchAttachedFiles = useCallback(async () => {
     try {
@@ -231,10 +264,11 @@ const WorkOrderDetail = () => {
   // Work Order Notes handlers
   const handleAddNote = async () => {
     if (!newNote.content.trim()) return;
-    
+
     try {
       setAddingNote(true);
-      await workOrderNotesService.createNote(id, newNote);
+      const noteType = newNote.isCustomerFacing ? 'customer-facing' : 'internal';
+      await workOrderNotesService.createNote(id, { ...newNote, noteType });
       setNewNote({ content: '', isCustomerFacing: false });
       await fetchNotes(); // Refresh notes list
     } catch (err) {
@@ -242,6 +276,73 @@ const WorkOrderDetail = () => {
       setError('Failed to add note');
     } finally {
       setAddingNote(false);
+    }
+  };
+
+  // Customer Interaction handlers
+  const handleAddInteraction = async () => {
+    if (!newInteraction.content.trim()) return;
+
+    try {
+      setAddingInteraction(true);
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: newInteraction.content,
+          noteType: 'interaction',
+          isCustomerFacing: false
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to add interaction');
+
+      setNewInteraction({ content: '' });
+      await fetchInteractionNotes(); // Refresh interaction notes list
+    } catch (err) {
+      console.error('Error adding interaction:', err);
+      setError('Failed to add interaction');
+    } finally {
+      setAddingInteraction(false);
+    }
+  };
+
+  const handleUpdateInteraction = async (noteId, updateData) => {
+    try {
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes/${noteId}`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updateData, noteType: 'interaction' })
+      });
+
+      if (!response.ok) throw new Error('Failed to update interaction');
+
+      await fetchInteractionNotes(); // Refresh interaction notes list
+      setEditingInteraction(null);
+    } catch (err) {
+      console.error('Error updating interaction:', err);
+      setError('Failed to update interaction');
+    }
+  };
+
+  const handleDeleteInteraction = async (noteId) => {
+    if (!window.confirm('Are you sure you want to delete this interaction note?')) return;
+
+    try {
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes/${noteId}`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) throw new Error('Failed to delete interaction');
+
+      await fetchInteractionNotes(); // Refresh interaction notes list
+    } catch (err) {
+      console.error('Error deleting interaction:', err);
+      setError('Failed to delete interaction');
     }
   };
 
@@ -784,7 +885,7 @@ const WorkOrderDetail = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Card title="Customer & Vehicle">
           <div className="space-y-2">
             <div>
@@ -834,6 +935,162 @@ const WorkOrderDetail = () => {
           </div>
         </Card>
 
+        <Card
+          title="Totals" 
+          headerActions={
+            <div className="flex space-x-2">
+              <Button
+                onClick={generateInvoice}
+                variant="primary"
+                size="sm"
+              >
+                Generate Invoice
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between font-medium">
+                <span>Parts:</span>
+                <span>{formatCurrency(partsCost)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Labor:</span>
+                <span>{formatCurrency(laborCost)}</span>
+              </div>
+              <div className="h-px bg-gray-200 my-2"></div>
+              <div className="flex justify-between font-medium">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(subtotalWithoutTax)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Tax ({taxRate * 100}%):</span>
+                <span>{formatCurrency(subtotalWithoutTax * taxRate)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Total:</span>
+              <span>{formatCurrency(totalWithTax)}</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Second Row - Customer Interactions and Work Order Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Customer Interactions Section */}
+        <Card title="Customer Interactions">
+          <div className="space-y-4">
+            {/* Add New Interaction Form */}
+            <div className="border-b border-gray-200 pb-4">
+              <div className="space-y-3">
+                <TextArea
+                  label="Log Customer Interaction"
+                  value={newInteraction.content}
+                  onChange={(e) => setNewInteraction({ content: e.target.value })}
+                  placeholder="e.g., Called left message to call back re: diagnostic findings"
+                  rows={3}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleAddInteraction}
+                    disabled={!newInteraction.content.trim() || addingInteraction}
+                    variant="primary"
+                    size="sm"
+                  >
+                    {addingInteraction ? 'Adding...' : 'Add Interaction'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Interaction Notes List */}
+            <div className="space-y-3">
+              {interactionNotesLoading ? (
+                <div className="text-center py-4">Loading interactions...</div>
+              ) : interactionNotes.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  No customer interactions logged yet.
+                </div>
+              ) : (
+                interactionNotes.map((note) => (
+                  <div key={note._id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <span className="text-xs text-gray-500">
+                            {new Date(note.createdAt).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                          {note.createdBy?.name && (
+                            <span className="text-xs text-gray-500">
+                              by {note.createdBy.name}
+                            </span>
+                          )}
+                        </div>
+                        {editingInteraction?._id === note._id ? (
+                          <div className="space-y-2">
+                            <TextArea
+                              value={editingInteraction.content}
+                              onChange={(e) => setEditingInteraction({ ...editingInteraction, content: e.target.value })}
+                              rows={3}
+                            />
+                            <div className="flex space-x-2">
+                              <Button
+                                onClick={() => handleUpdateInteraction(note._id, { content: editingInteraction.content })}
+                                variant="primary"
+                                size="sm"
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                onClick={() => setEditingInteraction(null)}
+                                variant="outline"
+                                size="sm"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>
+                            {note.content}
+                          </div>
+                        )}
+                      </div>
+                      {editingInteraction?._id !== note._id && (
+                        <div className="flex space-x-1 ml-4">
+                          <Button
+                            onClick={() => setEditingInteraction(note)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteInteraction(note._id)}
+                            variant="danger"
+                            size="sm"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* Work Order Details */}
         <Card title="Work Order Details">
           <div className="space-y-2">
             <div>
@@ -842,7 +1099,7 @@ const WorkOrderDetail = () => {
                 {new Date(workOrder.date).toLocaleDateString()}
               </p>
             </div>
-            
+
             {/* Services Requested - Updated to display multiple services */}
             <div>
               <p className="text-sm text-gray-500">Services Requested</p>
@@ -867,7 +1124,7 @@ const WorkOrderDetail = () => {
                 )}
               </div>
             </div>
-            
+
             <div>
               <p className="text-sm text-gray-500">Priority</p>
               <p className="font-medium">{workOrder.priority}</p>
@@ -947,57 +1204,10 @@ const WorkOrderDetail = () => {
             </div>
           </div>
         </Card>
-
-        <Card
-          title="Totals" 
-          headerActions={
-            <div className="flex space-x-2">
-              <Button
-                onClick={generateInvoice}
-                variant="primary"
-                size="sm"
-              >
-                Generate Invoice
-              </Button>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between font-medium">
-                <span>Parts:</span>
-                <span>{formatCurrency(partsCost)}</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Labor:</span>
-                <span>{formatCurrency(laborCost)}</span>
-              </div>
-              <div className="h-px bg-gray-200 my-2"></div>
-              <div className="flex justify-between font-medium">
-                <span>Subtotal:</span>
-                <span>{formatCurrency(subtotalWithoutTax)}</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Tax ({taxRate * 100}%):</span>
-                <span>{formatCurrency(subtotalWithoutTax * taxRate)}</span>
-              </div>
-            </div>
-            <div className="flex justify-between font-medium">
-              <span>Total:</span>
-              <span>{formatCurrency(totalWithTax)}</span>
-            </div>
-          </div>
-        </Card>
       </div>
 
-      {/* Customer Interactions Section */}
+      {/* Work Order Notes and other sections */}
       <div className="space-y-6">
-        <CustomerInteractions 
-          workOrderId={id}
-          customerId={workOrder?.customer?._id}
-          workOrderStatus={workOrder?.status}
-        />
-        
         {/* Work Order Notes Section */}
         <Card title="Work Order Notes">
           <div className="space-y-4">
