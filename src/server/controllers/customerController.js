@@ -2,6 +2,7 @@ const Customer = require('../models/Customer');
 const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const cacheService = require('../services/cacheService');
 
 // Helper function to normalize phone numbers (remove non-digits)
 const normalizePhoneNumber = (phoneNumber) => {
@@ -11,37 +12,64 @@ const normalizePhoneNumber = (phoneNumber) => {
 
 // Get all customers
 exports.getAllCustomers = catchAsync(async (req, res, next) => {
+  const cacheKey = 'customers:all';
+
+  // Check cache first
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   const customers = await Customer.find();
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     results: customers.length,
     data: {
       customers
     }
-  });
+  };
+
+  // Cache for 10 minutes
+  cacheService.set(cacheKey, responseData, 600);
+
+  res.status(200).json(responseData);
 });
 
 // Get a single customer
 exports.getCustomer = catchAsync(async (req, res, next) => {
+  // Check cache first
+  const cached = cacheService.getCustomerById(req.params.id);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   const customer = await Customer.findById(req.params.id).populate('vehicles');
 
   if (!customer) {
     return next(new AppError('No customer found with that ID', 404));
   }
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     data: {
       customer
     }
-  });
+  };
+
+  // Cache for 10 minutes
+  cacheService.setCustomerById(req.params.id, responseData);
+
+  res.status(200).json(responseData);
 });
 
 // Create a new customer
 exports.createCustomer = catchAsync(async (req, res, next) => {
   // Phone number will be saved as received from client (with dashes)
   const newCustomer = await Customer.create(req.body);
+
+  // Invalidate customer cache
+  cacheService.invalidateAllCustomers();
 
   res.status(201).json({
     status: 'success',
@@ -101,6 +129,9 @@ exports.updateCustomer = catchAsync(async (req, res, next) => {
     return next(new AppError('No customer found with that ID', 404));
   }
 
+  // Invalidate customer cache
+  cacheService.invalidateAllCustomers();
+
   res.status(200).json({
     status: 'success',
     data: {
@@ -130,6 +161,9 @@ exports.deleteCustomer = catchAsync(async (req, res, next) => {
   }
 
   await Customer.findByIdAndDelete(req.params.id);
+
+  // Invalidate customer cache
+  cacheService.invalidateAllCustomers();
 
   res.status(204).json({
     status: 'success',

@@ -4,11 +4,21 @@ const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const { parseLocalDate } = require('../utils/dateUtils');
+const cacheService = require('../services/cacheService');
 
 // Get all vehicles
 exports.getAllVehicles = catchAsync(async (req, res, next) => {
   // Allow filtering by customer
   const { customer, make, model } = req.query;
+
+  // Generate cache key from query parameters
+  const cacheKey = `vehicles:all:${JSON.stringify({ customer, make, model })}`;
+
+  // Check cache first
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
 
   // Build query based on filters
   const query = {};
@@ -21,17 +31,28 @@ exports.getAllVehicles = catchAsync(async (req, res, next) => {
     .populate('customer', 'name phone email')
     .sort({ updatedAt: -1 });
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     results: vehicles.length,
     data: {
       vehicles
     }
-  });
+  };
+
+  // Cache for 10 minutes
+  cacheService.set(cacheKey, responseData, 600);
+
+  res.status(200).json(responseData);
 });
 
 // Get a single vehicle
 exports.getVehicle = catchAsync(async (req, res, next) => {
+  // Check cache first
+  const cached = cacheService.getVehicleById(req.params.id);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   const vehicle = await Vehicle.findById(req.params.id)
     .populate('customer', 'name phone email')
     .populate({
@@ -44,12 +65,17 @@ exports.getVehicle = catchAsync(async (req, res, next) => {
     return next(new AppError('No vehicle found with that ID', 404));
   }
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     data: {
       vehicle
     }
-  });
+  };
+
+  // Cache for 10 minutes
+  cacheService.setVehicleById(req.params.id, responseData);
+
+  res.status(200).json(responseData);
 });
 
 // Create a new vehicle
@@ -96,6 +122,10 @@ exports.createVehicle = catchAsync(async (req, res, next) => {
     customer.vehicles.push(newVehicle._id);
     await customer.save({ validateBeforeSave: false });
 
+    // Invalidate vehicle and customer caches
+    cacheService.invalidateAllVehicles();
+    cacheService.invalidateAllCustomers();
+
     res.status(201).json({
       status: 'success',
       data: {
@@ -118,6 +148,10 @@ exports.updateVehicle = catchAsync(async (req, res, next) => {
   if (!vehicle) {
     return next(new AppError('No vehicle found with that ID', 404));
   }
+
+  // Invalidate vehicle and customer caches
+  cacheService.invalidateAllVehicles();
+  cacheService.invalidateAllCustomers();
 
   res.status(200).json({
     status: 'success',
@@ -154,6 +188,10 @@ exports.deleteVehicle = catchAsync(async (req, res, next) => {
   );
 
   await Vehicle.findByIdAndDelete(req.params.id);
+
+  // Invalidate vehicle and customer caches
+  cacheService.invalidateAllVehicles();
+  cacheService.invalidateAllCustomers();
 
   res.status(204).json({
     status: 'success',

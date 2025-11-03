@@ -27,6 +27,15 @@ const STATUS_ALIASES = {
 exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   const { status, customer, vehicle, startDate, endDate, excludeStatuses } = req.query;
 
+  // Generate cache key from query parameters
+  const cacheKey = `workorders:all:${JSON.stringify({ status, customer, vehicle, startDate, endDate, excludeStatuses })}`;
+
+  // Check cache first
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   // Build query based on filters
   const query = {};
 
@@ -53,17 +62,28 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
     'standard'
   );
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     results: workOrders.length,
     data: { workOrders }
-  });
+  };
+
+  // Cache the response for 5 minutes
+  cacheService.set(cacheKey, responseData, 300);
+
+  res.status(200).json(responseData);
 });
 
 // Get a single work order
 exports.getWorkOrder = catchAsync(async (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return next(new AppError('Invalid work order ID format', 400));
+  }
+
+  // Check cache first
+  const cached = cacheService.getWorkOrderById(req.params.id);
+  if (cached) {
+    return res.status(200).json(cached);
   }
 
   const workOrder = await applyPopulation(
@@ -76,10 +96,15 @@ exports.getWorkOrder = catchAsync(async (req, res, next) => {
     return next(new AppError('No work order found with that ID', 404));
   }
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     data: { workOrder }
-  });
+  };
+
+  // Cache the response for 5 minutes
+  cacheService.setWorkOrderById(req.params.id, responseData);
+
+  res.status(200).json(responseData);
 });
 
 // Create a new work order
@@ -179,7 +204,11 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   }
   
   await vehicle.save({ validateBeforeSave: false });
-  
+
+  // Invalidate caches since new work order was created
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
   res.status(201).json({
     status: 'success',
     data: {
@@ -389,6 +418,10 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   });
 
+  // Invalidate caches since work order was updated
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
   // Invalidate appointment cache if work order status changed (appointments display work order status)
   if (workOrderData.status && oldWorkOrder && oldWorkOrder.status !== workOrderData.status) {
     cacheService.invalidateAllAppointments();
@@ -421,6 +454,11 @@ exports.deleteWorkOrder = catchAsync(async (req, res, next) => {
   );
 
   await WorkOrder.findByIdAndDelete(req.params.id);
+
+  // Invalidate caches since work order was deleted
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+  cacheService.invalidateAllAppointments();
 
   res.status(204).json({
     status: 'success',
@@ -484,15 +522,17 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
     // This would require implementing a specific email template for status updates
   }
   
+  // Invalidate caches since work order status was updated
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+  cacheService.invalidateAllAppointments();
+
   res.status(200).json({
     status: 'success',
     data: {
       workOrder: populatedWorkOrder
     }
   });
-
-  // Invalidate appointment cache since work order status changed (appointments display work order status)
-  cacheService.invalidateAllAppointments();
 });
 
 // Add part to work order
@@ -508,6 +548,10 @@ exports.addPart = catchAsync(async (req, res, next) => {
     'workOrder',
     'detailed'
   );
+
+  // Invalidate caches since parts were added to work order
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
 
   res.status(200).json({
     status: 'success',
@@ -529,6 +573,10 @@ exports.addLabor = catchAsync(async (req, res, next) => {
     'detailed'
   );
 
+  // Invalidate caches since labor was added to work order
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
   res.status(200).json({
     status: 'success',
     data: { workOrder: populatedWorkOrderAfterAddLabor }
@@ -539,11 +587,24 @@ exports.addLabor = catchAsync(async (req, res, next) => {
 exports.getWorkOrdersByStatus = catchAsync(async (req, res, next) => {
   const { status } = req.params;
 
+  // Check cache first
+  const cached = cacheService.getWorkOrdersByStatus(status);
+  if (cached) {
+    return res.status(200).json({
+      status: 'success',
+      results: cached.length,
+      data: { workOrders: cached }
+    });
+  }
+
   const workOrders = await applyPopulation(
     WorkOrder.find({ status }).sort({ date: -1 }),
     'workOrder',
     'standard'
   );
+
+  // Cache the work orders for 5 minutes
+  cacheService.setWorkOrdersByStatus(status, workOrders);
 
   res.status(200).json({
     status: 'success',
@@ -796,6 +857,12 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
 
 // Get Service Writer's Corner data - all work orders requiring service writer action
 exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
+  // Check cache first
+  const cached = cacheService.getServiceWritersCorner();
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   // Get only today and future appointments (not past)
   const now = new Date();
   // Set to start of today to include appointments scheduled for today
@@ -867,7 +934,7 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
   );
   const awaitingPayment = addAppointmentInfo(awaitingPaymentRaw);
 
-  res.status(200).json({
+  const responseData = {
     status: 'success',
     data: {
       diagComplete: {
@@ -883,5 +950,10 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
         count: awaitingPayment.length
       }
     }
-  });
+  };
+
+  // Cache the response for 3 minutes (shorter TTL for high-priority data)
+  cacheService.setServiceWritersCorner(responseData);
+
+  res.status(200).json(responseData);
 });

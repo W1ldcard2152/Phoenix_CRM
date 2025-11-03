@@ -17,13 +17,22 @@ const AMERICA_NEW_YORK = "America/New_York";
 exports.getAllAppointments = catchAsync(async (req, res, next) => {
   // Allow filtering by date range, status, technician
   const { startDate, endDate, status, technician } = req.query;
-  
+
+  // Generate cache key from query parameters
+  const cacheKey = `appointments:all:${JSON.stringify({ startDate, endDate, status, technician })}`;
+
+  // Check cache first
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   // Build query based on filters
   const query = {};
-  
+
   if (status) query.status = status;
   if (technician) query.technician = technician;
-  
+
   // Date range filter
   if (startDate || endDate) {
     query.startTime = {};
@@ -34,20 +43,25 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
       query.startTime.$lte = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
     }
   }
-  
+
   const appointments = await applyPopulation(
     Appointment.find(query).sort({ startTime: 1 }),
     'appointment',
     'standard'
   );
-  
-  res.status(200).json({
+
+  const responseData = {
     status: 'success',
     results: appointments.length,
     data: {
       appointments
     }
-  });
+  };
+
+  // Cache the response for 5 minutes
+  cacheService.set(cacheKey, responseData, 300);
+
+  res.status(200).json(responseData);
 });
 
 // Get a single appointment
@@ -207,15 +221,21 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     'detailed'
   );
   
+  // Invalidate appointment cache after creating new appointment
+  cacheService.invalidateAllAppointments();
+
+  // Also invalidate work order caches if a work order was linked
+  if (newAppointment.workOrder) {
+    cacheService.invalidateAllWorkOrders();
+    cacheService.invalidateServiceWritersCorner();
+  }
+
   res.status(201).json({
     status: 'success',
     data: {
       appointment: fullyPopulatedAppointment
     }
   });
-
-  // Invalidate appointment cache after creating new appointment
-  cacheService.invalidateAllAppointments();
 });
 
 // Update an appointment
@@ -348,15 +368,21 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     }
   }
   
+  // Invalidate appointment cache after updating appointment
+  cacheService.invalidateAllAppointments();
+
+  // Also invalidate work order caches if status or workOrder changed
+  if (req.body.status || updatedAppointment.workOrder) {
+    cacheService.invalidateAllWorkOrders();
+    cacheService.invalidateServiceWritersCorner();
+  }
+
   res.status(200).json({
     status: 'success',
     data: {
       appointment: updatedAppointment
     }
   });
-
-  // Invalidate appointment cache after updating appointment
-  cacheService.invalidateAllAppointments();
 });
 
 // Delete an appointment
@@ -389,6 +415,12 @@ exports.deleteAppointment = catchAsync(async (req, res, next) => {
 
   // Invalidate appointment cache after deleting appointment
   cacheService.invalidateAllAppointments();
+
+  // Also invalidate work order caches if appointment had a work order
+  if (appointment.workOrder) {
+    cacheService.invalidateAllWorkOrders();
+    cacheService.invalidateServiceWritersCorner();
+  }
 
   res.status(204).json({
     status: 'success',
@@ -561,22 +593,36 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
 
 // Get today's appointments
 exports.getTodayAppointments = catchAsync(async (req, res, next) => {
+  const today = moment.tz(AMERICA_NEW_YORK).format('YYYY-MM-DD');
+  const cacheKey = `appointments:today:${today}`;
+
+  // Check cache first
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
   const todayStart = moment.tz(AMERICA_NEW_YORK).startOf('day').utc().toDate();
   const tomorrowStart = moment.tz(AMERICA_NEW_YORK).add(1, 'day').startOf('day').utc().toDate();
-  
+
   const appointments = await applyPopulation(
     Appointment.find({ startTime: { $gte: todayStart, $lt: tomorrowStart } }).sort({ startTime: 1 }),
     'appointment',
     'standard'
   );
-  
-  res.status(200).json({
+
+  const responseData = {
     status: 'success',
     results: appointments.length,
     data: {
       appointments
     }
-  });
+  };
+
+  // Cache for 2 minutes (shorter TTL for today's appointments which change frequently)
+  cacheService.set(cacheKey, responseData, 120);
+
+  res.status(200).json(responseData);
 });
 
 // Get appointments by customer
