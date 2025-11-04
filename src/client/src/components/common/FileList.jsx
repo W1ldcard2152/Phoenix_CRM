@@ -86,7 +86,7 @@ const FileThumbnail = ({ file }) => {
   );
 };
 
-const FileList = ({ files, onDelete, onShare, loading = false }) => {
+const FileList = ({ files, onDelete, onShare, onView, loading = false }) => {
   const [sharingFile, setSharingFile] = useState(null);
   const [shareEmail, setShareEmail] = useState('');
 
@@ -138,11 +138,18 @@ const FileList = ({ files, onDelete, onShare, loading = false }) => {
   };
 
   const handleView = async (fileId, fileName) => {
+    // If custom onView handler provided, use it (for modal viewing)
+    if (onView) {
+      onView(fileId, fileName);
+      return;
+    }
+
+    // Otherwise, default behavior - open in new tab
     try {
       // Get signed URL for viewing
       const response = await fetch(`/api/media/${fileId}/signed-url`);
       const data = await response.json();
-      
+
       if (data.status === 'success') {
         // Open all file types in new tab
         window.open(data.data.signedUrl, '_blank');

@@ -41,7 +41,16 @@ const WorkOrderDetail = () => {
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [splitModalOpen, setSplitModalOpen] = useState(false);
-  
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptText, setReceiptText] = useState('');
+  const [processingReceipt, setProcessingReceipt] = useState(false);
+  const [showCost, setShowCost] = useState(false);
+  const [isOrder, setIsOrder] = useState(true); // true = order, false = quote
+  const [viewerModalOpen, setViewerModalOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState('');
+  const [viewerTitle, setViewerTitle] = useState('');
+
   // Work Order Notes state
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -67,12 +76,16 @@ const WorkOrderDetail = () => {
   const [newPart, setNewPart] = useState({
     name: '',
     partNumber: '',
+    itemNumber: '',
     quantity: 1,
     price: 0,
+    cost: 0,
     ordered: false,
     received: false,
     vendor: '',
-    purchaseOrderNumber: ''
+    supplier: '',
+    purchaseOrderNumber: '',
+    receiptImageUrl: ''
   });
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [bulkOrderModalOpen, setBulkOrderModalOpen] = useState(false);
@@ -620,12 +633,67 @@ const WorkOrderDetail = () => {
     try {
       const updatedWorkOrder = { ...workOrder };
       updatedWorkOrder.parts = workOrder.parts.filter((_, idx) => idx !== index);
-      
+
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
       setWorkOrder(response.data.workOrder);
     } catch (err) {
       console.error('Error removing part:', err);
       setError('Failed to remove part. Please try again later.');
+    }
+  };
+
+  const handleProcessReceipt = async () => {
+    if (!receiptFile && !receiptText.trim()) {
+      setError('Please provide either a receipt image or text');
+      return;
+    }
+
+    try {
+      setProcessingReceipt(true);
+      setError(null);
+
+      const formData = new FormData();
+
+      if (receiptFile) {
+        formData.append('receipt', receiptFile);
+      } else {
+        formData.append('receiptText', receiptText);
+      }
+
+      // Add isOrder flag to indicate if this is an order or quote
+      formData.append('isOrder', isOrder.toString());
+
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/process-receipt`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to process receipt');
+      }
+
+      // Update work order with new parts
+      setWorkOrder(data.data.workOrder);
+
+      // Close modal and reset state
+      setReceiptModalOpen(false);
+      setReceiptFile(null);
+      setReceiptText('');
+      setIsOrder(true);
+      setProcessingReceipt(false);
+
+      // Show success message
+      const messageType = isOrder ? 'order' : 'quote';
+      alert(`Successfully extracted and added ${data.data.extractedParts.length} part(s) from ${messageType}!`);
+    } catch (err) {
+      console.error('Error processing receipt:', err);
+      setError(err.message || 'Failed to process receipt. Please try again.');
+      setProcessingReceipt(false);
     }
   };
 
@@ -742,6 +810,24 @@ const WorkOrderDetail = () => {
     } catch (error) {
       console.error('File sharing failed:', error);
       throw error;
+    }
+  };
+
+  const handleFileView = async (fileId, fileName) => {
+    try {
+      const response = await fetch(`/api/media/${fileId}/signed-url`);
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        setViewerUrl(data.data.signedUrl);
+        setViewerTitle(fileName);
+        setViewerModalOpen(true);
+      } else {
+        throw new Error('Failed to get file URL');
+      }
+    } catch (error) {
+      console.error('View failed:', error);
+      alert('Failed to view file. Please try again.');
     }
   };
 
@@ -1387,10 +1473,20 @@ const WorkOrderDetail = () => {
           </div>
         </Card>
 
-        <Card 
-          title="Parts" 
+        <Card
+          title="Parts"
           headerActions={
             <div className="flex space-x-2">
+              {workOrder?.parts?.length > 0 && (
+                <Button
+                  onClick={() => setShowCost(!showCost)}
+                  variant="light"
+                  size="sm"
+                >
+                  <i className={`fas fa-${showCost ? 'eye-slash' : 'eye'} mr-1`}></i>
+                  {showCost ? 'Hide' : 'Show'} Cost
+                </Button>
+              )}
               {workOrder?.parts?.length > 0 && getUniqueVendors().length > 0 && (
                 <Button
                   onClick={() => setBulkOrderModalOpen(true)}
@@ -1401,6 +1497,14 @@ const WorkOrderDetail = () => {
                   Bulk Order #
                 </Button>
               )}
+              <Button
+                onClick={() => setReceiptModalOpen(true)}
+                variant="success"
+                size="sm"
+              >
+                <i className="fas fa-receipt mr-1"></i>
+                Import Receipt
+              </Button>
               <Button
                 onClick={() => setPartsSelectorOpen(true)}
                 variant="primary"
@@ -1434,7 +1538,7 @@ const WorkOrderDetail = () => {
                       Qty
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Price
+                      {showCost ? 'Cost' : 'Price'}
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Vendor
@@ -1475,6 +1579,38 @@ const WorkOrderDetail = () => {
                             PN: {part.partNumber}
                           </div>
                         )}
+                        {part.itemNumber && (
+                          <div className="text-xs text-gray-500">
+                            SKU: {part.itemNumber}
+                          </div>
+                        )}
+                        {part.receiptImageUrl && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const response = await fetch(
+                                  `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
+                                );
+                                const data = await response.json();
+                                if (data.status === 'success') {
+                                  setViewerUrl(data.data.signedUrl);
+                                  // Extract filename from S3 key or use default
+                                  const filename = part.receiptImageUrl.split('/').pop() || 'receipt.png';
+                                  setViewerTitle(filename);
+                                  setViewerModalOpen(true);
+                                } else {
+                                  alert('Failed to load receipt');
+                                }
+                              } catch (err) {
+                                console.error('Error fetching receipt:', err);
+                                alert('Failed to load receipt');
+                              }
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            📄 View Receipt
+                          </button>
+                        )}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -1483,13 +1619,21 @@ const WorkOrderDetail = () => {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {formatCurrency(part.price)}
+                          {formatCurrency(showCost
+                            ? (part.cost > 0 ? part.cost : (part.price / 1.3))  // If cost exists use it, else calculate from price
+                            : (part.price || 0)
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {part.vendor}
                         </div>
+                        {part.supplier && (
+                          <div className="text-xs text-gray-500">
+                            Seller: {part.supplier}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
@@ -1667,6 +1811,7 @@ const WorkOrderDetail = () => {
                 files={attachedFiles}
                 onDelete={handleFileDelete}
                 onShare={handleFileShare}
+                onView={handleFileView}
                 loading={filesLoading}
               />
             </div>
@@ -2041,6 +2186,112 @@ const WorkOrderDetail = () => {
         </div>
       )}
 
+      {/* Import Receipt Modal */}
+      {receiptModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Import Receipt
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Upload Receipt Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    setReceiptFile(e.target.files[0]);
+                    setReceiptText(''); // Clear text if image is uploaded
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
+                {receiptFile && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    Selected: {receiptFile.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center">
+                <div className="flex-1 border-t border-gray-300"></div>
+                <span className="px-4 text-sm text-gray-500">OR</span>
+                <div className="flex-1 border-t border-gray-300"></div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Paste Receipt Text
+                </label>
+                <textarea
+                  rows="6"
+                  placeholder="Paste receipt text here..."
+                  value={receiptText}
+                  onChange={(e) => {
+                    setReceiptText(e.target.value);
+                    setReceiptFile(null); // Clear file if text is entered
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 p-4 border border-gray-300 rounded-md bg-gray-50">
+                <input
+                  type="checkbox"
+                  id="isOrder"
+                  checked={isOrder}
+                  onChange={(e) => setIsOrder(e.target.checked)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <label htmlFor="isOrder" className="text-sm font-medium text-gray-700">
+                  This is an order (parts have been ordered)
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 -mt-2">
+                Uncheck if this is a quote - parts will be added but not marked as ordered
+              </p>
+
+              <div className="bg-blue-50 p-3 rounded-md">
+                <p className="text-sm text-blue-800">
+                  <strong>AI will extract:</strong> Part names, quantities, prices, vendors, order numbers, and item SKUs from your receipt.
+                  Parts will be automatically added with a 30% markup.
+                </p>
+              </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <Button
+                variant="light"
+                onClick={() => {
+                  setReceiptModalOpen(false);
+                  setReceiptFile(null);
+                  setReceiptText('');
+                  setIsOrder(true);
+                  setError(null);
+                }}
+                disabled={processingReceipt}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleProcessReceipt}
+                disabled={(!receiptFile && !receiptText.trim()) || processingReceipt}
+              >
+                {processingReceipt ? 'Processing...' : 'Import & Extract Parts'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split Work Order Modal */}
       <SplitWorkOrderModal
         isOpen={splitModalOpen}
@@ -2048,6 +2299,94 @@ const WorkOrderDetail = () => {
         workOrder={workOrder}
         onSplit={handleSplitWorkOrder}
       />
+
+      {/* File Viewer Modal */}
+      {viewerModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">{viewerTitle}</h3>
+              <button
+                onClick={() => {
+                  setViewerModalOpen(false);
+                  setViewerUrl('');
+                  setViewerTitle('');
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-gray-100">
+              {(() => {
+                const fileExtension = viewerTitle.split('.').pop().toLowerCase();
+                const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(fileExtension);
+                const isPdf = fileExtension === 'pdf';
+
+                if (isImage) {
+                  return (
+                    <div className="p-4 flex items-center justify-center min-h-full">
+                      <img
+                        src={viewerUrl}
+                        alt={viewerTitle}
+                        className="max-w-full h-auto mx-auto shadow-lg"
+                        style={{ maxHeight: 'calc(90vh - 160px)' }}
+                      />
+                    </div>
+                  );
+                } else if (isPdf) {
+                  return (
+                    <iframe
+                      src={viewerUrl}
+                      title={viewerTitle}
+                      className="w-full h-full"
+                      style={{ minHeight: 'calc(90vh - 160px)' }}
+                    />
+                  );
+                } else {
+                  return (
+                    <div className="p-8 flex flex-col items-center justify-center min-h-full">
+                      <div className="text-center">
+                        <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-lg font-medium text-gray-900 mb-2">{viewerTitle}</p>
+                        <p className="text-sm text-gray-500 mb-4">Preview not available for this file type</p>
+                        <a
+                          href={viewerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors"
+                        >
+                          Open in New Tab
+                        </a>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-between items-center">
+              <span className="text-sm text-gray-500">
+                {viewerTitle.split('.').pop().toUpperCase()} File
+              </span>
+              <a
+                href={viewerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors"
+              >
+                <svg className="w-4 h-4 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Open in New Tab
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

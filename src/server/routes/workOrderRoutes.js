@@ -27,6 +27,12 @@ router.post('/:id/parts', workOrderController.addPart);
 // Add labor to work order
 router.post('/:id/labor', workOrderController.addLabor);
 
+// Process receipt and extract parts
+router.post('/:id/process-receipt', workOrderController.processReceipt);
+
+// Get signed URL for receipt image
+router.get('/receipt-signed-url', workOrderController.getReceiptSignedUrl);
+
 // Generate invoice
 router.get('/:id/invoice', workOrderController.generateInvoice);
 

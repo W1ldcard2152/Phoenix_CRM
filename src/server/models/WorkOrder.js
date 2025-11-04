@@ -12,6 +12,10 @@ const PartSchema = new Schema({
     type: String,
     trim: true
   },
+  itemNumber: { // Vendor SKU/Item number
+    type: String,
+    trim: true
+  },
   quantity: {
     type: Number,
     required: true,
@@ -19,6 +23,11 @@ const PartSchema = new Schema({
     default: 1
   },
   price: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  cost: { // Actual cost paid (before markup)
     type: Number,
     min: 0,
     default: 0
@@ -31,11 +40,19 @@ const PartSchema = new Schema({
     type: Boolean,
     default: false
   },
-  vendor: { // Or purchaseLocation
+  vendor: { // Or purchaseLocation (marketplace/retailer)
+    type: String,
+    trim: true
+  },
+  supplier: { // Actual seller on marketplace (e.g., specific eBay seller)
     type: String,
     trim: true
   },
   purchaseOrderNumber: { // Or orderNumber
+    type: String,
+    trim: true
+  },
+  receiptImageUrl: { // Link to receipt in S3
     type: String,
     trim: true
   }

@@ -16,23 +16,24 @@ const bucketName = process.env.S3_BUCKET_NAME;
  * @param {Buffer} fileBuffer - The file data
  * @param {String} fileName - Original file name
  * @param {String} mimeType - File MIME type
+ * @param {String} acl - Optional ACL setting (default: 'private', can be 'public-read')
  * @returns {Promise<Object>} Upload result with file URL
  */
-exports.uploadFile = async (fileBuffer, fileName, mimeType) => {
+exports.uploadFile = async (fileBuffer, fileName, mimeType, acl = 'private') => {
   if (!s3) {
     console.warn('S3 service is not configured. File upload skipped.');
     // Return a mock response or throw an error, depending on desired behavior
-    return { fileUrl: null, key: null }; 
+    return { fileUrl: null, key: null };
   }
   // Generate a unique file name to prevent conflicts
   const uniqueFileName = `${uuidv4()}-${fileName}`;
-  
+
   const params = {
     Bucket: bucketName,
     Key: uniqueFileName,
     Body: fileBuffer,
     ContentType: mimeType,
-    ACL: 'private' // Set to 'public-read' if you want files to be publicly accessible
+    ACL: acl // Default 'private', can be set to 'public-read' for publicly accessible files
   };
   
   const result = await s3.upload(params).promise();

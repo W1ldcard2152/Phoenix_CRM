@@ -957,3 +957,139 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
 
   res.status(200).json(responseData);
 });
+
+// Process receipt and extract parts using AI
+exports.processReceipt = catchAsync(async (req, res, next) => {
+  const openAIService = require('../services/openAIService');
+  const s3Service = require('../services/s3Service');
+  const multer = require('multer');
+
+  // Configure multer for memory storage
+  const storage = multer.memoryStorage();
+  const upload = multer({
+    storage,
+    limits: {
+      fileSize: 10 * 1024 * 1024 // 10MB
+    }
+  });
+
+  // Handle file upload using multer
+  const uploadMiddleware = upload.single('receipt');
+
+  uploadMiddleware(req, res, async (err) => {
+    if (err) {
+      return next(new AppError(`File upload error: ${err.message}`, 400));
+    }
+
+    try {
+      const workOrderId = req.params.id;
+
+      // Validate work order exists
+      const workOrder = await WorkOrder.findById(workOrderId);
+      if (!workOrder) {
+        return next(new AppError('Work order not found', 404));
+      }
+
+      let receiptData, dataType, receiptUrl = null;
+
+      // Get isOrder flag (defaults to true for backward compatibility)
+      const isOrder = req.body.isOrder === 'true' || req.body.isOrder === true;
+
+      // Check if file was uploaded or text was provided
+      if (req.file) {
+        // Image/file receipt
+        receiptData = req.file.buffer;
+        dataType = 'image';
+
+        // Upload receipt to S3 (private)
+        const uploadResult = await s3Service.uploadFile(
+          req.file.buffer,
+          `receipt-${workOrderId}-${Date.now()}-${req.file.originalname}`,
+          req.file.mimetype
+        );
+        receiptUrl = uploadResult.key; // Store the S3 key instead of URL
+      } else if (req.body.receiptText) {
+        // Text receipt
+        receiptData = req.body.receiptText;
+        dataType = 'text';
+      } else {
+        return next(new AppError('Please provide either a receipt image or text', 400));
+      }
+
+      // Parse receipt using OpenAI
+      const extractedParts = await openAIService.parseReceipt(receiptData, dataType, isOrder);
+
+      if (!extractedParts || extractedParts.length === 0) {
+        return next(new AppError('No parts could be extracted from the receipt', 400));
+      }
+
+      // Add receipt URL to each part
+      const partsWithReceipt = extractedParts.map(part => ({
+        ...part,
+        receiptImageUrl: receiptUrl
+      }));
+
+      // Add extracted parts to work order
+      workOrder.parts.push(...partsWithReceipt);
+
+      // Check if all parts are now ordered and update status if needed (only if isOrder is true)
+      if (isOrder) {
+        const allPartsOrdered = workOrder.parts.every(part => part.ordered === true);
+        const preOrderStatuses = [
+          'Work Order Created',
+          'Appointment Scheduled',
+          'Inspection In Progress',
+          'Inspection/Diag Complete'
+        ];
+
+        if (allPartsOrdered && preOrderStatuses.includes(workOrder.status)) {
+          workOrder.status = 'Parts Ordered';
+        }
+      }
+
+      await workOrder.save();
+
+      // Clear relevant caches
+      cacheService.invalidateAllWorkOrders();
+      cacheService.invalidateServiceWritersCorner();
+
+      res.status(200).json({
+        status: 'success',
+        message: `Successfully extracted and added ${partsWithReceipt.length} part(s)`,
+        data: {
+          workOrder,
+          extractedParts: partsWithReceipt,
+          receiptUrl
+        }
+      });
+    } catch (error) {
+      console.error('Error processing receipt:', error);
+      return next(new AppError(`Failed to process receipt: ${error.message}`, 500));
+    }
+  });
+});
+
+// Get signed URL for receipt image
+exports.getReceiptSignedUrl = catchAsync(async (req, res, next) => {
+  const s3Service = require('../services/s3Service');
+  const { key } = req.query;
+
+  if (!key) {
+    return next(new AppError('Receipt key is required', 400));
+  }
+
+  try {
+    const signedUrl = s3Service.getSignedUrl(key, 3600); // 1 hour expiration
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        signedUrl,
+        expiresIn: 3600
+      }
+    });
+  } catch (error) {
+    console.error('Error generating signed URL for receipt:', error);
+    return next(new AppError('Failed to generate signed URL for receipt', 500));
+  }
+});
