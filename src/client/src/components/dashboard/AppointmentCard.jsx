@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
@@ -16,6 +17,7 @@ import { formatDateTimeToET } from '../../utils/formatters';
 const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   const [showPopover, setShowPopover] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState('bottom');
+  const [popoverCoords, setPopoverCoords] = useState({ top: 0, left: 0 });
   const cardRef = useRef(null);
   const popoverRef = useRef(null);
   const hideTimeoutRef = useRef(null);
@@ -98,20 +100,29 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     ? `${vehicleInfo} (${serviceType})`
     : vehicleInfo;
 
-  // Check if popover would go off-screen and adjust position
+  // Check if popover should open upward or downward based on screen position
+  // Also calculate absolute viewport coordinates for fixed positioning
   useEffect(() => {
-    if (showPopover) {
-      if (cardRef.current && popoverRef.current) {
-        const cardRect = cardRef.current.getBoundingClientRect();
-        const popoverRect = popoverRef.current.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
+    if (showPopover && cardRef.current) {
+      const cardRect = cardRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const cardMiddle = cardRect.top + (cardRect.height / 2);
 
-        // Check vertical position
-        if (cardRect.bottom + popoverRect.height > viewportHeight) {
-          setPopoverPosition('top');
-        } else {
-          setPopoverPosition('bottom');
-        }
+      // Open upward if in bottom half of screen, downward if in top half
+      if (cardMiddle > viewportHeight / 2) {
+        setPopoverPosition('top');
+        // Position popover above the card
+        setPopoverCoords({
+          top: cardRect.top - 8, // 8px margin
+          left: cardRect.left
+        });
+      } else {
+        setPopoverPosition('bottom');
+        // Position popover below the card
+        setPopoverCoords({
+          top: cardRect.bottom + 8, // 8px margin
+          left: cardRect.left
+        });
       }
     }
   }, [showPopover, appointment._id]);
@@ -163,15 +174,17 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
         )}
       </div>
 
-      {/* Popover on Hover */}
-      {showPopover && (
+      {/* Popover on Hover - Rendered as Portal to escape container clipping */}
+      {showPopover && ReactDOM.createPortal(
         <div
           ref={popoverRef}
-          className="absolute w-80 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-4"
+          className="fixed w-80 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-4"
           style={{
-            left: '0',
-            top: '100%',
-            marginTop: '8px',
+            top: popoverPosition === 'top'
+              ? `${popoverCoords.top}px`
+              : `${popoverCoords.top}px`,
+            left: `${popoverCoords.left}px`,
+            transform: popoverPosition === 'top' ? 'translateY(-100%)' : 'none',
             zIndex: 99999
           }}
           onMouseEnter={handlePopoverEnter}
@@ -239,7 +252,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
           )}
 
           {/* Action Links */}
-          <div className="flex gap-2 pt-3 border-t border-gray-200">
+          <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
             <Link
               to={`/appointments/${appointment._id}`}
               className="flex-1 text-center bg-blue-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -257,7 +270,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
               </Link>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

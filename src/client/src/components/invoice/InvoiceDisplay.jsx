@@ -248,17 +248,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           </div>
         </div>
       )}
-      
-      {/* Payment Status (Optional, can be added if invoiceData includes status) */}
-      {invoiceData.status && (
-        <div className="mb-8">
-            <h4 className="text-md font-semibold text-gray-700 mb-1">Payment Status:</h4>
-            <p className={`text-sm font-medium ${invoiceData.status === 'Paid' ? 'text-green-600' : invoiceData.status === 'Issued' || invoiceData.status === 'Sent' ? 'text-orange-500' : 'text-gray-600'}`}>
-              {invoiceData.status === 'Issued' ? 'Payment Due' : invoiceData.status}
-            </p>
-        </div>
-      )}
-      
+
       {/* Footer Message */}
       <div className="text-center text-xs text-gray-600 mt-8 border-t border-gray-300 pt-4">
         <p>Thank you for your business!</p>

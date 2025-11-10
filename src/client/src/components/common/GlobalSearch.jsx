@@ -95,19 +95,31 @@ const GlobalSearch = () => {
 
   const highlightMatch = (text, query) => {
     if (!text || !query) return text;
-    
-    const regex = new RegExp(`(${query})`, 'gi');
+
+    // Escape special regex characters and handle multi-word queries
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const queryParts = escapedQuery.split(/\s+/).filter(part => part.length > 0);
+
+    // Create regex that matches any of the query parts
+    const regexPattern = queryParts.join('|');
+    const regex = new RegExp(`(${regexPattern})`, 'gi');
     const parts = text.split(regex);
-    
-    return parts.map((part, index) => 
-      regex.test(part) ? (
+
+    return parts.map((part, index) => {
+      // Check if this part matches any query part
+      const isMatch = queryParts.some(queryPart => {
+        const testRegex = new RegExp(queryPart, 'i');
+        return testRegex.test(part);
+      });
+
+      return isMatch ? (
         <span key={index} className="bg-yellow-200 font-semibold">
           {part}
         </span>
       ) : (
         part
-      )
-    );
+      );
+    });
   };
 
   return (

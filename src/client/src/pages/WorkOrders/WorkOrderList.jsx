@@ -26,11 +26,141 @@ const WorkOrderList = () => {
   const [interactionStats, setInteractionStats] = useState({});
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  
+
+  // Multi-tier sorting state - array of sort configs [{column, direction}, ...]
+  // Default to sorting by date descending
+  const [sortConfig, setSortConfig] = useState([{ column: 'date', direction: 'desc' }]);
+
   // Get filter parameters from URL
   const customerParam = searchParams.get('customer');
   const vehicleParam = searchParams.get('vehicle');
   const needsSchedulingParam = searchParams.get('needsScheduling') === 'true';
+
+  // Handle column header click for sorting
+  const handleSort = (columnName) => {
+    setSortConfig(prevConfig => {
+      // Find if this column is already in the sort config
+      const existingIndex = prevConfig.findIndex(config => config.column === columnName);
+
+      if (existingIndex !== -1) {
+        // Column is already being sorted
+        const existingConfig = prevConfig[existingIndex];
+
+        if (existingConfig.direction === 'asc') {
+          // Toggle to descending
+          const newConfig = [...prevConfig];
+          newConfig[existingIndex] = { column: columnName, direction: 'desc' };
+          return newConfig;
+        } else {
+          // Remove from sort (was descending, now remove)
+          return prevConfig.filter((_, index) => index !== existingIndex);
+        }
+      } else {
+        // Add as new sort column (ascending by default)
+        if (prevConfig.length >= 3) {
+          // Max 3 levels, remove the last one
+          return [...prevConfig.slice(0, 2), { column: columnName, direction: 'asc' }];
+        }
+        return [...prevConfig, { column: columnName, direction: 'asc' }];
+      }
+    });
+  };
+
+  // Render sort indicator for a column
+  const renderSortIndicator = (columnName) => {
+    const sortIndex = sortConfig.findIndex(config => config.column === columnName);
+
+    if (sortIndex === -1) {
+      // Not sorted
+      return null;
+    }
+
+    const config = sortConfig[sortIndex];
+    const priority = sortIndex + 1;
+    const arrow = config.direction === 'asc' ? '▲' : '▼';
+
+    // Use V symbols as requested
+    const vSymbol = config.direction === 'asc' ? '∨' : '∧';
+
+    return (
+      <span className="ml-2 inline-flex items-center">
+        <span className="text-primary-600 font-bold">{arrow}</span>
+        {priority > 1 && (
+          <span className="text-xs ml-1 text-primary-600 font-semibold">{priority}</span>
+        )}
+      </span>
+    );
+  };
+
+  // Multi-tier sorting function
+  const applySorting = (data) => {
+    if (sortConfig.length === 0) {
+      return data;
+    }
+
+    return [...data].sort((a, b) => {
+      for (const config of sortConfig) {
+        let aValue, bValue;
+
+        switch (config.column) {
+          case 'date':
+            aValue = new Date(a.date).getTime();
+            bValue = new Date(b.date).getTime();
+            break;
+          case 'customer':
+            aValue = (a.customer?.name || '').toLowerCase();
+            bValue = (b.customer?.name || '').toLowerCase();
+            break;
+          case 'vehicle':
+            aValue = `${a.vehicle?.year || ''} ${a.vehicle?.make || ''} ${a.vehicle?.model || ''}`.toLowerCase();
+            bValue = `${b.vehicle?.year || ''} ${b.vehicle?.make || ''} ${b.vehicle?.model || ''}`.toLowerCase();
+            break;
+          case 'service':
+            // Get the first service for comparison
+            if (a.services && a.services.length > 0) {
+              aValue = a.services[0].description.toLowerCase();
+            } else if (a.serviceRequested) {
+              aValue = a.serviceRequested.split('\n')[0].toLowerCase();
+            } else {
+              aValue = '';
+            }
+
+            if (b.services && b.services.length > 0) {
+              bValue = b.services[0].description.toLowerCase();
+            } else if (b.serviceRequested) {
+              bValue = b.serviceRequested.split('\n')[0].toLowerCase();
+            } else {
+              bValue = '';
+            }
+            break;
+          case 'status':
+            aValue = getStatusPriority(a.status);
+            bValue = getStatusPriority(b.status);
+            break;
+          case 'amount':
+            aValue = a.totalEstimate || 0;
+            bValue = b.totalEstimate || 0;
+            break;
+          default:
+            aValue = '';
+            bValue = '';
+        }
+
+        let comparison = 0;
+        if (aValue < bValue) {
+          comparison = -1;
+        } else if (aValue > bValue) {
+          comparison = 1;
+        }
+
+        if (comparison !== 0) {
+          return config.direction === 'asc' ? comparison : -comparison;
+        }
+      }
+
+      return 0;
+    });
+  };
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
@@ -45,25 +175,13 @@ const WorkOrderList = () => {
         filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
-        const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
-          // First sort by status priority
-          const statusPriorityA = getStatusPriority(a.status);
-          const statusPriorityB = getStatusPriority(b.status);
-          
-          if (statusPriorityA !== statusPriorityB) {
-            return statusPriorityA - statusPriorityB;
-          }
-          
-          // If status priority is the same, sort by date (newest first)
-          return new Date(b.date) - new Date(a.date);
-        });
-        setWorkOrders(sortedWorkOrders);
-        
+        setWorkOrders(response.data.workOrders);
+
         // Fetch attachment counts for each work order
-        await fetchAttachmentCounts(sortedWorkOrders);
-        
+        await fetchAttachmentCounts(response.data.workOrders);
+
         // Fetch interaction stats for each work order
-        await fetchInteractionStats(sortedWorkOrders);
+        await fetchInteractionStats(response.data.workOrders);
         
         setLoading(false);
       } catch (err) {
@@ -90,19 +208,9 @@ const WorkOrderList = () => {
           filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
           
           const response = await WorkOrderService.getAllWorkOrders(filters);
-          const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
-            const statusPriorityA = getStatusPriority(a.status);
-            const statusPriorityB = getStatusPriority(b.status);
-            
-            if (statusPriorityA !== statusPriorityB) {
-              return statusPriorityA - statusPriorityB;
-            }
-            
-            return new Date(b.date) - new Date(a.date);
-          });
-          setWorkOrders(sortedWorkOrders);
-          await fetchAttachmentCounts(sortedWorkOrders);
-          await fetchInteractionStats(sortedWorkOrders);
+          setWorkOrders(response.data.workOrders);
+          await fetchAttachmentCounts(response.data.workOrders);
+          await fetchInteractionStats(response.data.workOrders);
           setIsSearching(false);
         } catch (err) {
           console.error('Error fetching work orders:', err);
@@ -317,19 +425,9 @@ const WorkOrderList = () => {
     try {
       setIsSearching(true);
       const response = await WorkOrderService.searchWorkOrders(query);
-      const sortedWorkOrders = response.data.workOrders.sort((a, b) => {
-        const statusPriorityA = getStatusPriority(a.status);
-        const statusPriorityB = getStatusPriority(b.status);
-        
-        if (statusPriorityA !== statusPriorityB) {
-          return statusPriorityA - statusPriorityB;
-        }
-        
-        return new Date(b.date) - new Date(a.date);
-      });
-      setWorkOrders(sortedWorkOrders);
-      await fetchAttachmentCounts(sortedWorkOrders);
-      await fetchInteractionStats(sortedWorkOrders);
+      setWorkOrders(response.data.workOrders);
+      await fetchAttachmentCounts(response.data.workOrders);
+      await fetchInteractionStats(response.data.workOrders);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching work orders:', err);
@@ -348,23 +446,11 @@ const WorkOrderList = () => {
       await WorkOrderService.updateWorkOrder(workOrderId, { status: newStatus });
       
       // Update the local state
-      setWorkOrders(prevWorkOrders => {
-        const updatedWorkOrders = prevWorkOrders.map(wo => 
+      setWorkOrders(prevWorkOrders =>
+        prevWorkOrders.map(wo =>
           wo._id === workOrderId ? { ...wo, status: newStatus } : wo
-        );
-        
-        // Re-sort the work orders after status change
-        return updatedWorkOrders.sort((a, b) => {
-          const statusPriorityA = getStatusPriority(a.status);
-          const statusPriorityB = getStatusPriority(b.status);
-          
-          if (statusPriorityA !== statusPriorityB) {
-            return statusPriorityA - statusPriorityB;
-          }
-          
-          return new Date(b.date) - new Date(a.date);
-        });
-      });
+        )
+      );
       
     } catch (err) {
       console.error('Error updating work order status:', err);
@@ -531,9 +617,22 @@ const WorkOrderList = () => {
     }
   };
 
-  // Get filtered work orders based on current filter
-  const filteredWorkOrders = useMemo(() => getFilteredWorkOrders(), [workOrders, statusFilter]);
-  
+  // Get filtered work orders based on current filter and apply sorting
+  const filteredWorkOrders = useMemo(() => {
+    const filtered = getFilteredWorkOrders();
+    return applySorting(filtered);
+  }, [workOrders, statusFilter, sortConfig]);
+
+  // Apply sorting to invoiced work orders
+  const sortedInvoicedWorkOrders = useMemo(() => {
+    return applySorting(invoicedWorkOrders);
+  }, [invoicedWorkOrders, sortConfig]);
+
+  // Apply sorting to on hold/cancelled work orders
+  const sortedOnHoldCancelledWorkOrders = useMemo(() => {
+    return applySorting(onHoldCancelledWorkOrders);
+  }, [onHoldCancelledWorkOrders, sortConfig]);
+
   // Calculate status counts (memoized so they update when workOrders changes)
   const statusCounts = useMemo(() => {
     // Exclude statuses that have their own separate sections
@@ -647,20 +746,50 @@ const WorkOrderList = () => {
               <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('date')}
+                  >
+                    <div className="flex items-center">
+                      Date
+                      {renderSortIndicator('date')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Customer & Vehicle
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('customer')}
+                  >
+                    <div className="flex items-center">
+                      Customer & Vehicle
+                      {renderSortIndicator('customer')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Service
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('service')}
+                  >
+                    <div className="flex items-center">
+                      Service
+                      {renderSortIndicator('service')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center">
+                      Status
+                      {renderSortIndicator('status')}
+                    </div>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
+                  <th
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                    onClick={() => handleSort('amount')}
+                  >
+                    <div className="flex items-center">
+                      Amount
+                      {renderSortIndicator('amount')}
+                    </div>
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -954,16 +1083,56 @@ const WorkOrderList = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Vehicle</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('date')}
+                      >
+                        <div className="flex items-center">
+                          Date
+                          {renderSortIndicator('date')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('customer')}
+                      >
+                        <div className="flex items-center">
+                          Customer & Vehicle
+                          {renderSortIndicator('customer')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('service')}
+                      >
+                        <div className="flex items-center">
+                          Service
+                          {renderSortIndicator('service')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('status')}
+                      >
+                        <div className="flex items-center">
+                          Status
+                          {renderSortIndicator('status')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('amount')}
+                      >
+                        <div className="flex items-center">
+                          Amount
+                          {renderSortIndicator('amount')}
+                        </div>
+                      </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {invoicedWorkOrders.map((workOrder) => (
+                    {sortedInvoicedWorkOrders.map((workOrder) => (
                       <tr key={workOrder._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
@@ -1057,16 +1226,56 @@ const WorkOrderList = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Vehicle</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('date')}
+                      >
+                        <div className="flex items-center">
+                          Date
+                          {renderSortIndicator('date')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('customer')}
+                      >
+                        <div className="flex items-center">
+                          Customer & Vehicle
+                          {renderSortIndicator('customer')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('service')}
+                      >
+                        <div className="flex items-center">
+                          Service
+                          {renderSortIndicator('service')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('status')}
+                      >
+                        <div className="flex items-center">
+                          Status
+                          {renderSortIndicator('status')}
+                        </div>
+                      </th>
+                      <th
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                        onClick={() => handleSort('amount')}
+                      >
+                        <div className="flex items-center">
+                          Amount
+                          {renderSortIndicator('amount')}
+                        </div>
+                      </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {onHoldCancelledWorkOrders.map((workOrder) => (
+                    {sortedOnHoldCancelledWorkOrders.map((workOrder) => (
                       <tr key={workOrder._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>

@@ -45,16 +45,45 @@ const globalSearch = catchAsync(async (req, res, next) => {
     });
 
     // Search vehicles
+    // For multi-word queries (e.g., "GMC Acadia"), try to match across make/model fields
+    const queryParts = query.split(/\s+/).filter(part => part.length > 0);
+
+    let vehicleSearchConditions = [
+      { make: { $regex: query, $options: 'i' } },
+      { model: { $regex: query, $options: 'i' } },
+      { year: isNaN(parseInt(query)) ? null : parseInt(query) },
+      { vin: { $regex: query, $options: 'i' } },
+      { licensePlate: { $regex: query, $options: 'i' } },
+      { licensePlateState: { $regex: query, $options: 'i' } },
+      { notes: { $regex: query, $options: 'i' } }
+    ].filter(condition => condition !== null);
+
+    // If query has multiple words, also search for combinations across make/model
+    if (queryParts.length > 1) {
+      // Try to match first part to make and remaining parts to model
+      const firstPart = queryParts[0];
+      const remainingParts = queryParts.slice(1).join(' ');
+
+      vehicleSearchConditions.push({
+        $and: [
+          { make: { $regex: firstPart, $options: 'i' } },
+          { model: { $regex: remainingParts, $options: 'i' } }
+        ]
+      });
+
+      // Also try matching any individual word to make or model
+      queryParts.forEach(part => {
+        if (part.length > 1) {
+          vehicleSearchConditions.push(
+            { make: { $regex: part, $options: 'i' } },
+            { model: { $regex: part, $options: 'i' } }
+          );
+        }
+      });
+    }
+
     const vehicles = await Vehicle.find({
-      $or: [
-        { make: { $regex: query, $options: 'i' } },
-        { model: { $regex: query, $options: 'i' } },
-        { year: isNaN(parseInt(query)) ? null : parseInt(query) },
-        { vin: { $regex: query, $options: 'i' } },
-        { licensePlate: { $regex: query, $options: 'i' } },
-        { licensePlateState: { $regex: query, $options: 'i' } },
-        { notes: { $regex: query, $options: 'i' } }
-      ].filter(condition => condition !== null)
+      $or: vehicleSearchConditions
     })
     .populate('customer', 'name phone')
     .limit(10);
