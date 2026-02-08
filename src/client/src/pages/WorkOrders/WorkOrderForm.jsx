@@ -190,9 +190,9 @@ const WorkOrderForm = () => {
   const handleCustomerChange = async (e, setFieldValue) => {
     const customerId = e.target.value;
     setFieldValue('customer', customerId);
-    setFieldValue('vehicle', ''); 
+    setFieldValue('vehicle', '');
     setFieldValue('currentMileage', ''); // Reset mileage when customer changes
-    
+
     if (customerId) {
       try {
         const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
@@ -200,6 +200,10 @@ const WorkOrderForm = () => {
         if (fetchedVehicles.length > 0) {
           const firstVehicleId = fetchedVehicles[0]._id;
           setFieldValue('vehicle', firstVehicleId);
+          // Also fetch and set mileage for the first vehicle
+          await fetchAndSetLatestMileage(firstVehicleId, (mileage) => {
+            setFieldValue('currentMileage', mileage);
+          });
         }
       } catch (err) {
         console.error('Error fetching vehicles for customer:', err);
@@ -207,7 +211,7 @@ const WorkOrderForm = () => {
         setVehicles([]);
       }
     } else {
-      setVehicles([]); 
+      setVehicles([]);
     }
   };
 

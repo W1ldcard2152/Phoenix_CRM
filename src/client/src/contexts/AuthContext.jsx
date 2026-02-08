@@ -77,12 +77,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Update user data (for profile updates)
+  const updateUser = (userData) => {
+    setCurrentUser(userData);
+  };
+
+  // Update token (for password changes that return new token)
+  const updateToken = (newToken) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+  };
+
   const value = {
     currentUser,
     loading,
     login,
     logout,
     register,
+    updateUser,
+    updateToken,
     isAuthenticated: !!token
   };
 

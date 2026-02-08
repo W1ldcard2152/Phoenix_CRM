@@ -74,20 +74,76 @@ const AppointmentDetail = () => {
     }
   };
 
-  // Calculate appointment duration in hours and minutes, considering ET
+  // Calculate appointment duration in hours and minutes, considering ET and excluding closed hours
   const calculateDuration = (startTime, endTime) => {
     if (!startTime || !endTime) return '';
-    
+
     // Convert UTC times from server to ET moment objects
     const startET = moment.utc(startTime).tz('America/New_York');
     const endET = moment.utc(endTime).tz('America/New_York');
-    
-    const diffMs = endET.diff(startET);
-    const duration = moment.duration(diffMs);
-    const diffHrs = Math.floor(duration.asHours());
-    const diffMins = duration.minutes();
-    
-    return `${diffHrs}h ${diffMins}m`;
+
+    // Business hours: 8 AM to 6 PM (18:00)
+    const BUSINESS_START_HOUR = 8;
+    const BUSINESS_END_HOUR = 18;
+
+    // If appointment is within the same day, calculate normally
+    if (startET.isSame(endET, 'day')) {
+      const diffMs = endET.diff(startET);
+      const duration = moment.duration(diffMs);
+      const diffHrs = Math.floor(duration.asHours());
+      const diffMins = duration.minutes();
+      return `${diffHrs}h ${diffMins}m`;
+    }
+
+    // Multi-day appointment: exclude closed hours (6pm-8am)
+    let totalMinutes = 0;
+
+    // Iterate through each day
+    let currentDay = startET.clone().startOf('day');
+    const lastDay = endET.clone().startOf('day');
+
+    while (currentDay.isSameOrBefore(lastDay, 'day')) {
+      // Determine the start time for this day
+      let dayStart;
+      if (currentDay.isSame(startET, 'day')) {
+        // First day: use actual start time
+        dayStart = startET.clone();
+      } else {
+        // Subsequent days: start at business hours
+        dayStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
+      }
+
+      // Determine the end time for this day
+      let dayEnd;
+      if (currentDay.isSame(endET, 'day')) {
+        // Last day: use actual end time
+        dayEnd = endET.clone();
+      } else {
+        // Not last day: end at close of business
+        dayEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
+      }
+
+      // Calculate business hours for this day
+      const businessStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
+      const businessEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
+
+      // Clamp the day's start and end to business hours
+      const effectiveStart = moment.max(dayStart, businessStart);
+      const effectiveEnd = moment.min(dayEnd, businessEnd);
+
+      // Add minutes if there's any overlap with business hours
+      if (effectiveStart.isBefore(effectiveEnd)) {
+        totalMinutes += effectiveEnd.diff(effectiveStart, 'minutes');
+      }
+
+      // Move to next day
+      currentDay.add(1, 'day');
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return `${hours}h ${minutes}m`;
   };
 
   if (loading) {

@@ -2026,7 +2026,21 @@ const WorkOrderDetail = () => {
                     step="0.1"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newLabor.hours}
-                    onChange={(e) => setNewLabor({ ...newLabor, hours: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Allow empty, decimal point, or valid numbers
+                      if (value === '' || value === '.') {
+                        setNewLabor({ ...newLabor, hours: value });
+                      } else {
+                        const parsed = parseFloat(value);
+                        setNewLabor({ ...newLabor, hours: isNaN(parsed) ? 0 : parsed });
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // On blur, ensure we have a valid number
+                      const value = parseFloat(e.target.value) || 0;
+                      setNewLabor({ ...newLabor, hours: value });
+                    }}
                   />
                 </div>
                 <div>

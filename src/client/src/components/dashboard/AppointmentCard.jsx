@@ -68,11 +68,66 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     return moment.utc(dateTime).tz('America/New_York').format('h:mm A');
   };
 
-  // Calculate duration in minutes
+  // Calculate duration in minutes, excluding closed hours (6pm-8am) for multi-day appointments
   const getDurationMinutes = () => {
-    const start = moment.utc(appointment.startTime).tz('America/New_York');
-    const end = moment.utc(appointment.endTime).tz('America/New_York');
-    return end.diff(start, 'minutes');
+    const startET = moment.utc(appointment.startTime).tz('America/New_York');
+    const endET = moment.utc(appointment.endTime).tz('America/New_York');
+
+    // Business hours: 8 AM to 6 PM (18:00)
+    const BUSINESS_START_HOUR = 8;
+    const BUSINESS_END_HOUR = 18;
+
+    // If appointment is within the same day, calculate normally
+    if (startET.isSame(endET, 'day')) {
+      return endET.diff(startET, 'minutes');
+    }
+
+    // Multi-day appointment: exclude closed hours (6pm-8am)
+    let totalMinutes = 0;
+
+    // Iterate through each day
+    let currentDay = startET.clone().startOf('day');
+    const lastDay = endET.clone().startOf('day');
+
+    while (currentDay.isSameOrBefore(lastDay, 'day')) {
+      // Determine the start time for this day
+      let dayStart;
+      if (currentDay.isSame(startET, 'day')) {
+        // First day: use actual start time
+        dayStart = startET.clone();
+      } else {
+        // Subsequent days: start at business hours
+        dayStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
+      }
+
+      // Determine the end time for this day
+      let dayEnd;
+      if (currentDay.isSame(endET, 'day')) {
+        // Last day: use actual end time
+        dayEnd = endET.clone();
+      } else {
+        // Not last day: end at close of business
+        dayEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
+      }
+
+      // Calculate business hours for this day
+      const businessStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
+      const businessEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
+
+      // Clamp the day's start and end to business hours
+      const effectiveStart = moment.max(dayStart, businessStart);
+      const effectiveEnd = moment.min(dayEnd, businessEnd);
+
+      // Add minutes if there's any overlap with business hours
+      if (effectiveStart.isBefore(effectiveEnd)) {
+        totalMinutes += effectiveEnd.diff(effectiveStart, 'minutes');
+      }
+
+      // Move to next day
+      currentDay.add(1, 'day');
+    }
+
+    return totalMinutes;
   };
 
   // Calculate duration formatted
@@ -185,10 +240,17 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
               : `${popoverCoords.top}px`,
             left: `${popoverCoords.left}px`,
             transform: popoverPosition === 'top' ? 'translateY(-100%)' : 'none',
-            zIndex: 99999
+            zIndex: 2147483647,
+            pointerEvents: 'auto'
           }}
           onMouseEnter={handlePopoverEnter}
           onMouseLeave={handlePopoverLeave}
+          onWheel={(e) => {
+            // Pass scroll events through to the page
+            const scrollableParent = document.scrollingElement || document.documentElement;
+            scrollableParent.scrollTop += e.deltaY;
+            e.preventDefault();
+          }}
         >
           {/* Customer Info */}
           <div className="mb-3">

@@ -22,8 +22,11 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle session expiration
-    if (error.response && error.response.status === 401) {
+    // Handle session expiration, but not for password update attempts
+    const isPasswordUpdate = error.config?.url?.includes('/updateMyPassword');
+    const isLogin = error.config?.url?.includes('/login');
+
+    if (error.response && error.response.status === 401 && !isPasswordUpdate && !isLogin) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

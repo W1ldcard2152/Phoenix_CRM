@@ -232,8 +232,15 @@ const AppointmentForm = () => {
   const handleCustomerChange = async (e, setFieldValue) => {
     const customerId = e.target.value;
     setFieldValue('customer', customerId);
-    setFieldValue('vehicle', ''); 
-    await fetchVehiclesForCustomer(customerId);
+    setFieldValue('vehicle', '');
+
+    if (customerId) {
+      const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
+      // Auto-select first vehicle if available
+      if (fetchedVehicles && fetchedVehicles.length > 0) {
+        setFieldValue('vehicle', fetchedVehicles[0]._id);
+      }
+    }
   };
 
   const checkForConflicts = async (values) => {
