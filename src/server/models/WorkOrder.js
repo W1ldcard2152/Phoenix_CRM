@@ -109,6 +109,128 @@ const ServiceSchema = new Schema({
   }
 });
 
+// Checklist Item Schema - for tracking individual checklist items
+const ChecklistItemSchema = new Schema({
+  completed: {
+    type: Boolean,
+    default: false
+  },
+  completedAt: {
+    type: Date
+  },
+  value: {
+    type: String,
+    trim: true
+  },
+  notes: {
+    type: String,
+    trim: true
+  },
+  syncedFromInspection: {
+    type: Boolean,
+    default: false
+  }
+}, { _id: false });
+
+// Inspection Checklist Schema
+const InspectionChecklistSchema = new Schema({
+  // Pre-Inspection Setup
+  mileage: ChecklistItemSchema,
+  startVehicle: ChecklistItemSchema,
+  runningVoltage: ChecklistItemSchema,
+  keyOffVoltage: ChecklistItemSchema,
+  preInspectionSmartScan: ChecklistItemSchema,
+
+  // Physical Inspection
+  leaksUnderVehicle: ChecklistItemSchema,
+  tiresFront: ChecklistItemSchema,
+  tiresRear: ChecklistItemSchema,
+  brakesFront: ChecklistItemSchema,
+  brakesRear: ChecklistItemSchema,
+  engineOil: ChecklistItemSchema,
+  brakeFluid: ChecklistItemSchema,
+  coolant: ChecklistItemSchema,
+  ballJoints: ChecklistItemSchema,
+  tieRodEnds: ChecklistItemSchema,
+  axleShafts: ChecklistItemSchema,
+  shocksStruts: ChecklistItemSchema,
+  wheelBearings: ChecklistItemSchema,
+  controlArmBushings: ChecklistItemSchema,
+  swayBarEndLinks: ChecklistItemSchema,
+  accessoryBelt: ChecklistItemSchema,
+  exhaust: ChecklistItemSchema,
+
+  // Documentation
+  preScanUploaded: ChecklistItemSchema,
+  inspectionNotes: ChecklistItemSchema,
+
+  lastModified: {
+    type: Date,
+    default: Date.now
+  }
+}, { _id: false });
+
+// Repair Checklist Schema
+const RepairChecklistSchema = new Schema({
+  // Pre-Repair Setup
+  getKeys: ChecklistItemSchema,
+  mileage: ChecklistItemSchema,
+  startVehicle: ChecklistItemSchema,
+  runningVoltage: ChecklistItemSchema,
+  preRepairSmartScan: ChecklistItemSchema,
+  testDrive: ChecklistItemSchema,
+  driveIntoBay: ChecklistItemSchema,
+  keyOffVoltage: ChecklistItemSchema,
+  liftVehicle: ChecklistItemSchema,
+  positionTools: ChecklistItemSchema,
+
+  // Physical Pre-Inspection (same items as inspection)
+  leaksUnderVehicle: ChecklistItemSchema,
+  tiresFront: ChecklistItemSchema,
+  tiresRear: ChecklistItemSchema,
+  brakesFront: ChecklistItemSchema,
+  brakesRear: ChecklistItemSchema,
+  engineOil: ChecklistItemSchema,
+  brakeFluid: ChecklistItemSchema,
+  coolant: ChecklistItemSchema,
+  ballJoints: ChecklistItemSchema,
+  tieRodEnds: ChecklistItemSchema,
+  axleShafts: ChecklistItemSchema,
+  shocksStruts: ChecklistItemSchema,
+  wheelBearings: ChecklistItemSchema,
+  controlArmBushings: ChecklistItemSchema,
+  swayBarEndLinks: ChecklistItemSchema,
+  accessoryBelt: ChecklistItemSchema,
+  exhaust: ChecklistItemSchema,
+
+  // Repair Work
+  repairComplete: ChecklistItemSchema,
+
+  // Post-Repair Checklist
+  checkUnderVehicle: ChecklistItemSchema,
+  checkSuspensionBolts: ChecklistItemSchema,
+  lowerVehicle: ChecklistItemSchema,
+  torqueLugNuts: ChecklistItemSchema,
+  checkInteriorUnderHood: ChecklistItemSchema,
+  verifyRepair: ChecklistItemSchema,
+  moduleReset: ChecklistItemSchema,
+  postRepairSmartScan: ChecklistItemSchema,
+  postRepairTestDrive: ChecklistItemSchema,
+  parkVehicle: ChecklistItemSchema,
+
+  // Documentation
+  preScanUploaded: ChecklistItemSchema,
+  postScanUploaded: ChecklistItemSchema,
+  voltageRecorded: ChecklistItemSchema,
+  mileageRecorded: ChecklistItemSchema,
+  postRepairNotes: ChecklistItemSchema,
+
+  lastModified: {
+    type: Date,
+    default: Date.now
+  }
+}, { _id: false });
+
 // Main WorkOrder Schema
 const WorkOrderSchema = new Schema(
   {
@@ -193,7 +315,10 @@ const WorkOrderSchema = new Schema(
     skipDiagnostics: {
       type: Boolean,
       default: false
-    }
+    },
+    // Checklists for technician workflow
+    inspectionChecklist: InspectionChecklistSchema,
+    repairChecklist: RepairChecklistSchema
   },
   {
     timestamps: true

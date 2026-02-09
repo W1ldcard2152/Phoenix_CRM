@@ -11,6 +11,7 @@ import PartsSelector from '../../components/parts/PartsSelector';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
+import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -50,6 +51,10 @@ const WorkOrderDetail = () => {
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerTitle, setViewerTitle] = useState('');
+
+  // Checklist modal state
+  const [inspectionChecklistModalOpen, setInspectionChecklistModalOpen] = useState(false);
+  const [repairChecklistModalOpen, setRepairChecklistModalOpen] = useState(false);
 
   // Work Order Notes state
   const [notes, setNotes] = useState([]);
@@ -1295,7 +1300,29 @@ const WorkOrderDetail = () => {
       {/* Work Order Notes and other sections */}
       <div className="space-y-6">
         {/* Work Order Notes Section */}
-        <Card title="Work Order Notes">
+        <Card
+          title="Work Order Notes"
+          headerActions={
+            <div className="flex space-x-2">
+              <Button
+                onClick={() => setInspectionChecklistModalOpen(true)}
+                variant="outline"
+                size="sm"
+                className="bg-yellow-100 text-yellow-800 border-yellow-300 hover:bg-yellow-200"
+              >
+                Inspection Checklist
+              </Button>
+              <Button
+                onClick={() => setRepairChecklistModalOpen(true)}
+                variant="outline"
+                size="sm"
+                className="bg-green-100 text-green-800 border-green-300 hover:bg-green-200"
+              >
+                Repair Checklist
+              </Button>
+            </div>
+          }
+        >
           <div className="space-y-4">
             {/* Add New Note Form */}
             <div className="border-b border-gray-200 pb-4">
@@ -2312,6 +2339,24 @@ const WorkOrderDetail = () => {
         onClose={() => setSplitModalOpen(false)}
         workOrder={workOrder}
         onSplit={handleSplitWorkOrder}
+      />
+
+      {/* Inspection Checklist Modal */}
+      <ChecklistViewModal
+        isOpen={inspectionChecklistModalOpen}
+        onClose={() => setInspectionChecklistModalOpen(false)}
+        checklist={workOrder?.inspectionChecklist}
+        type="inspection"
+        workOrder={workOrder}
+      />
+
+      {/* Repair Checklist Modal */}
+      <ChecklistViewModal
+        isOpen={repairChecklistModalOpen}
+        onClose={() => setRepairChecklistModalOpen(false)}
+        checklist={workOrder?.repairChecklist}
+        type="repair"
+        workOrder={workOrder}
       />
 
       {/* File Viewer Modal */}
