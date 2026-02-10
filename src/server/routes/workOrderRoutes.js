@@ -15,6 +15,12 @@ router.get('/needing-scheduling', workOrderController.getWorkOrdersNeedingSchedu
 // Get Service Writer's Corner data
 router.get('/service-writers-corner', workOrderController.getServiceWritersCorner);
 
+// Get active work orders by multiple statuses in a single call (Dashboard optimization)
+router.get('/active-by-statuses', workOrderController.getActiveWorkOrdersByStatuses);
+
+// Get work orders for Technician Portal (server-side filtering)
+router.get('/technician-portal', workOrderController.getTechnicianWorkOrders);
+
 // Get work orders by status
 router.get('/status/:status', workOrderController.getWorkOrdersByStatus);
 

@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import VehicleService from '../../services/vehicleService';
-import CustomerService from '../../services/customerService';
 
 const VehicleList = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -12,7 +11,6 @@ const VehicleList = () => {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [customers, setCustomers] = useState({});
   const [searchParams] = useSearchParams();
   
   // Get customer ID from URL query parameter if present
@@ -23,18 +21,18 @@ const VehicleList = () => {
       try {
         setLoading(true);
         let filters = {};
-        
+
         // If customer ID is in the URL, filter by that customer
         if (customerIdParam) {
           filters.customer = customerIdParam;
         }
-        
+
         const response = await VehicleService.getAllVehicles(filters);
-        setVehicles(response.data.vehicles);
-        
-        // Fetch customer data for each vehicle
-        await fetchCustomersForVehicles(response.data.vehicles);
-        
+        // Vehicles already come with customer data populated from the API
+        // Sort by customer creation date (newest first)
+        const sortedVehicles = sortVehiclesByCustomerDate(response.data.vehicles);
+        setVehicles(sortedVehicles);
+
         setLoading(false);
       } catch (err) {
         console.error('Error fetching vehicles:', err);
@@ -45,6 +43,16 @@ const VehicleList = () => {
 
     fetchVehicles();
   }, [customerIdParam]);
+
+  // Helper function to sort vehicles by customer creation date
+  const sortVehiclesByCustomerDate = (vehicleList) => {
+    return [...vehicleList].sort((a, b) => {
+      // Customer data is already populated from the API
+      const dateA = a.customer?.createdAt || a.createdAt || a._id;
+      const dateB = b.customer?.createdAt || b.createdAt || b._id;
+      return new Date(dateB) - new Date(dateA);
+    });
+  };
 
   // Real-time search effect
   useEffect(() => {
@@ -58,8 +66,8 @@ const VehicleList = () => {
             filters.customer = customerIdParam;
           }
           const response = await VehicleService.getAllVehicles(filters);
-          setVehicles(response.data.vehicles);
-          await fetchCustomersForVehicles(response.data.vehicles);
+          const sortedVehicles = sortVehiclesByCustomerDate(response.data.vehicles);
+          setVehicles(sortedVehicles);
           setIsSearching(false);
         } catch (err) {
           console.error('Error fetching vehicles:', err);
@@ -67,11 +75,11 @@ const VehicleList = () => {
           setIsSearching(false);
         }
       };
-      
+
       const timeoutId = setTimeout(() => {
         fetchAllVehicles();
       }, 300);
-      
+
       return () => clearTimeout(timeoutId);
     } else {
       // Debounced search
@@ -83,55 +91,13 @@ const VehicleList = () => {
     }
   }, [searchQuery, customerIdParam]);
 
-  const fetchCustomersForVehicles = async (vehicleList) => {
-    // Create a set of unique customer IDs
-    const customerIds = new Set(vehicleList.map(vehicle => 
-      typeof vehicle.customer === 'object' ? vehicle.customer._id : vehicle.customer
-    ));
-    
-    try {
-      // Fetch customer data for each unique customer ID
-      const customerPromises = Array.from(customerIds).map(async (customerId) => {
-        const response = await CustomerService.getCustomer(customerId);
-        return { id: customerId, data: response.data.customer };
-      });
-      
-      const customerResults = await Promise.all(customerPromises);
-      
-      // Create a map of customer ID to customer data
-      const customerMap = {};
-      customerResults.forEach(result => {
-        customerMap[result.id] = result.data;
-      });
-      
-      setCustomers(customerMap);
-      
-      // Re-sort vehicles based on customer creation dates now that we have customer data
-      const vehiclesWithCustomerDates = vehicleList.map(vehicle => {
-        const customerId = typeof vehicle.customer === 'object' ? vehicle.customer._id : vehicle.customer;
-        const customerData = customerMap[customerId];
-        return {
-          ...vehicle,
-          customerCreatedAt: customerData?.createdAt || customerData?._id || vehicle.createdAt || vehicle._id
-        };
-      });
-      
-      const sortedVehicles = vehiclesWithCustomerDates.sort((a, b) => 
-        new Date(b.customerCreatedAt) - new Date(a.customerCreatedAt)
-      );
-      
-      setVehicles(sortedVehicles);
-    } catch (err) {
-      console.error('Error fetching customers for vehicles:', err);
-    }
-  };
-
   const performSearch = async (query) => {
     try {
       setIsSearching(true);
       const response = await VehicleService.searchVehicles(query);
-      setVehicles(response.data.vehicles);
-      await fetchCustomersForVehicles(response.data.vehicles);
+      // Search results also come with customer data populated
+      const sortedVehicles = sortVehiclesByCustomerDate(response.data.vehicles);
+      setVehicles(sortedVehicles);
       setIsSearching(false);
     } catch (err) {
       console.error('Error searching vehicles:', err);
@@ -141,12 +107,11 @@ const VehicleList = () => {
   };
 
   const getCustomerName = (vehicle) => {
+    // Customer data is already populated from the API
     if (vehicle.customer && typeof vehicle.customer === 'object') {
       return vehicle.customer.name;
     }
-    
-    const customerId = typeof vehicle.customer === 'string' ? vehicle.customer : null;
-    return customers[customerId]?.name || 'Unknown Customer';
+    return 'Unknown Customer';
   };
 
   return (

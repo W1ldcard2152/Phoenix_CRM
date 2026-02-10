@@ -23,6 +23,17 @@ const customerInteractionService = {
     }
   },
 
+  // Get batch interaction statistics for multiple work orders (batch endpoint)
+  getBatchInteractionStats: async (workOrderIds) => {
+    try {
+      const response = await api.post('/interactions/batch-stats', { workOrderIds });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching batch interaction stats:', error);
+      throw error;
+    }
+  },
+
   // Get all interactions for a customer
   getCustomerInteractions: async (customerId) => {
     try {

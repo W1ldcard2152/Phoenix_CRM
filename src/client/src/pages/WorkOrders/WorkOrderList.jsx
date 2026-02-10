@@ -304,32 +304,15 @@ const WorkOrderList = () => {
 
   const fetchAttachmentCounts = async (workOrdersList) => {
     try {
-      const counts = {};
-      
-      // Process work orders in batches to avoid rate limiting
-      const batchSize = 5;
-      for (let i = 0; i < workOrdersList.length; i += batchSize) {
-        const batch = workOrdersList.slice(i, i + batchSize);
-        
-        await Promise.all(
-          batch.map(async (workOrder) => {
-            try {
-              const response = await MediaService.getAllMedia({ workOrder: workOrder._id });
-              counts[workOrder._id] = response?.data?.media?.length || 0;
-            } catch (err) {
-              console.error(`Error fetching attachments for work order ${workOrder._id}:`, err);
-              counts[workOrder._id] = 0;
-            }
-          })
-        );
-        
-        // Add delay between batches to prevent rate limiting
-        if (i + batchSize < workOrdersList.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+      if (!workOrdersList || workOrdersList.length === 0) {
+        setAttachmentCounts({});
+        return;
       }
-      
-      setAttachmentCounts(counts);
+
+      // Use batch endpoint - single API call for all work orders
+      const workOrderIds = workOrdersList.map(wo => wo._id);
+      const response = await MediaService.getBatchAttachmentCounts(workOrderIds);
+      setAttachmentCounts(prev => ({ ...prev, ...(response.data.counts || {}) }));
     } catch (err) {
       console.error('Error fetching attachment counts:', err);
     }
@@ -337,32 +320,15 @@ const WorkOrderList = () => {
 
   const fetchInteractionStats = async (workOrdersList) => {
     try {
-      const stats = {};
-      
-      // Process work orders in batches to avoid rate limiting
-      const batchSize = 5;
-      for (let i = 0; i < workOrdersList.length; i += batchSize) {
-        const batch = workOrdersList.slice(i, i + batchSize);
-        
-        await Promise.all(
-          batch.map(async (workOrder) => {
-            try {
-              const response = await customerInteractionService.getInteractionStats(workOrder._id);
-              stats[workOrder._id] = response;
-            } catch (err) {
-              console.error(`Error fetching interaction stats for work order ${workOrder._id}:`, err);
-              stats[workOrder._id] = null;
-            }
-          })
-        );
-        
-        // Add delay between batches to prevent rate limiting
-        if (i + batchSize < workOrdersList.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+      if (!workOrdersList || workOrdersList.length === 0) {
+        setInteractionStats({});
+        return;
       }
-      
-      setInteractionStats(stats);
+
+      // Use batch endpoint - single API call for all work orders
+      const workOrderIds = workOrdersList.map(wo => wo._id);
+      const response = await customerInteractionService.getBatchInteractionStats(workOrderIds);
+      setInteractionStats(prev => ({ ...prev, ...(response.data.stats || {}) }));
     } catch (err) {
       console.error('Error fetching interaction stats:', err);
     }

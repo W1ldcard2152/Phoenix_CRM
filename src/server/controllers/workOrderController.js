@@ -1093,3 +1093,97 @@ exports.getReceiptSignedUrl = catchAsync(async (req, res, next) => {
     return next(new AppError('Failed to generate signed URL for receipt', 500));
   }
 });
+
+// Get active work orders by multiple statuses in a single call (replaces multiple getWorkOrdersByStatus calls)
+exports.getActiveWorkOrdersByStatuses = catchAsync(async (req, res, next) => {
+  const { statuses } = req.query;
+
+  if (!statuses) {
+    return next(new AppError('Please provide statuses parameter', 400));
+  }
+
+  // Parse statuses (comma-separated)
+  const statusList = statuses.split(',').map(s => s.trim());
+
+  // Check cache first
+  const cacheKey = `workorders:active:${statusList.sort().join(',')}`;
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
+  // Build query with $in for multiple statuses
+  const query = { status: { $in: statusList } };
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find(query).sort({ date: -1 }),
+    'workOrder',
+    'standard'
+  );
+
+  // Group work orders by status for easier consumption
+  const groupedByStatus = {};
+  statusList.forEach(status => {
+    groupedByStatus[status] = workOrders.filter(wo => wo.status === status);
+  });
+
+  const responseData = {
+    status: 'success',
+    results: workOrders.length,
+    data: {
+      workOrders,
+      groupedByStatus
+    }
+  };
+
+  // Cache for 5 minutes
+  cacheService.set(cacheKey, responseData, 300);
+
+  res.status(200).json(responseData);
+});
+
+// Get work orders for Technician Portal (filtered at API level)
+exports.getTechnicianWorkOrders = catchAsync(async (req, res, next) => {
+  const { technicianId } = req.query;
+
+  // Technician-relevant statuses
+  const technicianStatuses = [
+    'Appointment Scheduled',
+    'Inspection In Progress',
+    'Inspection/Diag Complete',
+    'Repair In Progress',
+    'Repair Complete - Awaiting Payment'
+  ];
+
+  // Check cache first
+  const cacheKey = technicianId
+    ? `workorders:technician:${technicianId}`
+    : 'workorders:technician:all';
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
+  // Build query
+  const query = { status: { $in: technicianStatuses } };
+  if (technicianId) {
+    query.assignedTechnician = technicianId;
+  }
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find(query).sort({ date: -1 }),
+    'workOrder',
+    'standard'
+  );
+
+  const responseData = {
+    status: 'success',
+    results: workOrders.length,
+    data: { workOrders }
+  };
+
+  // Cache for 3 minutes (shorter for frequently changing data)
+  cacheService.set(cacheKey, responseData, 180);
+
+  res.status(200).json(responseData);
+});

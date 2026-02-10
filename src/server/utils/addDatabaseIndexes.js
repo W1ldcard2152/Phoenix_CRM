@@ -102,8 +102,8 @@ const addIndexes = async () => {
     console.log('\n=== Adding Vehicles indexes ===');
     const vehiclesCollection = db.collection('vehicles');
 
-    await vehiclesCollection.createIndex({ owner: 1 });
-    console.log('✓ Created index on vehicles.owner');
+    await vehiclesCollection.createIndex({ customer: 1 });
+    console.log('✓ Created index on vehicles.customer');
 
     await vehiclesCollection.createIndex({ vin: 1 });
     console.log('✓ Created index on vehicles.vin');
@@ -142,6 +142,41 @@ const addIndexes = async () => {
 
     await workOrderNotesCollection.createIndex({ workOrder: 1, createdAt: -1 });
     console.log('✓ Created compound index on workordernotes.workOrder + createdAt');
+
+    // Media Collection Indexes
+    console.log('\n=== Adding Media indexes ===');
+    const mediaCollection = db.collection('media');
+
+    await mediaCollection.createIndex({ workOrder: 1 });
+    console.log('✓ Created index on media.workOrder');
+
+    await mediaCollection.createIndex({ vehicle: 1 });
+    console.log('✓ Created index on media.vehicle');
+
+    await mediaCollection.createIndex({ customer: 1 });
+    console.log('✓ Created index on media.customer');
+
+    await mediaCollection.createIndex({ type: 1 });
+    console.log('✓ Created index on media.type');
+
+    // Customer Interactions Collection Indexes
+    console.log('\n=== Adding Customer Interactions indexes ===');
+    const customerInteractionsCollection = db.collection('customerinteractions');
+
+    await customerInteractionsCollection.createIndex({ workOrder: 1 });
+    console.log('✓ Created index on customerinteractions.workOrder');
+
+    await customerInteractionsCollection.createIndex({ customer: 1 });
+    console.log('✓ Created index on customerinteractions.customer');
+
+    await customerInteractionsCollection.createIndex({ createdAt: -1 });
+    console.log('✓ Created index on customerinteractions.createdAt (descending)');
+
+    await customerInteractionsCollection.createIndex({ followUpRequired: 1, completedAt: 1 });
+    console.log('✓ Created compound index on customerinteractions.followUpRequired + completedAt');
+
+    await customerInteractionsCollection.createIndex({ workOrder: 1, createdAt: -1 });
+    console.log('✓ Created compound index on customerinteractions.workOrder + createdAt');
 
     console.log('\n✅ All indexes created successfully!');
     console.log('\n💡 Recommendations:');

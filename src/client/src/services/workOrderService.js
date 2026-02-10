@@ -175,6 +175,30 @@ const WorkOrderService = {
       console.error('Error fetching Service Writer\'s Corner data:', error);
       throw error;
     }
+  },
+
+  // Get active work orders by multiple statuses in a single call (Dashboard optimization)
+  getActiveWorkOrdersByStatuses: async (statuses) => {
+    try {
+      const statusList = Array.isArray(statuses) ? statuses.join(',') : statuses;
+      const response = await API.get(`/workorders/active-by-statuses?statuses=${encodeURIComponent(statusList)}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching active work orders by statuses:', error);
+      throw error;
+    }
+  },
+
+  // Get work orders for Technician Portal (server-side filtering)
+  getTechnicianWorkOrders: async (technicianId = null) => {
+    try {
+      const params = technicianId ? `?technicianId=${technicianId}` : '';
+      const response = await API.get(`/workorders/technician-portal${params}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching technician work orders:', error);
+      throw error;
+    }
   }
 };
 

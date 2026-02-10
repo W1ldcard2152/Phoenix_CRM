@@ -41,15 +41,9 @@ const TechnicianPortal = () => {
   const fetchWorkOrders = async () => {
     try {
       setLoading(true);
-      const response = await WorkOrderService.getAllWorkOrders();
-      const allWorkOrders = response.data.workOrders || [];
-
-      // Filter to only show technician-relevant statuses
-      const techWorkOrders = allWorkOrders.filter(wo =>
-        technicianStatuses.includes(wo.status)
-      );
-
-      setWorkOrders(techWorkOrders);
+      // Use the new optimized endpoint that filters server-side
+      const response = await WorkOrderService.getTechnicianWorkOrders();
+      setWorkOrders(response.data.workOrders || []);
     } catch (err) {
       console.error('Error fetching work orders:', err);
       setError('Failed to load work orders');

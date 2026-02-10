@@ -29,7 +29,7 @@ const Dashboard = () => {
       try {
         setLoading(true);
 
-        // Fetch active work orders (not completed or cancelled)
+        // Fetch active work orders in a single API call (replaces 6 separate status calls)
         const activeStatuses = [
           'Created',
           'Scheduled',
@@ -39,21 +39,13 @@ const Dashboard = () => {
           'Repair In Progress'
         ];
 
-        const workOrdersPromises = activeStatuses.map(status =>
-          WorkOrderService.getWorkOrdersByStatus(status)
-        );
+        // Use Promise.all to fetch both in parallel
+        const [workOrdersResponse, serviceWritersCornerResponse] = await Promise.all([
+          WorkOrderService.getActiveWorkOrdersByStatuses(activeStatuses),
+          WorkOrderService.getServiceWritersCorner()
+        ]);
 
-        const workOrdersResponses = await Promise.all(workOrdersPromises);
-
-        // Combine and flatten work orders from different statuses
-        const allActiveWorkOrders = workOrdersResponses.flatMap(
-          response => response.data.workOrders
-        );
-
-        setActiveWorkOrders(allActiveWorkOrders);
-
-        // Fetch Service Writer's Corner data
-        const serviceWritersCornerResponse = await WorkOrderService.getServiceWritersCorner();
+        setActiveWorkOrders(workOrdersResponse.data.workOrders || []);
         setServiceWritersCorner(serviceWritersCornerResponse.data);
 
         setLoading(false);

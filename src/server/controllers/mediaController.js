@@ -178,6 +178,42 @@ exports.getSignedUrl = catchAsync(async (req, res, next) => {
   }
 });
 
+// Get attachment counts for multiple work orders in a single call (batch endpoint)
+exports.getBatchAttachmentCounts = catchAsync(async (req, res, next) => {
+  const { workOrderIds } = req.body;
+
+  if (!workOrderIds || !Array.isArray(workOrderIds)) {
+    return next(new AppError('Please provide workOrderIds array', 400));
+  }
+
+  // Limit to 100 work orders per request to prevent abuse
+  if (workOrderIds.length > 100) {
+    return next(new AppError('Maximum 100 work orders per request', 400));
+  }
+
+  // Use aggregation for efficient counting
+  const counts = await Media.aggregate([
+    { $match: { workOrder: { $in: workOrderIds.map(id => require('mongoose').Types.ObjectId.createFromHexString(id)) } } },
+    { $group: { _id: '$workOrder', count: { $sum: 1 } } }
+  ]);
+
+  // Convert to object keyed by workOrder ID
+  const countMap = {};
+  workOrderIds.forEach(id => {
+    countMap[id] = 0; // Initialize all to 0
+  });
+  counts.forEach(item => {
+    countMap[item._id.toString()] = item.count;
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      counts: countMap
+    }
+  });
+});
+
 // Share media with a customer via email
 exports.shareMediaViaEmail = catchAsync(async (req, res, next) => {
   const { email } = req.body;

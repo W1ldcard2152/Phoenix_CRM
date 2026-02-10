@@ -77,6 +77,17 @@ const MediaService = {
       console.error(`Error sharing media with ID ${id} via email:`, error);
       throw error;
     }
+  },
+
+  // Get attachment counts for multiple work orders in a single call (batch endpoint)
+  getBatchAttachmentCounts: async (workOrderIds) => {
+    try {
+      const response = await API.post('/media/batch-counts', { workOrderIds });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching batch attachment counts:', error);
+      throw error;
+    }
   }
 };
 
