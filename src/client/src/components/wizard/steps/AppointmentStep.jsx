@@ -4,7 +4,6 @@ import * as Yup from 'yup';
 import moment from 'moment-timezone';
 import AppointmentService from '../../../services/appointmentService';
 import technicianService from '../../../services/technicianService';
-import WorkOrderService from '../../../services/workOrderService';
 import Button from '../../common/Button';
 import Input from '../../common/Input';
 import TextArea from '../../common/TextArea';
@@ -114,11 +113,8 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
       };
 
       const response = await AppointmentService.createAppointment(appointmentData);
-      
-      // Update work order status based on skipDiagnostics flag
-      const newStatus = workOrder.skipDiagnostics ? 'Repair Scheduled' : 'Inspection/Diag Scheduled';
-      await WorkOrderService.updateStatus(workOrder._id, newStatus);
-      
+
+      // Server-side appointmentController handles the status update to "Appointment Scheduled"
       onAppointmentCreate(response.data.appointment);
     } catch (err) {
       console.error('Error creating appointment:', err);

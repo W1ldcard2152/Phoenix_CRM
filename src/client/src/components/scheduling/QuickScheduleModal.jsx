@@ -148,13 +148,9 @@ const QuickScheduleModal = ({
       };
       
       // Create the appointment directly
+      // Server-side appointmentController handles the status update to "Appointment Scheduled"
       const result = await AppointmentService.createAppointment(appointmentData);
-      
-      // Update the work order status if it's not already scheduled
-      if (workOrderData.status === 'Created') {
-        await WorkOrderService.updateStatus(workOrderId, 'Scheduled');
-      }
-      
+
       // Call the onScheduled callback with the result
       onScheduled(result);
       

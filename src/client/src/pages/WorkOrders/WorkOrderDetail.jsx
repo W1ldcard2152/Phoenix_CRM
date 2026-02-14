@@ -12,6 +12,7 @@ import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal'
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
+import invoiceService from '../../services/invoiceService';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -74,6 +75,7 @@ const WorkOrderDetail = () => {
   // File attachment state
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [linkedInvoice, setLinkedInvoice] = useState(null);
   
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
@@ -118,26 +120,30 @@ const WorkOrderDetail = () => {
   };
   
   // Handle bulk order number assignment
-  // Helper function to check if all parts are ordered and update status
-  const checkAndUpdatePartsOrderedStatus = async (updatedWorkOrder) => {
-    // Only update status if there are parts and all are ordered
+  // Helper function to check if all parts are ordered/received and auto-update status
+  const checkAndUpdatePartsStatus = async (updatedWorkOrder) => {
     if (updatedWorkOrder.parts && updatedWorkOrder.parts.length > 0) {
-      const allPartsOrdered = updatedWorkOrder.parts.every(part => part.ordered === true);
-      
-      // Check current status - only update if we're in a pre-ordering status
       const preOrderStatuses = [
         'Work Order Created',
         'Appointment Scheduled',
         'Inspection In Progress',
         'Inspection/Diag Complete'
       ];
-      
+      const preReceivedStatuses = ['Parts Ordered', ...preOrderStatuses];
+
+      // If all parts are ordered, auto-set to "Parts Ordered"
+      const allPartsOrdered = updatedWorkOrder.parts.every(part => part.ordered === true);
       if (allPartsOrdered && preOrderStatuses.includes(updatedWorkOrder.status)) {
-        // Update to Parts Ordered status
         updatedWorkOrder.status = 'Parts Ordered';
       }
+
+      // If all parts are received, auto-set to "Parts Received"
+      const allPartsReceived = updatedWorkOrder.parts.every(part => part.received === true);
+      if (allPartsReceived && preReceivedStatuses.includes(updatedWorkOrder.status)) {
+        updatedWorkOrder.status = 'Parts Received';
+      }
     }
-    
+
     return updatedWorkOrder;
   };
 
@@ -164,7 +170,7 @@ const WorkOrderDetail = () => {
       });
       
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
+      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
       
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
       setWorkOrder(response.data.workOrder);
@@ -194,7 +200,16 @@ const WorkOrderDetail = () => {
         const workOrderResponse = await WorkOrderService.getWorkOrder(id);
         const fetchedWorkOrder = workOrderResponse.data.workOrder;
         setWorkOrder(fetchedWorkOrder);
-        // setSelectedTechnician, technicianService.getAllTechnicians, and setTechnicians calls removed.
+
+        // Fetch linked invoice for this work order
+        try {
+          const invoiceResponse = await invoiceService.getAllInvoices({ workOrder: id });
+          const invoices = invoiceResponse.data?.invoices || [];
+          setLinkedInvoice(invoices.length > 0 ? invoices[0] : null);
+        } catch (invoiceErr) {
+          console.error('Error fetching linked invoice:', invoiceErr);
+        }
+
         setLoading(false);
       } catch (err) {
         console.error('Error fetching work order details:', err); // Updated error message
@@ -402,6 +417,34 @@ const WorkOrderDetail = () => {
     const newStatus = e.target.value;
     if (!newStatus || newStatus === workOrder.status) return;
 
+    // Special handling for "Parts Ordered" status - mark all parts as ordered
+    if (newStatus === 'Parts Ordered') {
+      const partsCount = workOrder.parts?.length || 0;
+
+      if (partsCount > 0) {
+        const unorderedParts = workOrder.parts.filter(part => !part.ordered);
+        const unorderedCount = unorderedParts.length;
+
+        if (unorderedCount > 0) {
+          let confirmMessage = `Changing status to "Parts Ordered" will automatically mark ALL ${partsCount} parts as ordered.\n\n`;
+          confirmMessage += `This will mark ${unorderedCount} parts that are currently NOT marked as ordered:\n`;
+          unorderedParts.slice(0, 3).forEach(part => {
+            confirmMessage += `• ${part.name}\n`;
+          });
+          if (unorderedCount > 3) {
+            confirmMessage += `• ...and ${unorderedCount - 3} more\n`;
+          }
+          confirmMessage += '\nAre you sure you want to proceed?';
+
+          const confirmed = window.confirm(confirmMessage);
+          if (!confirmed) {
+            e.target.value = workOrder.status;
+            return;
+          }
+        }
+      }
+    }
+
     // Special handling for "Parts Received" status
     if (newStatus === 'Parts Received') {
       const partsCount = workOrder.parts?.length || 0;
@@ -492,6 +535,7 @@ const WorkOrderDetail = () => {
       name: '',
       partNumber: '',
       quantity: 1,
+      cost: 0,
       price: 0,
       ordered: false,
       received: false,
@@ -515,6 +559,7 @@ const WorkOrderDetail = () => {
       name: part.name || '',
       partNumber: part.partNumber || '',
       quantity: part.quantity || 1,
+      cost: part.cost || (part.price ? parseFloat((part.price / 1.3).toFixed(2)) : 0),
       price: part.price || 0,
       ordered: part.ordered || false,
       received: part.received || false,
@@ -570,7 +615,7 @@ const WorkOrderDetail = () => {
       let updatedWorkOrder = response.data.workOrder;
       
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
+      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
       
       // If status was updated, save the change
       if (updatedWorkOrder.status !== response.data.workOrder.status) {
@@ -585,6 +630,7 @@ const WorkOrderDetail = () => {
         name: '',
         partNumber: '',
         quantity: 1,
+        cost: 0,
         price: 0,
         ordered: false,
         received: false,
@@ -610,7 +656,7 @@ const WorkOrderDetail = () => {
       updatedWorkOrder.parts = updatedParts;
       
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
+      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
 
       // Send the entire updated work order to the server
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
@@ -621,6 +667,7 @@ const WorkOrderDetail = () => {
         name: '',
         partNumber: '',
         quantity: 1,
+        cost: 0,
         price: 0,
         ordered: false,
         received: false,
@@ -777,7 +824,7 @@ const WorkOrderDetail = () => {
       updatedWorkOrder.parts = updatedParts;
       
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsOrderedStatus(updatedWorkOrder);
+      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
 
       const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
       setWorkOrder(response.data.workOrder);
@@ -837,7 +884,12 @@ const WorkOrderDetail = () => {
   };
 
   const generateInvoice = () => {
-    // Navigate to the invoice generator with this work order ID as a search param
+    if (linkedInvoice) {
+      const confirmed = window.confirm(
+        `An invoice (#${linkedInvoice.invoiceNumber || linkedInvoice._id.slice(-6)}) already exists for this work order.\n\nAre you sure you want to generate another invoice?`
+      );
+      if (!confirmed) return;
+    }
     navigate(`/invoices/generate?workOrder=${id}`);
   };
 
@@ -1027,9 +1079,22 @@ const WorkOrderDetail = () => {
         </Card>
 
         <Card
-          title="Totals" 
+          title="Totals"
           headerActions={
-            <div className="flex space-x-2">
+            <div className="flex items-center space-x-2">
+              {linkedInvoice && (
+                <Link
+                  to={`/invoices/${linkedInvoice._id}`}
+                  className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                    linkedInvoice.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                    linkedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-800' :
+                    linkedInvoice.status === 'Overdue' ? 'bg-red-100 text-red-800' :
+                    'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  Invoice #{linkedInvoice.invoiceNumber || linkedInvoice._id.slice(-6)} - {linkedInvoice.status || 'Issued'}
+                </Link>
+              )}
               <Button
                 onClick={generateInvoice}
                 variant="primary"
@@ -1940,7 +2005,7 @@ const WorkOrderDetail = () => {
                   onChange={(e) => setNewPart({ ...newPart, purchaseOrderNumber: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Quantity
@@ -1955,7 +2020,23 @@ const WorkOrderDetail = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price
+                    Cost
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.cost}
+                    onChange={(e) => {
+                      const cost = parseFloat(e.target.value) || 0;
+                      setNewPart({ ...newPart, cost, price: parseFloat((cost * 1.3).toFixed(2)) });
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Retail Price
                   </label>
                   <input
                     type="number"
@@ -1963,7 +2044,10 @@ const WorkOrderDetail = () => {
                     step="0.01"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newPart.price}
-                    onChange={(e) => setNewPart({ ...newPart, price: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const price = parseFloat(e.target.value) || 0;
+                      setNewPart({ ...newPart, price, cost: parseFloat((price / 1.3).toFixed(2)) });
+                    }}
                   />
                 </div>
               </div>

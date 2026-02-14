@@ -353,6 +353,19 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     // or leaving it as is, depending on desired logic. For now, we'll let assignedTechnician be managed separately if no appointment.
   }
 
+  // If status is changing to "Parts Ordered", mark all parts as ordered
+  if (workOrderData.status === 'Parts Ordered') {
+    const currentWorkOrder = await WorkOrder.findById(req.params.id);
+    if (currentWorkOrder && currentWorkOrder.status !== 'Parts Ordered') {
+      if (currentWorkOrder.parts && currentWorkOrder.parts.length > 0) {
+        workOrderData.parts = currentWorkOrder.parts.map(part => ({
+          ...part.toObject(),
+          ordered: true
+        }));
+      }
+    }
+  }
+
   // If status is changing to "Parts Received", mark all parts as received
   if (workOrderData.status === 'Parts Received') {
     const currentWorkOrder = await WorkOrder.findById(req.params.id);
@@ -364,6 +377,27 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
           received: true
         }));
       }
+    }
+  }
+
+  // Auto-update status based on part flags (forward triggers)
+  // Only apply when parts are being updated and status isn't being explicitly changed
+  if (workOrderData.parts && workOrderData.parts.length > 0) {
+    const currentWO = await WorkOrder.findById(req.params.id);
+    const currentStatus = workOrderData.status || currentWO?.status;
+
+    // If all parts are ordered, auto-set status to "Parts Ordered"
+    const preOrderStatuses = ['Work Order Created', 'Appointment Scheduled', 'Inspection In Progress', 'Inspection/Diag Complete'];
+    const allPartsOrdered = workOrderData.parts.every(part => part.ordered === true);
+    if (allPartsOrdered && preOrderStatuses.includes(currentStatus)) {
+      workOrderData.status = 'Parts Ordered';
+    }
+
+    // If all parts are received, auto-set status to "Parts Received"
+    const preReceivedStatuses = ['Parts Ordered', ...preOrderStatuses];
+    const allPartsReceived = workOrderData.parts.every(part => part.received === true);
+    if (allPartsReceived && preReceivedStatuses.includes(currentStatus)) {
+      workOrderData.status = 'Parts Received';
     }
   }
 
@@ -477,6 +511,13 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
 
   workOrder.status = status;
+
+  // If the status is "Parts Ordered", mark all parts as ordered
+  if (status === 'Parts Ordered') {
+    workOrder.parts.forEach(part => {
+      part.ordered = true;
+    });
+  }
 
   // If the status is "Parts Received", mark all parts as received
   if (status === 'Parts Received') {

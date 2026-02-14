@@ -116,10 +116,10 @@ const TechnicianChecklist = () => {
       title: 'Physical Inspection',
       items: [
         { key: 'leaksUnderVehicle', label: 'Check for obvious leaks under vehicle', inputType: 'select', options: ['Good Condition', 'Minor Leak', 'Significant Leak'] },
-        { key: 'tiresFront', label: 'Tires - Front (tread depth)', inputType: 'text', placeholder: 'e.g., 6/32"' },
-        { key: 'tiresRear', label: 'Tires - Rear (tread depth)', inputType: 'text', placeholder: 'e.g., 5/32"' },
-        { key: 'brakesFront', label: 'Brakes - Front (pad wear/rotor condition)', inputType: 'select', options: ['Good Condition', 'Replace Soon', 'Replace ASAP'] },
-        { key: 'brakesRear', label: 'Brakes - Rear (pad wear/rotor condition)', inputType: 'select', options: ['Good Condition', 'Replace Soon', 'Replace ASAP'] },
+        { key: 'tiresFront', label: 'Tires - Front (tread depth)', inputType: 'number', suffix: '/32"', placeholder: 'e.g., 6' },
+        { key: 'tiresRear', label: 'Tires - Rear (tread depth)', inputType: 'number', suffix: '/32"', placeholder: 'e.g., 5' },
+        { key: 'brakesFront', label: 'Brakes - Front (pad thickness)', inputType: 'number', suffix: 'mm', placeholder: 'e.g., 8' },
+        { key: 'brakesRear', label: 'Brakes - Rear (pad thickness)', inputType: 'number', suffix: 'mm', placeholder: 'e.g., 6' },
         { key: 'engineOil', label: 'Engine oil (level, age)', inputType: 'select', options: ['Good Condition', 'Low/Dirty', 'Replace Soon'] },
         { key: 'brakeFluid', label: 'Brake fluid (level, age)', inputType: 'select', options: ['Good Condition', 'Low', 'Needs Flush'] },
         { key: 'coolant', label: 'Coolant (level, quality, test for min. temp)', inputType: 'text', placeholder: 'e.g., Good, -34F' }
@@ -201,10 +201,10 @@ const TechnicianChecklist = () => {
       title: 'Physical Pre-Inspection',
       items: [
         { key: 'leaksUnderVehicle', label: 'Check for obvious leaks under vehicle', inputType: 'select', options: ['Good Condition', 'Minor Leak', 'Significant Leak'] },
-        { key: 'tiresFront', label: 'Tires - Front (tread depth)', inputType: 'text', placeholder: 'e.g., 6/32"' },
-        { key: 'tiresRear', label: 'Tires - Rear (tread depth)', inputType: 'text', placeholder: 'e.g., 5/32"' },
-        { key: 'brakesFront', label: 'Brakes - Front (pad wear/rotor condition)', inputType: 'select', options: ['Good Condition', 'Replace Soon', 'Replace ASAP'] },
-        { key: 'brakesRear', label: 'Brakes - Rear (pad wear/rotor condition)', inputType: 'select', options: ['Good Condition', 'Replace Soon', 'Replace ASAP'] },
+        { key: 'tiresFront', label: 'Tires - Front (tread depth)', inputType: 'number', suffix: '/32"', placeholder: 'e.g., 6' },
+        { key: 'tiresRear', label: 'Tires - Rear (tread depth)', inputType: 'number', suffix: '/32"', placeholder: 'e.g., 5' },
+        { key: 'brakesFront', label: 'Brakes - Front (pad thickness)', inputType: 'number', suffix: 'mm', placeholder: 'e.g., 8' },
+        { key: 'brakesRear', label: 'Brakes - Rear (pad thickness)', inputType: 'number', suffix: 'mm', placeholder: 'e.g., 6' },
         { key: 'engineOil', label: 'Engine oil (level, age)', inputType: 'select', options: ['Good Condition', 'Low/Dirty', 'Replace Soon'] },
         { key: 'brakeFluid', label: 'Brake fluid (level, age)', inputType: 'select', options: ['Good Condition', 'Low', 'Needs Flush'] },
         { key: 'coolant', label: 'Coolant (level, quality, test for min. temp)', inputType: 'text', placeholder: 'e.g., Good, -34F' }
@@ -459,14 +459,19 @@ const TechnicianChecklist = () => {
             )}
 
             {item.inputType === 'number' && (
-              <input
-                type="number"
-                inputMode="numeric"
-                value={itemData.value || ''}
-                onChange={(e) => handleChange(item.key, 'value', e.target.value)}
-                placeholder={item.placeholder}
-                className="w-full sm:w-48 px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={itemData.value || ''}
+                  onChange={(e) => handleChange(item.key, 'value', e.target.value)}
+                  placeholder={item.placeholder}
+                  className="w-full sm:w-48 px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                {item.suffix && (
+                  <span className="text-base font-medium text-gray-600 whitespace-nowrap">{item.suffix}</span>
+                )}
+              </div>
             )}
 
             {item.inputType === 'select' && (
@@ -491,7 +496,7 @@ const TechnicianChecklist = () => {
                     <button
                       key={option}
                       type="button"
-                      onClick={() => handleChange(item.key, 'value', option)}
+                      onClick={() => handleChange(item.key, 'value', isSelected ? '' : option)}
                       className={`px-4 py-3 text-sm font-semibold rounded-lg border-2 transition-all ${
                         isSelected ? selectedClass : baseClass
                       }`}

@@ -55,7 +55,9 @@
       "Bash(echo:*)",
       "Bash(done)",
       "Bash(npm audit:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(npx vite build:*)",
+      "Bash(npx craco build:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

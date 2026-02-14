@@ -25,10 +25,10 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
       title: 'Physical Inspection',
       items: [
         { key: 'leaksUnderVehicle', label: 'Leaks under vehicle' },
-        { key: 'tiresFront', label: 'Tires - Front' },
-        { key: 'tiresRear', label: 'Tires - Rear' },
-        { key: 'brakesFront', label: 'Brakes - Front' },
-        { key: 'brakesRear', label: 'Brakes - Rear' },
+        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"' },
+        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"' },
+        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm' },
+        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm' },
         { key: 'engineOil', label: 'Engine oil' },
         { key: 'brakeFluid', label: 'Brake fluid' },
         { key: 'coolant', label: 'Coolant' }
@@ -82,10 +82,10 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
       title: 'Physical Pre-Inspection',
       items: [
         { key: 'leaksUnderVehicle', label: 'Leaks under vehicle' },
-        { key: 'tiresFront', label: 'Tires - Front' },
-        { key: 'tiresRear', label: 'Tires - Rear' },
-        { key: 'brakesFront', label: 'Brakes - Front' },
-        { key: 'brakesRear', label: 'Brakes - Rear' },
+        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"' },
+        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"' },
+        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm' },
+        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm' },
         { key: 'engineOil', label: 'Engine oil' },
         { key: 'brakeFluid', label: 'Brake fluid' },
         { key: 'coolant', label: 'Coolant' }
@@ -168,7 +168,8 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
   const renderItem = (item) => {
     const itemData = checklist?.[item.key];
     const hasValue = itemData?.completed || itemData?.value;
-    const displayValue = itemData?.value || (itemData?.completed ? true : null);
+    const rawValue = itemData?.value || (itemData?.completed ? true : null);
+    const displayValue = (typeof rawValue === 'string' && item.suffix) ? `${rawValue}${item.suffix}` : rawValue;
 
     return (
       <div key={item.key} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">

@@ -58,6 +58,20 @@ const FeedbackAdminPage = () => {
     setIsModalOpen(true);
   };
 
+  const handleCopyClick = async (feedbackText) => {
+    try {
+      await navigator.clipboard.writeText(feedbackText);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = feedbackText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+  };
+
   const handleEditClick = (feedback) => {
     setCurrentFeedback(feedback);
     setFormData({
@@ -154,6 +168,7 @@ const FeedbackAdminPage = () => {
                     <td className="py-2 px-4 border-b">{new Date(entry.createdAt).toLocaleDateString()}</td>
                     <td className="py-2 px-4 border-b">
                       <div className="flex flex-row space-x-2">
+                        <Button onClick={() => handleCopyClick(entry.feedbackText)} className="bg-gray-500 hover:bg-gray-700" size="sm">Copy</Button>
                         <Button onClick={() => handleEditClick(entry)} size="sm">Edit</Button>
                         <Button onClick={() => handleArchiveClick(entry._id)} className="bg-yellow-500 hover:bg-yellow-700" size="sm">Archive</Button>
                         <Button onClick={() => handleDeleteClick(entry._id)} className="bg-red-500 hover:bg-red-700" size="sm">Delete</Button>

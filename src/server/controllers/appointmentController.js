@@ -167,13 +167,8 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
         workOrderToUpdate.assignedTechnician = newAppointment.technician;
         woNeedsSave = true;
       }
-      // Update work order status based on current status when scheduling
-      if (workOrderToUpdate.status === 'Work Order Created') {
-        // New work orders get scheduled for initial inspection/diagnosis
-        workOrderToUpdate.status = 'Appointment Scheduled';
-        woNeedsSave = true;
-      } else if (workOrderToUpdate.status === 'Inspection/Diag Complete' || workOrderToUpdate.status === 'Parts Received') {
-        // Work orders that have completed inspection or have parts ready get scheduled for repair
+      // Update work order status to Appointment Scheduled whenever an appointment is created
+      if (workOrderToUpdate.status !== 'Appointment Scheduled') {
         workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       }

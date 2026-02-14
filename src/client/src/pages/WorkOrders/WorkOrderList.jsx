@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import WorkOrderService from '../../services/workOrderService';
+import invoiceService from '../../services/invoiceService';
 import MediaService from '../../services/mediaService';
 import customerInteractionService from '../../services/customerInteractionService';
 
@@ -20,6 +21,7 @@ const WorkOrderList = () => {
   const [showInvoicedTable, setShowInvoicedTable] = useState(false);
   const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false);
   const [invoicedLoading, setInvoicedLoading] = useState(false); // Loading state for invoiced section
+  const [invoicesByWorkOrder, setInvoicesByWorkOrder] = useState({}); // Map of workOrderId → invoice
   const [onHoldCancelledLoading, setOnHoldCancelledLoading] = useState(false); // Loading state for on hold/cancelled section
   const [statusUpdating, setStatusUpdating] = useState(null);
   const [attachmentCounts, setAttachmentCounts] = useState({});
@@ -241,12 +243,25 @@ const WorkOrderList = () => {
       const filters = { status: 'Repair Complete - Invoiced' };
       if (customerParam) filters.customer = customerParam;
       if (vehicleParam) filters.vehicle = vehicleParam;
-      
-      const response = await WorkOrderService.getAllWorkOrders(filters);
-      setInvoicedWorkOrders(response.data.workOrders || []);
-      
+
+      const [workOrderResponse, invoiceResponse] = await Promise.all([
+        WorkOrderService.getAllWorkOrders(filters),
+        invoiceService.getAllInvoices()
+      ]);
+      setInvoicedWorkOrders(workOrderResponse.data.workOrders || []);
+
+      // Build workOrderId → invoice lookup map
+      const invoiceMap = {};
+      (invoiceResponse.data?.invoices || []).forEach(inv => {
+        if (inv.workOrder) {
+          const woId = typeof inv.workOrder === 'object' ? inv.workOrder._id : inv.workOrder;
+          invoiceMap[woId] = inv;
+        }
+      });
+      setInvoicesByWorkOrder(invoiceMap);
+
       // Fetch attachment counts for invoiced work orders
-      await fetchAttachmentCounts(response.data.workOrders || []);
+      await fetchAttachmentCounts(workOrderResponse.data.workOrders || []);
       setInvoicedLoading(false);
     } catch (err) {
       console.error('Error fetching invoiced work orders:', err);
@@ -1085,6 +1100,9 @@ const WorkOrderList = () => {
                           {renderSortIndicator('status')}
                         </div>
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Invoice
+                      </th>
                       <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
                         onClick={() => handleSort('amount')}
@@ -1126,6 +1144,15 @@ const WorkOrderList = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
+                          {invoicesByWorkOrder[workOrder._id] ? (
+                            <Link to={`/invoices/${invoicesByWorkOrder[workOrder._id]._id}`} className="text-indigo-600 hover:text-indigo-900 text-sm">
+                              #{invoicesByWorkOrder[workOrder._id].invoiceNumber || invoicesByWorkOrder[workOrder._id]._id.slice(-6)}
+                            </Link>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
                             {formatCurrency(workOrder.totalEstimate)}
                           </div>
@@ -1138,7 +1165,7 @@ const WorkOrderList = () => {
                             <Button to={`/work-orders/${workOrder._id}`} variant="outline" size="sm">View</Button>
                             <Button to={`/work-orders/${workOrder._id}/edit`} variant="outline" size="sm">Edit</Button>
                             {/* Schedule button likely not needed for Invoiced WOs, but keeping for "same style" consistency for now */}
-                            {needsSchedulingParam && ( 
+                            {needsSchedulingParam && (
                               <Button
                                 onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
                                 variant="primary"
