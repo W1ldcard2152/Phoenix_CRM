@@ -1,6 +1,10 @@
 const express = require('express');
 const vehicleController = require('../controllers/vehicleController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Check if VIN exists
 router.get('/check-vin', vehicleController.checkVinExists);

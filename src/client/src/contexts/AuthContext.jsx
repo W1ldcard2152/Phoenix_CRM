@@ -7,51 +7,48 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  // Logout function needs to be defined before fetchCurrentUser if called within it
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
+  // Logout function - calls server to clear HTTP-only cookie
+  const logout = async () => {
+    try {
+      await axios.get('/api/users/logout', { withCredentials: true });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     setCurrentUser(null);
-    delete axios.defaults.headers.common['Authorization'];
   };
 
   useEffect(() => {
-    // Fetch current user data
+    // Fetch current user data - cookie is sent automatically with credentials
     const fetchCurrentUser = async () => {
       try {
-        const res = await axios.get('/api/users/me');
+        const res = await axios.get('/api/users/me', { withCredentials: true });
         setCurrentUser(res.data.data.user);
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching user:', err);
-        logout(); // logout is now defined
+        // User is not authenticated - this is expected if not logged in
+        if (err.response?.status !== 401) {
+          console.error('Error fetching user:', err);
+        }
+        setCurrentUser(null);
         setLoading(false);
       }
     };
 
-    // Set token in axios defaults
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      fetchCurrentUser();
-    } else {
-      setLoading(false);
-    }
-  }, [token]);
+    fetchCurrentUser();
+  }, []);
 
-  // Login function
+  // Login function - server sets HTTP-only cookie automatically
   const login = async (email, password) => {
     try {
-      const res = await axios.post('/api/users/login', { email, password });
-      const { token, data } = res.data;
-      
-      // Save token to local storage
-      localStorage.setItem('token', token);
-      setToken(token);
+      const res = await axios.post(
+        '/api/users/login',
+        { email, password },
+        { withCredentials: true }
+      );
+      const { data } = res.data;
       setCurrentUser(data.user);
-      
       return data.user;
     } catch (err) {
       console.error('Login error:', err);
@@ -59,17 +56,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Register function
+  // Register function - server sets HTTP-only cookie automatically
   const register = async (userData) => {
     try {
-      const res = await axios.post('/api/users/signup', userData);
-      const { token, data } = res.data;
-      
-      // Save token to local storage
-      localStorage.setItem('token', token);
-      setToken(token);
+      const res = await axios.post(
+        '/api/users/signup',
+        userData,
+        { withCredentials: true }
+      );
+      const { data } = res.data;
       setCurrentUser(data.user);
-      
       return data.user;
     } catch (err) {
       console.error('Registration error:', err);
@@ -82,11 +78,14 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(userData);
   };
 
-  // Update token (for password changes that return new token)
-  const updateToken = (newToken) => {
-    localStorage.setItem('token', newToken);
-    setToken(newToken);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+  // Refresh user data from server (for password changes, etc.)
+  const refreshUser = async () => {
+    try {
+      const res = await axios.get('/api/users/me', { withCredentials: true });
+      setCurrentUser(res.data.data.user);
+    } catch (err) {
+      console.error('Error refreshing user:', err);
+    }
   };
 
   const value = {
@@ -96,8 +95,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     register,
     updateUser,
-    updateToken,
-    isAuthenticated: !!token
+    refreshUser,
+    isAuthenticated: !!currentUser
   };
 
   return (

@@ -163,7 +163,7 @@ exports.getSignedUrl = catchAsync(async (req, res, next) => {
   
   // Get a signed URL with error handling
   try {
-    const signedUrl = s3Service.getSignedUrl(key, 3600); // 1 hour expiration
+    const signedUrl = await s3Service.getSignedUrl(key, 3600); // 1 hour expiration
     
     res.status(200).json({
       status: 'success',
@@ -246,7 +246,7 @@ exports.shareMediaViaEmail = catchAsync(async (req, res, next) => {
   // Get a signed URL with longer expiration (24 hours) and error handling
   let signedUrl;
   try {
-    signedUrl = s3Service.getSignedUrl(key, 86400);
+    signedUrl = await s3Service.getSignedUrl(key, 86400);
   } catch (err) {
     console.error('Error generating signed URL for sharing:', err);
     return next(new AppError('Failed to generate signed URL for sharing', 500));

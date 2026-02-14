@@ -1,26 +1,39 @@
 const express = require('express');
 const technicianController = require('../controllers/technicianController');
-const authController = require('../controllers/authController'); // Assuming you have auth middleware
+const authController = require('../controllers/authController');
 
 const router = express.Router();
 
-// Protect all routes after this middleware (if needed, adjust as per your auth strategy)
-// router.use(authController.protect); 
-// router.use(authController.restrictTo('admin', 'manager')); // Example: Restrict to certain roles
+// Protect all routes - require authentication
+router.use(authController.protect);
 
-router
-  .route('/')
-  .get(technicianController.getAllTechnicians)
-  .post(technicianController.createTechnician);
+// Read operations - available to all authenticated users
+router.get('/', technicianController.getAllTechnicians);
+router.get('/:id', technicianController.getTechnicianById);
 
-router
-  .route('/:id')
-  .get(technicianController.getTechnicianById)
-  .patch(technicianController.updateTechnician) // Using PATCH for partial updates, PUT for full replacement
-  .put(technicianController.updateTechnician)   // Alias for PATCH
-  .delete(technicianController.deleteTechnician); // Soft delete
+// Write operations - restricted to admin and manager roles
+router.post(
+  '/',
+  authController.restrictTo('admin', 'manager'),
+  technicianController.createTechnician
+);
 
-// Example for a permanent delete route (if you decide to implement it)
-// router.delete('/:id/permanent', technicianController.permanentlyDeleteTechnician);
+router.patch(
+  '/:id',
+  authController.restrictTo('admin', 'manager'),
+  technicianController.updateTechnician
+);
+
+router.put(
+  '/:id',
+  authController.restrictTo('admin', 'manager'),
+  technicianController.updateTechnician
+);
+
+router.delete(
+  '/:id',
+  authController.restrictTo('admin', 'manager'),
+  technicianController.deleteTechnician
+);
 
 module.exports = router;

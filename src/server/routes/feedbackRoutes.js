@@ -1,6 +1,10 @@
 const express = require('express');
 const feedbackController = require('../controllers/feedbackController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 router
   .route('/')

@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const authController = require('../controllers/authController');
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // VIN decode route - proxy to NHTSA API
 router.get('/decode/:vin', async (req, res) => {

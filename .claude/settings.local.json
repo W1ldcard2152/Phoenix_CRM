@@ -47,7 +47,15 @@
       "Read(/C:\\Users\\W1ldcard\\Documents\\Programming\\Phoenix_CRM\\src\\server\\models/**)",
       "Bash(dir:*)",
       "WebFetch(domain:platform.openai.com)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(for f in src/server/routes/*.js)",
+      "Bash(do node -c \"$f\")",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(npm audit:*)",
+      "Bash(npm uninstall:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

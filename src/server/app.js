@@ -49,7 +49,7 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Limit requests from same IP
+// General API rate limiter
 const limiter = rateLimit({
   max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   windowMs: process.env.NODE_ENV === 'production' ? 60 * 60 * 1000 : 15 * 60 * 1000,
@@ -58,6 +58,19 @@ const limiter = rateLimit({
   legacyHeaders: false
 });
 app.use('/api', limiter);
+
+// Strict rate limiter for authentication endpoints (prevent brute force attacks)
+const authLimiter = rateLimit({
+  max: 5, // 5 attempts
+  windowMs: 15 * 60 * 1000, // per 15 minutes
+  message: 'Too many login attempts. Please try again after 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true // Don't count successful logins against the limit
+});
+app.use('/api/users/login', authLimiter);
+app.use('/api/users/signup', authLimiter);
+app.use('/api/users/forgotPassword', authLimiter);
 
 // Body parser, reading data from body into req.body
 app.use(express.json({ limit: '10mb' })); // Increased for image uploads

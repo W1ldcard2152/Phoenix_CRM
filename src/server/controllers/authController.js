@@ -13,30 +13,30 @@ const signToken = id => {
   });
 };
 
-// Send JWT token in response
+// Send JWT token in HTTP-only cookie (secure by default)
 const createSendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
-  
-  // Set cookie options
+
+  // Set cookie options - HTTP-only prevents XSS attacks from accessing the token
   const cookieOptions = {
     expires: new Date(
       Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000
     ),
-    httpOnly: true // Cookie cannot be accessed or modified in any way by the browser
+    httpOnly: true, // Cookie cannot be accessed by JavaScript - prevents XSS token theft
+    sameSite: 'strict', // Prevents CSRF attacks
+    secure: process.env.NODE_ENV === 'production' // Only send over HTTPS in production
   };
-  
-  // Use secure cookies in production
-  if (process.env.NODE_ENV === 'production') cookieOptions.secure = true;
-  
+
   // Remove password from output
   user.password = undefined;
-  
+
   // Send cookie with JWT
   res.cookie('jwt', token, cookieOptions);
-  
+
+  // Return user data but NOT the token in the response body
+  // The token is now only accessible via HTTP-only cookie
   res.status(statusCode).json({
     status: 'success',
-    token,
     data: {
       user
     }
@@ -84,13 +84,15 @@ exports.login = catchAsync(async (req, res, next) => {
   createSendToken(user, 200, res);
 });
 
-// Log out user
+// Log out user - clear the HTTP-only cookie
 exports.logout = (req, res) => {
   res.cookie('jwt', 'loggedout', {
     expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production'
   });
-  
+
   res.status(200).json({ status: 'success' });
 };
 

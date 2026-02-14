@@ -1,6 +1,10 @@
 const express = require('express');
 const customerController = require('../controllers/customerController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Search customers
 router.get('/search', customerController.searchCustomers);
@@ -21,6 +25,9 @@ router
   .route('/:id')
   .get(customerController.getCustomer)
   .patch(customerController.updateCustomer)
-  .delete(customerController.deleteCustomer);
+  .delete(
+    authController.restrictTo('admin', 'manager'),
+    customerController.deleteCustomer
+  );
 
 module.exports = router;

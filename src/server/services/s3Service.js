@@ -1,15 +1,23 @@
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl: getPresignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
 
-// Configure AWS SDK
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
-});
-
-const s3 = new AWS.S3();
+// Validate required environment variables
+const region = process.env.AWS_REGION;
 const bucketName = process.env.S3_BUCKET_NAME;
+
+if (!region || !/^[a-z]{2}-[a-z]+-\d{1}$/.test(region)) {
+  console.warn('AWS_REGION is not set or invalid. S3 operations will be disabled.');
+}
+
+// Configure AWS SDK v3 client
+const s3Client = region ? new S3Client({
+  region: region,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+}) : null;
 
 /**
  * Upload a file to S3
@@ -20,27 +28,30 @@ const bucketName = process.env.S3_BUCKET_NAME;
  * @returns {Promise<Object>} Upload result with file URL
  */
 exports.uploadFile = async (fileBuffer, fileName, mimeType, acl = 'private') => {
-  if (!s3) {
+  if (!s3Client) {
     console.warn('S3 service is not configured. File upload skipped.');
-    // Return a mock response or throw an error, depending on desired behavior
     return { fileUrl: null, key: null };
   }
+
   // Generate a unique file name to prevent conflicts
   const uniqueFileName = `${uuidv4()}-${fileName}`;
 
-  const params = {
+  const command = new PutObjectCommand({
     Bucket: bucketName,
     Key: uniqueFileName,
     Body: fileBuffer,
     ContentType: mimeType,
-    ACL: acl // Default 'private', can be set to 'public-read' for publicly accessible files
-  };
-  
-  const result = await s3.upload(params).promise();
-  
+    ACL: acl
+  });
+
+  await s3Client.send(command);
+
+  // Construct the file URL
+  const fileUrl = `https://${bucketName}.s3.${region}.amazonaws.com/${uniqueFileName}`;
+
   return {
-    fileUrl: result.Location,
-    key: result.Key
+    fileUrl: fileUrl,
+    key: uniqueFileName
   };
 };
 
@@ -48,28 +59,28 @@ exports.uploadFile = async (fileBuffer, fileName, mimeType, acl = 'private') => 
  * Generate a signed URL for temporary access to a private file
  * @param {String} key - S3 object key
  * @param {Number} expiresIn - URL expiration time in seconds (default: 3600 seconds = 1 hour)
- * @returns {String} Signed URL
+ * @returns {Promise<String>} Signed URL
  */
-exports.getSignedUrl = (key, expiresIn = 3600) => {
-  if (!s3) {
+exports.getSignedUrl = async (key, expiresIn = 3600) => {
+  if (!s3Client) {
     console.warn('S3 service is not configured. Cannot generate signed URL.');
-    return null; 
+    return null;
   }
+
   try {
     if (!key) {
       throw new Error('S3 key is required to generate a signed URL');
     }
-    
+
     // Decode the key if it's URL encoded (for backwards compatibility)
     const decodedKey = decodeURIComponent(key);
-    
-    const params = {
+
+    const command = new GetObjectCommand({
       Bucket: bucketName,
-      Key: decodedKey,
-      Expires: expiresIn
-    };
-    
-    return s3.getSignedUrl('getObject', params);
+      Key: decodedKey
+    });
+
+    return await getPresignedUrl(s3Client, command, { expiresIn });
   } catch (err) {
     console.error('Error generating signed URL:', err);
     throw new Error(`Failed to generate signed URL: ${err.message}`);
@@ -82,20 +93,20 @@ exports.getSignedUrl = (key, expiresIn = 3600) => {
  * @returns {Promise} Delete result
  */
 exports.deleteFile = async (key) => {
-  if (!s3) {
+  if (!s3Client) {
     console.warn('S3 service is not configured. File deletion skipped.');
-    return Promise.resolve(); 
+    return Promise.resolve();
   }
-  
+
   // Decode the key if it's URL encoded (for backwards compatibility)
   const decodedKey = decodeURIComponent(key);
-  
-  const params = {
+
+  const command = new DeleteObjectCommand({
     Bucket: bucketName,
     Key: decodedKey
-  };
-  
-  return s3.deleteObject(params).promise();
+  });
+
+  return s3Client.send(command);
 };
 
 /**
@@ -105,15 +116,16 @@ exports.deleteFile = async (key) => {
  * @returns {Promise} Copy result
  */
 exports.copyFile = async (sourceKey, destinationKey) => {
-  if (!s3) {
+  if (!s3Client) {
     console.warn('S3 service is not configured. File copy skipped.');
     return Promise.resolve();
   }
-  const params = {
+
+  const command = new CopyObjectCommand({
     Bucket: bucketName,
     CopySource: `${bucketName}/${sourceKey}`,
     Key: destinationKey
-  };
-  
-  return s3.copyObject(params).promise();
+  });
+
+  return s3Client.send(command);
 };

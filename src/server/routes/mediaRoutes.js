@@ -1,6 +1,10 @@
 const express = require('express');
 const mediaController = require('../controllers/mediaController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Upload media
 router.post(

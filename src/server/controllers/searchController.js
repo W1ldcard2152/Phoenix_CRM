@@ -4,6 +4,15 @@ const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
+/**
+ * Escape special regex characters to prevent ReDoS and NoSQL injection attacks
+ * @param {string} str - The string to escape
+ * @returns {string} - The escaped string safe for use in regex
+ */
+const escapeRegex = (str) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 const globalSearch = catchAsync(async (req, res, next) => {
   const { q: searchQuery } = req.query;
 
@@ -16,7 +25,10 @@ const globalSearch = catchAsync(async (req, res, next) => {
     });
   }
 
-  const query = searchQuery.trim();
+  // Limit query length to prevent ReDoS attacks
+  const rawQuery = searchQuery.trim().slice(0, 100);
+  // Escape regex special characters to prevent injection
+  const query = escapeRegex(rawQuery);
   const results = [];
 
   try {
@@ -46,12 +58,13 @@ const globalSearch = catchAsync(async (req, res, next) => {
 
     // Search vehicles
     // For multi-word queries (e.g., "GMC Acadia"), try to match across make/model fields
-    const queryParts = query.split(/\s+/).filter(part => part.length > 0);
+    // Split on whitespace and escape each part for safe regex use
+    const queryParts = rawQuery.split(/\s+/).filter(part => part.length > 0).map(escapeRegex);
 
     let vehicleSearchConditions = [
       { make: { $regex: query, $options: 'i' } },
       { model: { $regex: query, $options: 'i' } },
-      { year: isNaN(parseInt(query)) ? null : parseInt(query) },
+      { year: isNaN(parseInt(rawQuery)) ? null : parseInt(rawQuery) },
       { vin: { $regex: query, $options: 'i' } },
       { licensePlate: { $regex: query, $options: 'i' } },
       { licensePlateState: { $regex: query, $options: 'i' } },
@@ -165,9 +178,11 @@ const globalSearch = catchAsync(async (req, res, next) => {
 
     // If query looks like a phone number, prioritize phone matches
     const phoneRegex = /[\d\-\(\)\s\+]+/;
-    if (phoneRegex.test(query) && query.length > 6) {
+    if (phoneRegex.test(rawQuery) && rawQuery.length > 6) {
+      // Extract only digits for phone search (safe, no special chars)
+      const phoneDigits = rawQuery.replace(/\D/g, '');
       const phoneMatches = await Customer.find({
-        phone: { $regex: query.replace(/\D/g, ''), $options: 'i' }
+        phone: { $regex: phoneDigits, $options: 'i' }
       }).limit(5);
 
       // Move phone matches to front
@@ -186,10 +201,10 @@ const globalSearch = catchAsync(async (req, res, next) => {
       if (typeOrder[a.type] !== typeOrder[b.type]) {
         return typeOrder[a.type] - typeOrder[b.type];
       }
-      
-      // Within same type, prioritize exact matches
-      const aExact = a.title.toLowerCase().includes(query.toLowerCase()) ? 1 : 0;
-      const bExact = b.title.toLowerCase().includes(query.toLowerCase()) ? 1 : 0;
+
+      // Within same type, prioritize exact matches (use rawQuery for comparison)
+      const aExact = a.title.toLowerCase().includes(rawQuery.toLowerCase()) ? 1 : 0;
+      const bExact = b.title.toLowerCase().includes(rawQuery.toLowerCase()) ? 1 : 0;
       return bExact - aExact;
     });
 

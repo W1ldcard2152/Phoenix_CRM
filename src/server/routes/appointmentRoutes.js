@@ -1,6 +1,10 @@
 const express = require('express');
 const appointmentController = require('../controllers/appointmentController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Get appointments for today
 router.get('/today', appointmentController.getTodayAppointments);

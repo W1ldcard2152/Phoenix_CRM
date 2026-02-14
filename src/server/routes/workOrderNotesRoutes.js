@@ -7,6 +7,10 @@ const {
   deleteWorkOrderNote,
   getCustomerFacingNotes
 } = require('../controllers/workOrderNotesController');
+const authController = require('../controllers/authController');
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Routes for work order notes
 // These will be mounted under /api/workorders/:workOrderId/notes

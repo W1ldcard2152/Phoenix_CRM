@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const customerInteractionController = require('../controllers/customerInteractionController');
+const authController = require('../controllers/authController');
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Batch endpoint for getting stats for multiple work orders
 router.post('/batch-stats', customerInteractionController.getBatchInteractionStats);

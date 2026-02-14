@@ -1,7 +1,11 @@
 const express = require('express');
 const workOrderController = require('../controllers/workOrderController');
 const workOrderNotesRoutes = require('./workOrderNotesRoutes');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Search work orders
 router.get('/search', workOrderController.searchWorkOrders);

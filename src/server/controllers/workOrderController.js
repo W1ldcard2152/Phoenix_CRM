@@ -1079,7 +1079,7 @@ exports.getReceiptSignedUrl = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const signedUrl = s3Service.getSignedUrl(key, 3600); // 1 hour expiration
+    const signedUrl = await s3Service.getSignedUrl(key, 3600); // 1 hour expiration
 
     res.status(200).json({
       status: 'success',

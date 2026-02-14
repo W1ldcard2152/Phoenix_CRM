@@ -1,6 +1,10 @@
 const express = require('express');
 const invoiceController = require('../controllers/invoiceController');
+const authController = require('../controllers/authController');
 const router = express.Router();
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Get invoice count (for generating invoice numbers)
 router.get('/count', invoiceController.getInvoicesCount);

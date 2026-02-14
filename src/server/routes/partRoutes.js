@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const partController = require('../controllers/partController');
+const authController = require('../controllers/authController');
+
+// Protect all routes - require authentication
+router.use(authController.protect);
 
 // Validation middleware
 const partValidation = [
