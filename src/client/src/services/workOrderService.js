@@ -67,10 +67,10 @@ const WorkOrderService = {
     }
   },
 
-  // Update work order status
-  updateStatus: async (id, status) => {
+  // Update work order status (with optional extra data like holdReason)
+  updateStatus: async (id, status, extraData = {}) => {
     try {
-      const response = await API.patch(`/workorders/${id}/status`, { status });
+      const response = await API.patch(`/workorders/${id}/status`, { status, ...extraData });
       return response.data;
     } catch (error) {
       console.error(`Error updating status for work order with ID ${id}:`, error);

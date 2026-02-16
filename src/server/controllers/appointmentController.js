@@ -278,8 +278,8 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     if (appointment.workOrder) {
       await WorkOrder.findByIdAndUpdate(
         appointment.workOrder,
-        { status: 'In Progress' },
-        { new: true }
+        { status: 'Appointment Complete' },
+        { new: true, runValidators: true }
       );
     }
   }

@@ -57,7 +57,9 @@
       "Bash(npm audit:*)",
       "Bash(npm uninstall:*)",
       "Bash(npx vite build:*)",
-      "Bash(npx craco build:*)"
+      "Bash(npx craco build:*)",
+      "Bash(ls:*)",
+      "Bash(npx react-scripts build)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

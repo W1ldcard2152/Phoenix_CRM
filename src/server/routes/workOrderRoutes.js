@@ -7,6 +7,14 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Quote-specific routes
+router.get('/quotes', workOrderController.getAllQuotes);
+router.post('/quotes', workOrderController.createQuote);
+router.post('/:id/convert-to-work-order', workOrderController.convertQuoteToWorkOrder);
+router.post('/:id/generate-quote', workOrderController.generateQuoteFromWorkOrder);
+router.post('/:id/archive-quote', workOrderController.archiveQuote);
+router.post('/:id/unarchive-quote', workOrderController.unarchiveQuote);
+
 // Search work orders
 router.get('/search', workOrderController.searchWorkOrders);
 

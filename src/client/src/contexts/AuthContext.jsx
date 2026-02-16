@@ -90,6 +90,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     currentUser,
+    user: currentUser, // Alias for components that use 'user'
     loading,
     login,
     logout,

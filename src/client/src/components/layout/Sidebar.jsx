@@ -63,22 +63,33 @@ const Sidebar = () => {
     return null;
   }
 
-  const primaryNavigationItems = [
-    { name: 'Dashboard', path: '/', icon: 'fas fa-tachometer-alt' },
-    { name: 'Customers', path: '/customers', icon: 'fas fa-users' },
-    { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car' },
-    { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list' },
-    { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench' },
-    { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt' },
-    { name: 'Parts', path: '/parts', icon: 'fas fa-cogs' },
-    { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar' },
+  const userRole = user?.role;
+
+  // Role-based navigation filtering
+  // Tiers: admin > management > service-writer > technician
+  const allPrimaryItems = [
+    { name: 'Dashboard', path: '/', icon: 'fas fa-tachometer-alt', roles: null },
+    { name: 'Customers', path: '/customers', icon: 'fas fa-users', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list', roles: null },
+    { name: 'Quotes', path: '/quotes', icon: 'fas fa-file-alt', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
+    { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Parts', path: '/parts', icon: 'fas fa-cogs', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];
 
-  const secondaryNavigationItems = [
-    { name: 'Technicians', path: '/technicians', icon: 'fas fa-hard-hat' },
-    { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt' },
-    { name: 'Settings', path: '/settings', icon: 'fas fa-sliders-h' },
+  const allSecondaryItems = [
+    { name: 'Technicians', path: '/technicians', icon: 'fas fa-hard-hat', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt', roles: ['admin', 'management'] },
+    { name: 'Settings', path: '/settings', icon: 'fas fa-sliders-h', roles: null },
   ];
+
+  const filterByRole = (items) =>
+    items.filter(item => !item.roles || !userRole || item.roles.includes(userRole));
+
+  const primaryNavigationItems = filterByRole(allPrimaryItems);
+  const secondaryNavigationItems = filterByRole(allSecondaryItems);
 
   // Get user initial - using a placeholder if user or user.name is not available
   const userInitial = user && user.name ? user.name.charAt(0).toUpperCase() : (user && user.email ? user.email.charAt(0).toUpperCase() : 'U');
@@ -121,6 +132,22 @@ const Sidebar = () => {
 
               {/* Navigation Content */}
               <div className="flex flex-col h-full pt-4">
+                {/* Quick Entry CTA */}
+                <div className="px-4 mb-3">
+                  <Link
+                    to="/intake"
+                    className={`flex items-center py-3 px-4 rounded-lg font-semibold transition-colors duration-150 ${
+                      location.pathname === '/intake'
+                        ? 'bg-primary-500 text-white shadow-md'
+                        : 'bg-primary-500/20 text-primary-200 border border-primary-400/30 hover:bg-primary-500/30'
+                    }`}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <i className="fas fa-plus-circle mr-3 w-5 text-center text-lg"></i>
+                    <span>Quick Entry</span>
+                  </Link>
+                </div>
+
                 {/* Primary Navigation */}
                 <nav className="flex-grow">
                   <ul className="mb-6">
@@ -167,9 +194,13 @@ const Sidebar = () => {
                 {/* User Section */}
                 <div className="p-6 border-t border-primary-700 mt-auto">
                   <div className="flex items-center cursor-pointer group p-2 rounded hover:bg-primary-700/50">
-                    <div className="flex items-center justify-center h-10 w-10 mr-3 bg-accent-500 rounded-full text-white font-semibold group-hover:bg-accent-600 transition-colors duration-150">
-                      {userInitial}
-                    </div>
+                    {user?.avatar ? (
+                      <img src={user.avatar} alt="" className="h-10 w-10 mr-3 rounded-full" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="flex items-center justify-center h-10 w-10 mr-3 bg-accent-500 rounded-full text-white font-semibold group-hover:bg-accent-600 transition-colors duration-150">
+                        {userInitial}
+                      </div>
+                    )}
                     <span className="font-medium group-hover:text-accent-300 truncate">{userName}</span>
                   </div>
                 </div>
@@ -201,6 +232,22 @@ const Sidebar = () => {
         >
           <i className={`fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`}></i>
         </button>
+      </div>
+
+      {/* Quick Entry CTA - Desktop */}
+      <div className={`relative z-10 ${collapsed ? 'px-2' : 'px-3'} pt-3 mb-2`}>
+        <Link
+          to="/intake"
+          className={`flex items-center ${collapsed ? 'justify-center' : ''} py-2.5 px-3 rounded-lg font-semibold transition-colors duration-150 ${
+            location.pathname === '/intake'
+              ? 'bg-primary-500 text-white shadow-md'
+              : 'bg-primary-500/20 text-primary-200 border border-primary-400/30 hover:bg-primary-500/30'
+          }`}
+          title={collapsed ? 'Quick Entry' : undefined}
+        >
+          <i className={`fas fa-plus-circle ${collapsed ? 'text-lg' : 'mr-3 w-5 text-center'}`}></i>
+          {!collapsed && <span className="text-sm">Quick Entry</span>}
+        </Link>
       </div>
 
       {/* Desktop Navigation */}
@@ -255,9 +302,13 @@ const Sidebar = () => {
       {/* Desktop User Section */}
       <div className="p-3 border-t border-primary-700 mt-auto relative z-10">
         <div className={`flex items-center ${collapsed ? 'justify-center' : ''} cursor-pointer group p-1 rounded hover:bg-primary-700/50`}>
-          <div className={`flex items-center justify-center h-8 w-8 ${collapsed ? '' : 'mr-2'} bg-accent-500 rounded-full text-white font-semibold text-sm group-hover:bg-accent-600 transition-colors duration-150`}>
-            {userInitial}
-          </div>
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" className={`h-8 w-8 ${collapsed ? '' : 'mr-2'} rounded-full`} referrerPolicy="no-referrer" />
+          ) : (
+            <div className={`flex items-center justify-center h-8 w-8 ${collapsed ? '' : 'mr-2'} bg-accent-500 rounded-full text-white font-semibold text-sm group-hover:bg-accent-600 transition-colors duration-150`}>
+              {userInitial}
+            </div>
+          )}
           {!collapsed && <span className="text-sm font-medium group-hover:text-accent-300 truncate">{userName}</span>}
         </div>
       </div>

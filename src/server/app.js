@@ -15,10 +15,13 @@ const mongoSanitize = require('express-mongo-sanitize');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 
+const passport = require('./config/passport');
+
 const AppError = require('./utils/appError');
 const errorHandler = require('./middleware/errorHandler');
 
 // Import routes
+const oauthRoutes = require('./routes/oauthRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const vehicleRoutes = require('./routes/vehicleRoutes');
 const workOrderRoutes = require('./routes/workOrderRoutes');
@@ -80,6 +83,9 @@ app.use(cookieParser());
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
 
+// Passport initialization (no sessions — using JWT)
+app.use(passport.initialize());
+
 
 // CORS configuration
 app.use(cors({
@@ -91,7 +97,9 @@ app.use(cors({
 app.use(compression());
 
 // API routes
-// Removed duplicate helmet middleware call
+const adminRoutes = require('./routes/adminRoutes');
+app.use('/api/auth', oauthRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/users', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/vehicles', vehicleRoutes);

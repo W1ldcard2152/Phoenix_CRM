@@ -9,6 +9,8 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import MediaService from '../../services/mediaService';
 import PartsSelector from '../../components/parts/PartsSelector';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
+import OnHoldReasonModal from '../../components/workorder/OnHoldReasonModal';
+import QuoteService from '../../services/quoteService';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
@@ -43,6 +45,8 @@ const WorkOrderDetail = () => {
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [splitModalOpen, setSplitModalOpen] = useState(false);
+  const [onHoldModalOpen, setOnHoldModalOpen] = useState(false);
+  const [generatingQuote, setGeneratingQuote] = useState(false);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptText, setReceiptText] = useState('');
@@ -126,6 +130,7 @@ const WorkOrderDetail = () => {
       const preOrderStatuses = [
         'Work Order Created',
         'Appointment Scheduled',
+        'Appointment Complete',
         'Inspection In Progress',
         'Inspection/Diag Complete'
       ];
@@ -417,6 +422,14 @@ const WorkOrderDetail = () => {
     const newStatus = e.target.value;
     if (!newStatus || newStatus === workOrder.status) return;
 
+    // Special handling for "On Hold" - open reason modal
+    if (newStatus === 'On Hold') {
+      setOnHoldModalOpen(true);
+      // Reset the dropdown to current status while modal is open
+      e.target.value = workOrder.status;
+      return;
+    }
+
     // Special handling for "Parts Ordered" status - mark all parts as ordered
     if (newStatus === 'Parts Ordered') {
       const partsCount = workOrder.parts?.length || 0;
@@ -515,7 +528,34 @@ const WorkOrderDetail = () => {
     }
   };
 
-  // handleTechnicianChange function removed as technician is view-only here.
+  // Handle On Hold confirmation from modal
+  const handleOnHoldConfirm = async ({ holdReason, holdReasonOther }) => {
+    try {
+      setStatusUpdateLoading(true);
+      const response = await WorkOrderService.updateStatus(id, 'On Hold', { holdReason, holdReasonOther });
+      setWorkOrder(response.data.workOrder);
+      setOnHoldModalOpen(false);
+      setStatusUpdateLoading(false);
+    } catch (err) {
+      console.error('Error placing work order on hold:', err);
+      setError('Failed to update status. Please try again later.');
+      setStatusUpdateLoading(false);
+    }
+  };
+
+  // Generate a quote from this work order
+  const handleGenerateQuote = async () => {
+    if (!window.confirm('Generate a quote from this work order? All parts and labor will be copied to a new quote.')) return;
+    try {
+      setGeneratingQuote(true);
+      const response = await QuoteService.generateFromWorkOrder(id);
+      navigate(`/quotes/${response.data.quote._id}`);
+    } catch (err) {
+      console.error('Error generating quote:', err);
+      setError('Failed to generate quote. Please try again.');
+      setGeneratingQuote(false);
+    }
+  };
 
   const handleDeleteWorkOrder = async () => {
     try {
@@ -925,6 +965,7 @@ const WorkOrderDetail = () => {
   const statusOptions = [
     { value: 'Work Order Created', label: 'Work Order Created' },
     { value: 'Appointment Scheduled', label: 'Appointment Scheduled' },
+    { value: 'Appointment Complete', label: 'Appointment Complete' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
     { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
     { value: 'Parts Ordered', label: 'Parts Ordered' },
@@ -1018,6 +1059,17 @@ const WorkOrderDetail = () => {
             disabled={(!workOrder.parts || workOrder.parts.length === 0) && (!workOrder.labor || workOrder.labor.length === 0)}
           >
             Split Work Order
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleGenerateQuote}
+            disabled={generatingQuote}
+          >
+            {generatingQuote ? (
+              <><i className="fas fa-spinner fa-spin mr-1"></i>Generating...</>
+            ) : (
+              <><i className="fas fa-file-alt mr-1"></i>Generate Quote</>
+            )}
           </Button>
           <Button
             variant="danger"
@@ -1295,6 +1347,12 @@ const WorkOrderDetail = () => {
                   onChange={handleStatusChange}
                   disabled={statusUpdateLoading}
                 />
+                {workOrder.status === 'On Hold' && workOrder.holdReason && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    <i className="fas fa-info-circle mr-1"></i>
+                    Reason: {workOrder.holdReason === 'Other' ? workOrder.holdReasonOther : workOrder.holdReason}
+                  </p>
+                )}
               </div>
             </div>
             {/* Appointments Section */}
@@ -2423,6 +2481,14 @@ const WorkOrderDetail = () => {
         onClose={() => setSplitModalOpen(false)}
         workOrder={workOrder}
         onSplit={handleSplitWorkOrder}
+      />
+
+      {/* On Hold Reason Modal */}
+      <OnHoldReasonModal
+        isOpen={onHoldModalOpen}
+        onClose={() => setOnHoldModalOpen(false)}
+        onConfirm={handleOnHoldConfirm}
+        loading={statusUpdateLoading}
       />
 
       {/* Inspection Checklist Modal */}

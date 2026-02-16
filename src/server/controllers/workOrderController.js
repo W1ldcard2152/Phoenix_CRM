@@ -16,11 +16,14 @@ const cacheService = require('../services/cacheService');
 
 // Status aliases for backward compatibility - defined once at module level
 const STATUS_ALIASES = {
+  'Quote': ['Quote'],
   'Work Order Created': ['Work Order Created', 'Created'],
   'Appointment Scheduled': ['Appointment Scheduled', 'Scheduled', 'Inspection/Diag Scheduled', 'Repair Scheduled'],
+  'Appointment Complete': ['Appointment Complete'],
   'Inspection/Diag Complete': ['Inspection/Diag Complete', 'Inspected/Parts Ordered'],
   'Repair Complete - Awaiting Payment': ['Repair Complete - Awaiting Payment', 'Completed - Awaiting Payment'],
-  'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced']
+  'Repair Complete - Invoiced': ['Repair Complete - Invoiced', 'Invoiced'],
+  'Quote - Archived': ['Quote - Archived']
 };
 
 // Get all work orders
@@ -50,6 +53,20 @@ exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   } else if (excludeStatuses) {
     const statusesToExclude = excludeStatuses.split(',').map(s => s.trim());
     query.status = { $nin: statusesToExclude };
+  }
+
+  // Always exclude "Quote" status from general work order queries
+  // unless the caller explicitly requested status=Quote
+  if (!status || status !== 'Quote') {
+    if (query.status && query.status.$nin) {
+      if (!query.status.$nin.includes('Quote')) {
+        query.status.$nin.push('Quote');
+      }
+    } else if (query.status && query.status.$in) {
+      query.status.$in = query.status.$in.filter(s => s !== 'Quote');
+    } else if (!query.status) {
+      query.status = { $nin: ['Quote'] };
+    }
   }
 
   if (customer) query.customer = customer;
@@ -109,6 +126,11 @@ exports.getWorkOrder = catchAsync(async (req, res, next) => {
 
 // Create a new work order
 exports.createWorkOrder = catchAsync(async (req, res, next) => {
+  // Prevent creating a quote through the work order endpoint
+  if (req.body.status === 'Quote') {
+    return next(new AppError('Use POST /api/workorders/quotes to create quotes', 400));
+  }
+
   // Verify that customer and vehicle exist and are related
   const vehicle = await validateEntityExists(Vehicle, req.body.vehicle, 'Vehicle');
   const customer = await validateEntityExists(Customer, req.body.customer, 'Customer');
@@ -387,7 +409,7 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     const currentStatus = workOrderData.status || currentWO?.status;
 
     // If all parts are ordered, auto-set status to "Parts Ordered"
-    const preOrderStatuses = ['Work Order Created', 'Appointment Scheduled', 'Inspection In Progress', 'Inspection/Diag Complete'];
+    const preOrderStatuses = ['Work Order Created', 'Appointment Scheduled', 'Appointment Complete', 'Inspection In Progress', 'Inspection/Diag Complete'];
     const allPartsOrdered = workOrderData.parts.every(part => part.ordered === true);
     if (allPartsOrdered && preOrderStatuses.includes(currentStatus)) {
       workOrderData.status = 'Parts Ordered';
@@ -502,13 +524,31 @@ exports.deleteWorkOrder = catchAsync(async (req, res, next) => {
 
 // Update work order status
 exports.updateStatus = catchAsync(async (req, res, next) => {
-  const { status } = req.body;
+  const { status, holdReason, holdReasonOther } = req.body;
 
   if (!status) {
     return next(new AppError('Please provide a status', 400));
   }
 
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+
+  // Handle On Hold reason codes
+  if (status === 'On Hold') {
+    if (!holdReason) {
+      return next(new AppError('A hold reason is required when placing a work order on hold', 400));
+    }
+    if (holdReason === 'Other' && !holdReasonOther) {
+      return next(new AppError('Please provide a reason when selecting "Other"', 400));
+    }
+    workOrder.holdReason = holdReason;
+    workOrder.holdReasonOther = holdReason === 'Other' ? holdReasonOther : null;
+  } else {
+    // Clear hold reason when leaving On Hold status
+    if (workOrder.status === 'On Hold') {
+      workOrder.holdReason = null;
+      workOrder.holdReasonOther = null;
+    }
+  }
 
   workOrder.status = status;
 
@@ -531,7 +571,7 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
     workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
   }
 
-  await workOrder.save();
+  await workOrder.save({ validateBeforeSave: false });
 
   // Get populated work order
   const populatedWorkOrder = await applyPopulation(
@@ -701,6 +741,7 @@ exports.searchWorkOrders = catchAsync(async (req, res, next) => {
 
   const workOrders = await applyPopulation(
     WorkOrder.find({
+      status: { $ne: 'Quote' },
       $or: [
         { serviceRequested: { $regex: query, $options: 'i' } },
         { 'services.description': { $regex: query, $options: 'i' } },
@@ -758,7 +799,7 @@ exports.getWorkOrdersAwaitingScheduling = catchAsync(async (req, res, next) => {
 // Get all work orders that need scheduling (for appointments page)
 exports.getWorkOrdersNeedingScheduling = catchAsync(async (req, res, next) => {
   // Get all work orders with statuses that typically need scheduling
-  const needsSchedulingStatuses = ['Created', 'Inspected/Parts Ordered', 'Parts Received'];
+  const needsSchedulingStatuses = ['Created', 'Appointment Complete', 'Inspected/Parts Ordered', 'Parts Received'];
   const workOrders = await applyPopulation(
     WorkOrder.find({ status: { $in: needsSchedulingStatuses } }),
     'workOrder',
@@ -904,9 +945,16 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
     return res.status(200).json(cached);
   }
 
+  // Service writer action statuses
+  const swcStatuses = [
+    'Appointment Complete',
+    'Inspection/Diag Complete',
+    'Parts Received',
+    'Repair Complete - Awaiting Payment'
+  ];
+
   // Get only today and future appointments (not past)
   const now = new Date();
-  // Set to start of today to include appointments scheduled for today
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   const appointments = await Appointment.find({
@@ -934,7 +982,6 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
   const addAppointmentInfo = (workOrders) => {
     return workOrders.map(wo => {
       const woAppointments = workOrderAppointments.get(wo._id.toString()) || [];
-      // Get the next upcoming appointment (sorted by startTime ascending)
       const nextAppointment = woAppointments.sort((a, b) =>
         new Date(a.startTime) - new Date(b.startTime)
       )[0];
@@ -947,49 +994,28 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
     });
   };
 
-  // 1. Inspection/Diag Complete - Parts need to be ordered and/or customer needs to be called
-  const diagCompleteRaw = await applyPopulation(
-    WorkOrder.find({ status: 'Inspection/Diag Complete' }),
-    'workOrder',
-    'standard'
-  );
-  const diagComplete = addAppointmentInfo(diagCompleteRaw);
-
-  // 2. Parts Received - Customer needs to be called for appointments (exclude those already scheduled)
-  const partsReceivedAll = await applyPopulation(
-    WorkOrder.find({ status: 'Parts Received' }),
+  // Query all SWC statuses in one shot
+  const allWorkOrdersRaw = await applyPopulation(
+    WorkOrder.find({ status: { $in: swcStatuses } }),
     'workOrder',
     'standard'
   );
 
-  const partsReceivedFiltered = partsReceivedAll.filter(
-    wo => !scheduledWorkOrderIds.has(wo._id.toString())
-  );
-  const partsReceived = addAppointmentInfo(partsReceivedFiltered);
+  // Filter out Parts Received WOs that already have a future appointment scheduled
+  const filtered = allWorkOrdersRaw.filter(wo => {
+    if (wo.status === 'Parts Received') {
+      return !scheduledWorkOrderIds.has(wo._id.toString());
+    }
+    return true;
+  });
 
-  // 3. Repair Complete - Awaiting Payment - Customer needs to be contacted for payment and pickup
-  const awaitingPaymentRaw = await applyPopulation(
-    WorkOrder.find({ status: 'Repair Complete - Awaiting Payment' }),
-    'workOrder',
-    'standard'
-  );
-  const awaitingPayment = addAppointmentInfo(awaitingPaymentRaw);
+  const workOrders = addAppointmentInfo(filtered);
 
   const responseData = {
     status: 'success',
     data: {
-      diagComplete: {
-        workOrders: diagComplete,
-        count: diagComplete.length
-      },
-      partsReceived: {
-        workOrders: partsReceived,
-        count: partsReceived.length
-      },
-      awaitingPayment: {
-        workOrders: awaitingPayment,
-        count: awaitingPayment.length
-      }
+      workOrders,
+      count: workOrders.length
     }
   };
 
@@ -1190,6 +1216,7 @@ exports.getTechnicianWorkOrders = catchAsync(async (req, res, next) => {
   // Technician-relevant statuses
   const technicianStatuses = [
     'Appointment Scheduled',
+    'Appointment Complete',
     'Inspection In Progress',
     'Inspection/Diag Complete',
     'Repair In Progress',
@@ -1227,4 +1254,368 @@ exports.getTechnicianWorkOrders = catchAsync(async (req, res, next) => {
   cacheService.set(cacheKey, responseData, 180);
 
   res.status(200).json(responseData);
+});
+
+// ==================== QUOTE ENDPOINTS ====================
+
+// Get all quotes
+exports.getAllQuotes = catchAsync(async (req, res, next) => {
+  const { customer, vehicle, startDate, endDate, includeArchived } = req.query;
+
+  const cacheKey = `quotes:all:${JSON.stringify({ customer, vehicle, startDate, endDate, includeArchived })}`;
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
+  const query = includeArchived === 'true'
+    ? { status: { $in: ['Quote', 'Quote - Archived'] } }
+    : { status: 'Quote' };
+  if (customer) query.customer = customer;
+  if (vehicle) query.vehicle = vehicle;
+  Object.assign(query, buildDateRangeQuery(startDate, endDate, 'date'));
+
+  const quotes = await applyPopulation(
+    WorkOrder.find(query).sort({ date: -1 }),
+    'workOrder',
+    'standard'
+  );
+
+  const responseData = {
+    status: 'success',
+    results: quotes.length,
+    data: { quotes }
+  };
+
+  cacheService.set(cacheKey, responseData, 300);
+  res.status(200).json(responseData);
+});
+
+// Create a new quote
+exports.createQuote = catchAsync(async (req, res, next) => {
+  const vehicle = await validateEntityExists(Vehicle, req.body.vehicle, 'Vehicle');
+  const customer = await validateEntityExists(Customer, req.body.customer, 'Customer');
+  validateVehicleOwnership(vehicle, customer);
+
+  let quoteData = { ...req.body };
+
+  // Handle services conversion
+  if (!quoteData.services || quoteData.services.length === 0) {
+    if (quoteData.serviceRequested) {
+      if (quoteData.serviceRequested.includes('\n')) {
+        quoteData.services = quoteData.serviceRequested
+          .split('\n')
+          .filter(line => line.trim())
+          .map(line => ({ description: line.trim() }));
+      } else {
+        quoteData.services = [{ description: quoteData.serviceRequested }];
+      }
+    } else {
+      quoteData.services = [];
+    }
+  }
+
+  if (Array.isArray(quoteData.services) && quoteData.services.length > 0) {
+    quoteData.serviceRequested = quoteData.services
+      .map(service => service.description).join('\n');
+  }
+
+  // Force status to Quote
+  quoteData.status = 'Quote';
+
+  // Calculate total estimate
+  if (!quoteData.totalEstimate) {
+    quoteData.totalEstimate = calculateWorkOrderTotal(quoteData.parts, quoteData.labor);
+  }
+
+  // Store notes temporarily
+  const initialNotes = quoteData.diagnosticNotes;
+  delete quoteData.diagnosticNotes;
+
+  const newQuote = await WorkOrder.create(quoteData);
+
+  if (initialNotes && initialNotes.trim()) {
+    try {
+      await WorkOrderNote.create({
+        workOrder: newQuote._id,
+        content: initialNotes.trim(),
+        isCustomerFacing: true,
+        createdByName: 'System'
+      });
+    } catch (noteError) {
+      console.error('Error creating note from quote notes:', noteError);
+    }
+  }
+
+  // Add to vehicle service history
+  vehicle.serviceHistory.push(newQuote._id);
+  if (quoteData.currentMileage && !isNaN(parseFloat(quoteData.currentMileage))) {
+    const mileageValue = parseFloat(quoteData.currentMileage);
+    vehicle.mileageHistory.push({
+      date: parseDateOrDefault(quoteData.date),
+      mileage: mileageValue,
+      source: `Quote #${newQuote.id}`
+    });
+    vehicle.currentMileage = mileageValue;
+  }
+  await vehicle.save({ validateBeforeSave: false });
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(201).json({
+    status: 'success',
+    data: { quote: newQuote }
+  });
+});
+
+// Convert a quote to a work order (full or partial)
+exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
+  const quote = await WorkOrder.findById(req.params.id)
+    .populate('customer')
+    .populate('vehicle');
+
+  if (!quote) {
+    return next(new AppError('No quote found with that ID', 404));
+  }
+
+  if (quote.status !== 'Quote') {
+    return next(new AppError('This record is not a quote', 400));
+  }
+
+  const { partsToConvert, laborToConvert } = req.body;
+  const isPartialConversion = partsToConvert || laborToConvert;
+
+  if (isPartialConversion) {
+    // Partial conversion: create a new WO with selected items, remove them from the quote
+    const partsToConvertIds = partsToConvert || [];
+    const laborToConvertIds = laborToConvert || [];
+
+    const partsToMove = quote.parts.filter(part =>
+      partsToConvertIds.includes(part._id.toString())
+    );
+    const laborToMove = quote.labor.filter(labor =>
+      laborToConvertIds.includes(labor._id.toString())
+    );
+
+    if (partsToMove.length === 0 && laborToMove.length === 0) {
+      return next(new AppError('Must select at least one part or labor item to convert', 400));
+    }
+
+    // Check if converting everything
+    const allPartsSelected = partsToConvertIds.length === quote.parts.length;
+    const allLaborSelected = laborToConvertIds.length === quote.labor.length;
+    const convertingAll = allPartsSelected && allLaborSelected;
+
+    if (convertingAll) {
+      // Full conversion on same document
+      quote.status = 'Work Order Created';
+      await quote.save();
+
+      const populatedWorkOrder = await applyPopulation(
+        WorkOrder.findById(req.params.id),
+        'workOrder',
+        'detailed'
+      );
+
+      cacheService.invalidateAllWorkOrders();
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Quote fully converted to work order',
+        data: { workOrder: populatedWorkOrder }
+      });
+    }
+
+    // Create new work order with selected items
+    const newWorkOrder = new WorkOrder({
+      customer: quote.customer._id,
+      vehicle: quote.vehicle ? quote.vehicle._id : null,
+      currentMileage: quote.currentMileage,
+      date: new Date(),
+      priority: quote.priority,
+      status: 'Work Order Created',
+      services: quote.services.map(s => ({ description: s.description })),
+      serviceRequested: quote.serviceRequested,
+      diagnosticNotes: `Converted from Quote #${quote._id.toString().slice(-8).toUpperCase()}`,
+      parts: partsToMove.map(part => ({
+        name: part.name,
+        partNumber: part.partNumber,
+        itemNumber: part.itemNumber,
+        quantity: part.quantity,
+        price: part.price,
+        cost: part.cost,
+        vendor: part.vendor,
+        supplier: part.supplier,
+        purchaseOrderNumber: part.purchaseOrderNumber
+      })),
+      labor: laborToMove.map(labor => ({
+        description: labor.description,
+        hours: labor.hours,
+        rate: labor.rate
+      }))
+    });
+
+    newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor);
+    await newWorkOrder.save();
+
+    // Remove converted items from quote
+    quote.parts = quote.parts.filter(part =>
+      !partsToConvertIds.includes(part._id.toString())
+    );
+    quote.labor = quote.labor.filter(labor =>
+      !laborToConvertIds.includes(labor._id.toString())
+    );
+    quote.totalEstimate = calculateWorkOrderTotal(quote.parts, quote.labor);
+
+    // Archive quote if nothing remains
+    if (quote.parts.length === 0 && quote.labor.length === 0) {
+      quote.status = 'Quote - Archived';
+    }
+
+    await quote.save();
+
+    const populatedNewWO = await applyPopulation(
+      WorkOrder.findById(newWorkOrder._id),
+      'workOrder',
+      'detailed'
+    );
+
+    const populatedQuote = await applyPopulation(
+      WorkOrder.findById(req.params.id),
+      'workOrder',
+      'detailed'
+    );
+
+    cacheService.invalidateAllWorkOrders();
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Partial quote conversion successful',
+      data: {
+        workOrder: populatedNewWO,
+        quote: populatedQuote,
+        quoteArchived: quote.status === 'Quote - Archived'
+      }
+    });
+  }
+
+  // Full conversion (original behavior): change status on same document
+  quote.status = 'Work Order Created';
+  await quote.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Quote converted to work order successfully',
+    data: { workOrder: populatedWorkOrder }
+  });
+});
+
+// Generate a quote from an existing work order
+exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
+  const workOrder = await WorkOrder.findById(req.params.id)
+    .populate('customer')
+    .populate('vehicle');
+
+  if (!workOrder) {
+    return next(new AppError('No work order found with that ID', 404));
+  }
+
+  // Determine which parts/labor to copy
+  const { partsToInclude, laborToInclude } = req.body;
+  const partsSource = partsToInclude
+    ? workOrder.parts.filter(p => partsToInclude.includes(p._id.toString()))
+    : workOrder.parts;
+  const laborSource = laborToInclude
+    ? workOrder.labor.filter(l => laborToInclude.includes(l._id.toString()))
+    : workOrder.labor;
+
+  const newQuote = new WorkOrder({
+    customer: workOrder.customer._id,
+    vehicle: workOrder.vehicle ? workOrder.vehicle._id : null,
+    currentMileage: workOrder.currentMileage,
+    date: new Date(),
+    priority: workOrder.priority,
+    status: 'Quote',
+    services: workOrder.services.map(s => ({ description: s.description })),
+    serviceRequested: workOrder.serviceRequested,
+    diagnosticNotes: `Generated from Work Order #${workOrder._id.toString().slice(-8).toUpperCase()}`,
+    parts: partsSource.map(part => ({
+      name: part.name,
+      partNumber: part.partNumber,
+      itemNumber: part.itemNumber,
+      quantity: part.quantity,
+      price: part.price,
+      cost: part.cost,
+      vendor: part.vendor,
+      supplier: part.supplier
+    })),
+    labor: laborSource.map(labor => ({
+      description: labor.description,
+      hours: labor.hours,
+      rate: labor.rate
+    }))
+  });
+
+  newQuote.totalEstimate = calculateWorkOrderTotal(newQuote.parts, newQuote.labor);
+  await newQuote.save();
+
+  const populatedQuote = await applyPopulation(
+    WorkOrder.findById(newQuote._id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(201).json({
+    status: 'success',
+    message: 'Quote generated from work order successfully',
+    data: { quote: populatedQuote }
+  });
+});
+
+// Archive a quote
+exports.archiveQuote = catchAsync(async (req, res, next) => {
+  const quote = await validateEntityExists(WorkOrder, req.params.id, 'Quote');
+
+  if (quote.status !== 'Quote') {
+    return next(new AppError('Only active quotes can be archived', 400));
+  }
+
+  quote.status = 'Quote - Archived';
+  await quote.save();
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Quote archived successfully'
+  });
+});
+
+// Unarchive a quote
+exports.unarchiveQuote = catchAsync(async (req, res, next) => {
+  const quote = await validateEntityExists(WorkOrder, req.params.id, 'Quote');
+
+  if (quote.status !== 'Quote - Archived') {
+    return next(new AppError('Only archived quotes can be unarchived', 400));
+  }
+
+  quote.status = 'Quote';
+  await quote.save();
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Quote unarchived successfully'
+  });
 });

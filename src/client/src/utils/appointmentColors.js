@@ -11,6 +11,12 @@
 export const getAppointmentColorClasses = (status) => {
   const colorMap = {
     // BLUE SCALE - Service Writer Action Needed
+    'Appointment Complete': {
+      bg: 'bg-blue-200',
+      border: 'border-blue-400',
+      text: 'text-blue-900',
+      hover: 'hover:bg-blue-300'
+    },
     'Inspection/Diag Complete': {
       bg: 'bg-blue-200',
       border: 'border-blue-400',
@@ -76,6 +82,20 @@ export const getAppointmentColorClasses = (status) => {
       hover: 'hover:bg-green-700'
     },
 
+    // PURPLE - Quote
+    'Quote': {
+      bg: 'bg-purple-200',
+      border: 'border-purple-400',
+      text: 'text-purple-900',
+      hover: 'hover:bg-purple-300'
+    },
+    'Quote - Archived': {
+      bg: 'bg-gray-200',
+      border: 'border-gray-400',
+      text: 'text-gray-700',
+      hover: 'hover:bg-gray-300'
+    },
+
     // GREY SCALE - Customer/Stopped
     'On Hold': {
       bg: 'bg-gray-300',
@@ -111,6 +131,7 @@ export const getAppointmentColorClasses = (status) => {
  */
 export const getStatusBadgeColor = (status) => {
   const badgeMap = {
+    'Appointment Complete': 'bg-blue-100 text-blue-800',
     'Inspection/Diag Complete': 'bg-blue-100 text-blue-800',
     'Parts Received': 'bg-blue-200 text-blue-900',
     'Repair Complete - Awaiting Payment': 'bg-blue-300 text-blue-950',
@@ -121,6 +142,8 @@ export const getStatusBadgeColor = (status) => {
     'Confirmed': 'bg-green-100 text-green-800',
     'Appointment Scheduled': 'bg-green-100 text-green-800',
     'Completed': 'bg-green-300 text-green-950',
+    'Quote': 'bg-purple-100 text-purple-800',
+    'Quote - Archived': 'bg-gray-100 text-gray-600',
     'On Hold': 'bg-gray-200 text-gray-700',
     'Cancelled': 'bg-gray-400 text-gray-800',
     'No-Show': 'bg-gray-400 text-gray-800'

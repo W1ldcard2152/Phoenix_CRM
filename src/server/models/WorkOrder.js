@@ -260,8 +260,10 @@ const WorkOrderSchema = new Schema(
     status: {
       type: String,
       enum: [
+        'Quote',
         'Work Order Created',
         'Appointment Scheduled',
+        'Appointment Complete',
         'Inspection In Progress',
         'Inspection/Diag Complete',
         'Parts Ordered',
@@ -270,9 +272,32 @@ const WorkOrderSchema = new Schema(
         'Repair Complete - Awaiting Payment',
         'Repair Complete - Invoiced',
         'On Hold',
-        'Cancelled'
+        'Cancelled',
+        'Quote - Archived'
       ],
       default: 'Work Order Created'
+    },
+    statusChangedAt: {
+      type: Date,
+      default: Date.now
+    },
+    holdReason: {
+      type: String,
+      enum: [
+        'Waiting for Parts',
+        'Waiting for Customer Approval',
+        'Waiting for Insurance',
+        'Customer Requested Delay',
+        'Shop Capacity',
+        'Backordered Parts',
+        'Vehicle Storage',
+        'Other'
+      ],
+      default: null
+    },
+    holdReasonOther: {
+      type: String,
+      trim: true
     },
     // Replace single serviceRequested with services array
     services: [ServiceSchema],
@@ -350,19 +375,24 @@ WorkOrderSchema.virtual('totalCost').get(function() {
   return this.partsCost + this.laborCost;
 });
 
-// Middleware to handle backward compatibility
+// Middleware to handle backward compatibility and status change tracking
 WorkOrderSchema.pre('save', function(next) {
+  // Track when status changes for age-based dashboard indicators
+  if (this.isModified('status')) {
+    this.statusChangedAt = new Date();
+  }
+
   // If serviceRequested exists but services is empty, migrate it
   if (this.serviceRequested && (!this.services || this.services.length === 0)) {
     this.services = [{ description: this.serviceRequested }];
   }
-  
+
   // If services exists, update serviceRequested for backward compatibility
   if (this.services && this.services.length > 0) {
     // Join all service descriptions with linebreaks for display in single field
     this.serviceRequested = this.services.map(service => service.description).join('\n');
   }
-  
+
   next();
 });
 

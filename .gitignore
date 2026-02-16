@@ -51,6 +51,9 @@ Thumbs.db
 .npm
 .eslintcache
 
+# Database backups
+/backups/
+
 # Media uploads & user content
 /uploads/
 /public/uploads/

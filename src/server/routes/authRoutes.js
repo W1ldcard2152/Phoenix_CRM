@@ -18,8 +18,8 @@ router.get('/me', userController.getMe, userController.getUser);
 router.patch('/updateMe', userController.updateMe);
 router.delete('/deleteMe', userController.deleteMe);
 
-// Admin only routes
-router.use(authController.restrictTo('admin'));
+// Admin and management routes
+router.use(authController.restrictTo('admin', 'management'));
 
 router.route('/')
   .get(userController.getAllUsers)

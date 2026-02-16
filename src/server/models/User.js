@@ -20,24 +20,43 @@ const UserSchema = new Schema(
     },
     password: {
       type: String,
-      required: [true, 'Please provide a password'],
       minlength: 8,
-      select: false // Don't include in queries by default
+      select: false,
+      // Password is required only for non-OAuth and non-pending users
+      required: [function() { return !this.googleId && this.status !== 'pending'; }, 'Please provide a password']
     },
     passwordConfirm: {
       type: String,
-      required: [true, 'Please confirm your password'],
+      // Only required when password is being set
+      required: [function() { return this.password && this.isModified('password'); }, 'Please confirm your password'],
       validate: {
-        // This only works on CREATE and SAVE
         validator: function(val) {
           return val === this.password;
         },
         message: 'Passwords do not match'
       }
     },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true
+    },
+    avatar: {
+      type: String
+    },
+    technician: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician',
+      sparse: true
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'active', 'disabled'],
+      default: 'active'
+    },
     role: {
       type: String,
-      enum: ['admin', 'technician', 'service-writer', 'parts-manager'],
+      enum: ['admin', 'management', 'service-writer', 'technician'],
       default: 'technician'
     },
     passwordChangedAt: Date,
@@ -56,27 +75,29 @@ const UserSchema = new Schema(
 
 // Pre-save middleware to hash the password
 UserSchema.pre('save', async function(next) {
-  // Only run this function if password was actually modified
-  if (!this.isModified('password')) return next();
-  
+  // Skip if password was not modified or doesn't exist (OAuth users)
+  if (!this.isModified('password') || !this.password) return next();
+
   // Hash the password with cost of 12
   this.password = await bcrypt.hash(this.password, 12);
-  
+
   // Delete passwordConfirm field
   this.passwordConfirm = undefined;
-  
+
   // Update passwordChangedAt if password is being changed (not on new user)
-  if (this.isModified('password') && !this.isNew) {
-    this.passwordChangedAt = Date.now() - 1000; // Small offset to ensure token is created after password change
+  if (!this.isNew) {
+    this.passwordChangedAt = Date.now() - 1000;
   }
-  
+
   next();
 });
 
 // Pre-query middleware to exclude inactive users
+// Set option { includeInactive: true } to bypass this filter (admin queries)
 UserSchema.pre(/^find/, function(next) {
-  // 'this' refers to the current query
-  this.find({ active: { $ne: false } });
+  if (!this.getOptions().includeInactive) {
+    this.find({ active: { $ne: false } });
+  }
   next();
 });
 

@@ -47,7 +47,7 @@ const createSendToken = (user, statusCode, res) => {
 exports.signup = catchAsync(async (req, res, next) => {
   // Restrict role to prevent creating admin users via signup
   // This allows creating technicians but not admins
-  const allowedRoles = ['technician', 'service-writer', 'parts-manager'];
+  const allowedRoles = ['technician', 'service-writer'];
   
   if (req.body.role && !allowedRoles.includes(req.body.role)) {
     return next(new AppError('Invalid role specified', 400));
@@ -79,7 +79,11 @@ exports.login = catchAsync(async (req, res, next) => {
   if (!user || !(await user.correctPassword(password, user.password))) {
     return next(new AppError('Incorrect email or password', 401));
   }
-  
+
+  if (user.status === 'disabled') {
+    return next(new AppError('Your account has been disabled. Contact your administrator.', 403));
+  }
+
   // If everything is ok, send token to client
   createSendToken(user, 200, res);
 });
@@ -132,7 +136,14 @@ exports.protect = catchAsync(async (req, res, next) => {
       new AppError('User recently changed password. Please log in again.', 401)
     );
   }
-  
+
+  // 5) Check if user account is active and not disabled
+  if (currentUser.status === 'disabled') {
+    return next(
+      new AppError('Your account has been disabled. Contact your administrator.', 403)
+    );
+  }
+
   // Grant access to protected route
   req.user = currentUser;
   res.locals.user = currentUser;

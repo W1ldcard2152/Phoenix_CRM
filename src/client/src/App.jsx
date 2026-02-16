@@ -3,7 +3,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import '@fortawesome/fontawesome-free/css/all.min.css';
-import './components/wizard/wizard.css';
 import './styles/mobile.css';
 import './utils/pwaUtils';
 
@@ -22,6 +21,9 @@ import VehicleForm from './pages/Vehicles/VehicleForm';
 import WorkOrderList from './pages/WorkOrders/WorkOrderList';
 import WorkOrderDetail from './pages/WorkOrders/WorkOrderDetail';
 import WorkOrderForm from './pages/WorkOrders/WorkOrderForm';
+import QuoteList from './pages/Quotes/QuoteList';
+import QuoteDetail from './pages/Quotes/QuoteDetail';
+import QuoteForm from './pages/Quotes/QuoteForm';
 import AppointmentList from './pages/Appointments/AppointmentList';
 import AppointmentDetail from './pages/Appointments/AppointmentDetail';
 import AppointmentForm from './pages/Appointments/AppointmentForm';
@@ -30,6 +32,7 @@ import InvoiceDetail from './pages/Invoices/InvoiceDetail'; // Added InvoiceDeta
 import InvoiceList from './pages/Invoices/InvoiceList';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
+import OAuthCallback from './pages/Auth/OAuthCallback';
 
 
 // New Pages for Sidebar
@@ -37,6 +40,7 @@ import TechniciansPage from './pages/Technicians/TechniciansPage';
 import AdminPage from './pages/Admin/AdminPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import new FeedbackAdminPage
+import IntakePage from './pages/Intake/IntakePage';
 
 // Parts Pages
 import PartsList from './pages/Parts/PartsList';
@@ -61,6 +65,15 @@ const PrivateRoute = ({ children }) => {
   return isAuthenticated ? children : <Navigate to="/login" />;
 };
 
+// Role-restricted Route Component
+const RoleRoute = ({ children, roles }) => {
+  const { user } = useAuth();
+  if (!user || (roles && !roles.includes(user.role))) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+};
+
 const App = () => {
   return (
     <AuthProvider>
@@ -69,6 +82,7 @@ const App = () => {
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
           
           {/* App Routes with Layout */}
           <Route path="/*" element={
@@ -81,6 +95,7 @@ const App = () => {
                   <main className="flex-1 overflow-y-auto p-2 sm:p-4">
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
+                      <Route path="/intake" element={<IntakePage />} />
                       
                       {/* Customer Routes */}
                       <Route path="/customers" element={<CustomerList />} />
@@ -99,6 +114,12 @@ const App = () => {
                       <Route path="/work-orders/new" element={<WorkOrderForm />} />
                       <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
                       <Route path="/work-orders/:id/edit" element={<WorkOrderForm />} />
+
+                      {/* Quote Routes */}
+                      <Route path="/quotes" element={<QuoteList />} />
+                      <Route path="/quotes/new" element={<QuoteForm />} />
+                      <Route path="/quotes/:id" element={<QuoteDetail />} />
+                      <Route path="/quotes/:id/edit" element={<QuoteForm />} />
                       
                       {/* Appointment Routes */}
                       <Route path="/appointments" element={<AppointmentList />} />
@@ -117,7 +138,7 @@ const App = () => {
                       <Route path="/technicians" element={<TechniciansPage />} />
                       
                       {/* Admin Routes */}
-                      <Route path="/admin" element={<AdminPage />} />
+                      <Route path="/admin" element={<RoleRoute roles={['admin', 'management']}><AdminPage /></RoleRoute>} />
 
                       {/* Feedback Admin Route */}
                       <Route path="/feedback" element={<FeedbackAdminPage />} />

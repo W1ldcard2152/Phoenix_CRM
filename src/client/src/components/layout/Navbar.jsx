@@ -68,10 +68,24 @@ const Navbar = ({ onMobileMenuToggle }) => {
           <div className="flex items-center flex-shrink-0">
             {isAuthenticated ? (
               <div className="flex items-center space-x-2 sm:space-x-4">
-                {/* Welcome message - hidden on small mobile */}
-                <span className="hidden sm:block text-xs sm:text-sm text-gray-700 truncate max-w-32 sm:max-w-none">
-                  Welcome, {currentUser?.name || 'User'}
-                </span>
+                {/* User avatar + welcome message */}
+                <div className="hidden sm:flex items-center space-x-2">
+                  {currentUser?.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt=""
+                      className="h-8 w-8 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-sm font-medium">
+                      {currentUser?.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </div>
+                  )}
+                  <span className="text-xs sm:text-sm text-gray-700 truncate max-w-32 sm:max-w-none">
+                    {currentUser?.name || 'User'}
+                  </span>
+                </div>
 
                 {/* Feedback button - hidden on mobile */}
                 <div className="hidden sm:block">

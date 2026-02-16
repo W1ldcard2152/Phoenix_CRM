@@ -21,6 +21,7 @@ const TechnicianPortal = () => {
   // Statuses relevant to technician work
   const technicianStatuses = [
     'Appointment Scheduled',
+    'Appointment Complete',
     'Inspection In Progress',
     'Inspection/Diag Complete',
     'Repair In Progress',
@@ -30,7 +31,7 @@ const TechnicianPortal = () => {
   // Status filter categories for technician portal
   const statusCategories = [
     { key: 'All', label: 'All', statuses: technicianStatuses },
-    { key: 'Inspection', label: 'Inspect', statuses: ['Appointment Scheduled', 'Inspection In Progress', 'Inspection/Diag Complete'] },
+    { key: 'Inspection', label: 'Inspect', statuses: ['Appointment Scheduled', 'Appointment Complete', 'Inspection In Progress', 'Inspection/Diag Complete'] },
     { key: 'Repair', label: 'Repair', statuses: ['Repair In Progress', 'Repair Complete - Awaiting Payment'] }
   ];
 
@@ -56,6 +57,8 @@ const TechnicianPortal = () => {
     switch (status) {
       case 'Appointment Scheduled':
         return 'bg-green-100 text-green-800 border-green-200';
+      case 'Appointment Complete':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'Inspection In Progress':
         return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'Inspection/Diag Complete':
@@ -73,6 +76,8 @@ const TechnicianPortal = () => {
     switch (status) {
       case 'Appointment Scheduled':
         return 'Scheduled';
+      case 'Appointment Complete':
+        return 'Appt Done';
       case 'Inspection In Progress':
         return 'Inspecting';
       case 'Inspection/Diag Complete':
@@ -130,10 +135,11 @@ const TechnicianPortal = () => {
     switch (status) {
       case 'Repair In Progress': return 1;
       case 'Inspection In Progress': return 2;
-      case 'Appointment Scheduled': return 3;
-      case 'Inspection/Diag Complete': return 4;
-      case 'Repair Complete - Awaiting Payment': return 5;
-      default: return 6;
+      case 'Appointment Complete': return 3;
+      case 'Appointment Scheduled': return 4;
+      case 'Inspection/Diag Complete': return 5;
+      case 'Repair Complete - Awaiting Payment': return 6;
+      default: return 7;
     }
   };
 

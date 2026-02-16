@@ -34,6 +34,10 @@ mongoose
       console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
     });
 
+    // Start scheduled jobs
+    const { startScheduler } = require('./src/server/jobs/appointmentCompleteJob');
+    startScheduler();
+
     // Handle unhandled promise rejections - close server gracefully
     process.on('unhandledRejection', (err) => {
       console.error('UNHANDLED REJECTION! 💥 Shutting down...');

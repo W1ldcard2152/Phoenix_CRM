@@ -174,7 +174,7 @@ const WorkOrderList = () => {
         if (customerParam) filters.customer = customerParam;
         if (vehicleParam) filters.vehicle = vehicleParam;
         // Exclude statuses that have their own sections at the database level
-        filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
+        filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,On Hold,Cancelled';
         
         const response = await WorkOrderService.getAllWorkOrders(filters);
         setWorkOrders(response.data.workOrders);
@@ -207,7 +207,7 @@ const WorkOrderList = () => {
           if (customerParam) filters.customer = customerParam;
           if (vehicleParam) filters.vehicle = vehicleParam;
           // Exclude statuses that have their own sections at the database level
-          filters.excludeStatuses = 'Repair Complete - Invoiced,On Hold,Cancelled';
+          filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,On Hold,Cancelled';
           
           const response = await WorkOrderService.getAllWorkOrders(filters);
           setWorkOrders(response.data.workOrders);
@@ -458,6 +458,7 @@ const WorkOrderList = () => {
   const workOrderStatusOptions = [
     { value: 'Work Order Created', label: 'Work Order Created' },
     { value: 'Appointment Scheduled', label: 'Appointment Scheduled' },
+    { value: 'Appointment Complete', label: 'Appointment Complete' },
     { value: 'Inspection In Progress', label: 'Inspection In Progress' },
     { value: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete' },
     { value: 'Parts Ordered', label: 'Parts Ordered' },
@@ -474,15 +475,16 @@ const WorkOrderList = () => {
     const priorities = {
       'Work Order Created': 1,
       'Appointment Scheduled': 2,
-      'Inspection In Progress': 3,
-      'Inspection/Diag Complete': 4,
-      'Parts Ordered': 5,
-      'Parts Received': 6,
-      'Repair In Progress': 7,
-      'Repair Complete - Awaiting Payment': 8,
-      'Repair Complete - Invoiced': 9,
-      'On Hold': 10,
-      'Cancelled': 11
+      'Appointment Complete': 3,
+      'Inspection In Progress': 4,
+      'Inspection/Diag Complete': 5,
+      'Parts Ordered': 6,
+      'Parts Received': 7,
+      'Repair In Progress': 8,
+      'Repair Complete - Awaiting Payment': 9,
+      'Repair Complete - Invoiced': 10,
+      'On Hold': 11,
+      'Cancelled': 12
     };
     return priorities[status] || 99;
   };
@@ -491,7 +493,7 @@ const WorkOrderList = () => {
   const statusCategories = [
     { key: 'All', label: 'All', statuses: [] },
     { key: 'Created', label: 'Created', statuses: ['Work Order Created'] },
-    { key: 'Service Writer Action', label: 'Service Writer Action', statuses: ['Inspection/Diag Complete', 'Parts Received', 'Repair Complete - Awaiting Payment'] },
+    { key: 'Service Writer Action', label: 'Service Writer Action', statuses: ['Appointment Complete', 'Inspection/Diag Complete', 'Parts Received', 'Repair Complete - Awaiting Payment'] },
     { key: 'Technician Action', label: 'Technician Action', statuses: ['Inspection In Progress', 'Repair In Progress'] },
     { key: 'Waiting/Scheduled', label: 'Waiting/Scheduled', statuses: ['Work Order Created', 'Appointment Scheduled', 'Parts Ordered'] }
   ];
@@ -538,6 +540,8 @@ const WorkOrderList = () => {
         return 'bg-green-300 text-green-950';
 
       // BLUE SCALE - Service Writer Action Needed
+      case 'Appointment Complete':
+        return 'bg-blue-100 text-blue-800';
       case 'Inspection/Diag Complete':
         return 'bg-blue-100 text-blue-800';
       case 'Parts Received':

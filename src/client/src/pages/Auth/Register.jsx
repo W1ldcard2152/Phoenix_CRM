@@ -44,8 +44,7 @@ const Register = () => {
   // Role options for dropdown
   const roleOptions = [
     { value: 'technician', label: 'Technician' },
-    { value: 'service-writer', label: 'Service Writer' },
-    { value: 'parts-manager', label: 'Parts Manager' }
+    { value: 'service-writer', label: 'Service Writer' }
   ];
 
   return (
