@@ -293,7 +293,6 @@ const WorkOrderSchema = new Schema(
         'Vehicle Storage',
         'Other'
       ],
-      default: null
     },
     holdReasonOther: {
       type: String,

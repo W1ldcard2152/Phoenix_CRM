@@ -541,12 +541,12 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
       return next(new AppError('Please provide a reason when selecting "Other"', 400));
     }
     workOrder.holdReason = holdReason;
-    workOrder.holdReasonOther = holdReason === 'Other' ? holdReasonOther : null;
+    workOrder.holdReasonOther = holdReason === 'Other' ? holdReasonOther : undefined;
   } else {
     // Clear hold reason when leaving On Hold status
     if (workOrder.status === 'On Hold') {
-      workOrder.holdReason = null;
-      workOrder.holdReasonOther = null;
+      workOrder.holdReason = undefined;
+      workOrder.holdReasonOther = undefined;
     }
   }
 
