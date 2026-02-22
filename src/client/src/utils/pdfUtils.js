@@ -115,10 +115,15 @@ export const printHtml = (htmlContent) => {
           }
         </style>
       </head>
-      <body onload="window.print()">${htmlContent}</body>
+      <body>${htmlContent}</body>
     </html>
   `);
   popupWin.document.close();
+  // Wait for content to render, then trigger print
+  setTimeout(() => {
+    popupWin.focus();
+    popupWin.print();
+  }, 250);
 };
 
 /**
@@ -235,8 +240,8 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Services Quoted/Requested (for quotes/work orders) -->
       ${serviceRequested ? `
       <div style="margin-bottom: 16px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #374151;">${type === 'quote' ? 'Services Quoted:' : 'Service Requested:'}</p>
-        <div style="border: 1px solid #d1d5db; padding: 12px;">
+        <p style="font-weight: 700; font-size: 18px; margin: 0 0 8px 0; color: #111827; border-bottom: 2px solid #111827; padding-bottom: 4px;">${type === 'quote' ? 'Services Quoted:' : 'Service Requested:'}</p>
+        <div style="border: 1px solid #d1d5db; padding: 12px; background-color: #f9fafb;">
           ${servicesHtml
             ? `<ul style="margin: 0; padding-left: 20px; list-style-type: disc;">${servicesHtml}</ul>`
             : `<p style="margin: 0;">${serviceRequested}</p>`
@@ -248,7 +253,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Diagnostic Notes (for work orders) -->
       ${diagnosticNotes ? `
       <div style="margin-bottom: 16px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #374151;">Diagnostic Notes:</p>
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Diagnostic Notes:</p>
         <div style="border: 1px solid #d1d5db; padding: 12px;">
           <p style="margin: 0;">${diagnosticNotes}</p>
         </div>
@@ -258,7 +263,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Parts -->
       ${parts.length > 0 ? `
       <div style="margin-bottom: 16px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #374151;">Parts:</p>
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Parts:</p>
         <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
           <thead>
             <tr style="background-color: #f3f4f6;">
@@ -287,7 +292,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Labor -->
       ${labor.length > 0 ? `
       <div style="margin-bottom: 24px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #374151;">Labor:</p>
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Labor:</p>
         <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
           <thead>
             <tr style="background-color: #f3f4f6;">
@@ -347,7 +352,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Customer Facing Notes (Work Order Notes) -->
       ${customerFacingNotes.length > 0 ? `
       <div style="margin-bottom: 24px; font-size: 14px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 8px 0; color: #374151;">Work Order Notes:</p>
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 8px 0; color: #111827;">Work Order Notes:</p>
         <div style="border: 1px solid #d1d5db; background-color: #f9fafb;">
           ${customerFacingNotes.map((note, index) => `
             <div style="padding: 12px;${index > 0 ? ' border-top: 1px solid #e5e7eb;' : ''}">
@@ -364,7 +369,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Terms -->
       ${terms ? `
       <div style="margin-bottom: 24px; font-size: 14px;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #374151;">Terms & Conditions:</p>
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Terms & Conditions:</p>
         <div style="border: 1px solid #d1d5db; padding: 12px;">
           <p style="margin: 0; white-space: pre-wrap;">${terms}</p>
         </div>

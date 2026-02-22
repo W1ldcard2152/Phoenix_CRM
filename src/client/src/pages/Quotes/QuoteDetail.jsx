@@ -495,8 +495,8 @@ const QuoteDetail = () => {
           >
             <i className="fas fa-arrow-right mr-1"></i>Convert to Work Order
           </Button>
-          <Button variant="danger" onClick={() => setDeleteModalOpen(true)}>
-            <i className="fas fa-trash mr-1"></i>Delete
+          <Button variant="outline" onClick={handlePrint}>
+            <i className="fas fa-print mr-1"></i>Print
           </Button>
           {/* More Actions Dropdown */}
           <div className="relative">
@@ -516,12 +516,6 @@ const QuoteDetail = () => {
                   </Link>
                   <button
                     className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => { handlePrint(); setMoreActionsOpen(false); }}
-                  >
-                    <i className="fas fa-print mr-2"></i>Print
-                  </button>
-                  <button
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     onClick={() => { handleDownloadPDF(); setMoreActionsOpen(false); }}
                     disabled={generatingPDF}
                   >
@@ -535,6 +529,12 @@ const QuoteDetail = () => {
                   >
                     <i className={`fas ${archiving ? 'fa-spinner fa-spin' : 'fa-archive'} mr-2`}></i>
                     {archiving ? 'Archiving...' : 'Archive'}
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => { setDeleteModalOpen(true); setMoreActionsOpen(false); }}
+                  >
+                    <i className="fas fa-trash mr-2"></i>Delete
                   </button>
                 </div>
               </>
