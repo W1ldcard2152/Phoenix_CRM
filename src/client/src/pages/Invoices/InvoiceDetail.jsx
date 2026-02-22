@@ -1,28 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import invoiceService from '../../services/invoiceService';
+import workOrderNotesService from '../../services/workOrderNotesService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import InvoiceDisplay from '../../components/invoice/InvoiceDisplay'; // Import the new component
-
-// formatCurrency is now imported, so local definition is removed.
+import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
+import businessConfig from '../../config/businessConfig';
+import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 
 const InvoiceDetail = () => {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
-  // Business settings (can be centralized later if needed)
-  const settings = {
-    businessName: 'Phoenix Automotive Group, Inc.',
-    businessAddressLine1: '201 Ford St',
-    businessAddressLine2: 'Newark NY 14513',
-    businessPhone: '315-830-0008',
-    businessEmail: 'phxautosalvage@gmail.com',
-    businessWebsite: 'www.phxautogroup.com',
-    businessLogo: '/phxLogo.svg' // This path needs to be updated if used differently
-  };
+  const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const printableRef = useRef();
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const printableRef = useRef(); // Keep for InvoiceDisplay component
+
+  // Business settings from centralized config (for InvoiceDisplay component)
+  const settings = {
+    businessName: businessConfig.name,
+    businessAddressLine1: businessConfig.addressLine1,
+    businessAddressLine2: businessConfig.addressLine2,
+    businessPhone: businessConfig.phone,
+    businessEmail: businessConfig.email,
+    businessWebsite: businessConfig.website,
+    businessLogo: businessConfig.logo
+  };
 
   useEffect(() => {
     const fetchInvoice = async () => {
@@ -30,7 +34,19 @@ const InvoiceDetail = () => {
         setLoading(true);
         const response = await invoiceService.getInvoice(id);
         if (response && response.data && response.data.invoice) {
-          setInvoice(response.data.invoice);
+          const invoiceData = response.data.invoice;
+          setInvoice(invoiceData);
+
+          // Fetch customer-facing notes if work order exists
+          if (invoiceData.workOrder?._id) {
+            try {
+              const notesResponse = await workOrderNotesService.getCustomerFacingNotes(invoiceData.workOrder._id);
+              setCustomerFacingNotes(notesResponse.notes || []);
+            } catch (noteErr) {
+              console.error('Error fetching customer-facing notes:', noteErr);
+              setCustomerFacingNotes([]);
+            }
+          }
         } else {
           console.warn("Received unexpected data structure for single invoice:", response);
           setInvoice(null);
@@ -48,35 +64,70 @@ const InvoiceDetail = () => {
     fetchInvoice();
   }, [id]);
 
-  const handlePrint = () => {
-    if (printableRef.current) {
-      const printContents = printableRef.current.innerHTML;
-      const popupWin = window.open('', '_blank', 'top=0,left=0,height=auto,width=auto');
-      popupWin.document.open();
-      popupWin.document.write(`
-        <html>
-          <head>
-            <title>Invoice ${invoice?.invoiceNumber || invoice?._id || 'Detail'}</title>
-            <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
-            <style>
-              body { margin: 0; padding: 20px; font-family: sans-serif; }
-              @media print {
-                .no-print { display: none !important; }
-                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-              }
-              .print-friendly-font { font-family: Arial, sans-serif; /* Example font */ }
-            </style>
-          </head>
-          <body onload="window.print();window.close()">${printContents}</body>
-        </html>
-      `);
-      popupWin.document.close();
+  // Get document data for printing/PDF
+  const getDocumentData = () => {
+    // Process items array (modern structure) or fallback to legacy parts/labor arrays
+    const items = invoice?.items || [];
+    let parts, labor;
+
+    if (items.length > 0) {
+      parts = items.filter(item => item.type === 'Part').map(item => ({
+        name: item.description,
+        partNumber: item.partNumber || '',
+        quantity: item.quantity,
+        price: item.unitPrice
+      }));
+      labor = items.filter(item => item.type === 'Labor').map(item => ({
+        description: item.description,
+        hours: item.quantity,
+        rate: item.unitPrice
+      }));
     } else {
-      setError("Preview template not ready for printing.");
+      parts = invoice?.parts || [];
+      labor = invoice?.labor || [];
+    }
+
+    return {
+      documentNumber: invoice?.invoiceNumber,
+      documentDate: invoice?.invoiceDate,
+      status: invoice?.status,
+      customer: invoice?.customer,
+      vehicle: invoice?.vehicle,
+      vehicleMileage: invoice?.workOrder?.vehicleMileage,
+      parts,
+      labor,
+      customerFacingNotes,
+      taxRate: invoice?.taxRate || 0,
+      terms: invoice?.paymentTerms
+    };
+  };
+
+  // Print handler
+  const handlePrint = () => {
+    if (!invoice) return;
+    const html = generateDocumentHtml('invoice', getDocumentData());
+    printHtml(html);
+  };
+
+  // Download PDF handler
+  const handleDownloadPDF = async () => {
+    if (!invoice) return;
+    setGeneratingPDF(true);
+    try {
+      const html = generateDocumentHtml('invoice', getDocumentData());
+      const filename = generatePdfFilename(
+        invoice.customer?.name,
+        invoice.vehicle?.make,
+        invoice.vehicle?.model
+      );
+      await generatePdfFromHtml(html, filename);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setError(`Failed to generate PDF: ${err.message}`);
+    } finally {
+      setGeneratingPDF(false);
     }
   };
-  
-  // renderInvoiceContent is removed, InvoiceDisplay will be used instead.
 
   if (loading) {
     return <div className="container mx-auto flex justify-center items-center h-screen"><p className="text-xl text-gray-600">Loading Invoice Details...</p></div>;
@@ -139,7 +190,14 @@ const InvoiceDetail = () => {
         <h1 className="text-3xl font-bold text-gray-800">Invoice Detail</h1>
         <div className="flex space-x-2">
           <Button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            <i className="fas fa-print mr-2"></i>Print Invoice
+            <i className="fas fa-print mr-2"></i>Print
+          </Button>
+          <Button onClick={handleDownloadPDF} disabled={generatingPDF} className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50">
+            {generatingPDF ? (
+              <><i className="fas fa-spinner fa-spin mr-2"></i>Generating...</>
+            ) : (
+              <><i className="fas fa-download mr-2"></i>Download</>
+            )}
           </Button>
           <Link to="/admin" className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">
             Back to Admin

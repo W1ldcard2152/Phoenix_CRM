@@ -89,7 +89,8 @@ exports.sendInvoice = async (workOrder, customer, vehicle, invoiceUrl) => {
   }, 0);
   
   const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
+    const qty = labor.quantity || labor.hours || 0;
+    return total + (qty * labor.rate);
   }, 0);
   
   const html = `

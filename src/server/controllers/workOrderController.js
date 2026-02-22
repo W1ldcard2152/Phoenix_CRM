@@ -890,7 +890,8 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     })),
     labor: laborToMoveItems.map(labor => ({
       description: labor.description,
-      hours: labor.hours,
+      billingType: labor.billingType || 'hourly',
+      quantity: labor.quantity || labor.hours,
       rate: labor.rate
     }))
   });
@@ -1450,7 +1451,8 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       })),
       labor: laborToMove.map(labor => ({
         description: labor.description,
-        hours: labor.hours,
+        billingType: labor.billingType || 'hourly',
+        quantity: labor.quantity || labor.hours,
         rate: labor.rate
       }))
     });
@@ -1559,7 +1561,8 @@ exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
     })),
     labor: laborSource.map(labor => ({
       description: labor.description,
-      hours: labor.hours,
+      billingType: labor.billingType || 'hourly',
+      quantity: labor.quantity || labor.hours,
       rate: labor.rate
     }))
   });

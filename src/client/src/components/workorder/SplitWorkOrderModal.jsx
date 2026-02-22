@@ -47,8 +47,11 @@ const SplitWorkOrderModal = ({
     
     const laborTotal = workOrder.labor
       .filter(labor => selectedLabor.includes(labor._id))
-      .reduce((total, labor) => total + (labor.hours * labor.rate), 0);
-    
+      .reduce((total, labor) => {
+        const qty = labor.quantity || labor.hours || 0;
+        return total + (qty * labor.rate);
+      }, 0);
+
     return { partsTotal, laborTotal, total: partsTotal + laborTotal };
   };
 
@@ -56,11 +59,14 @@ const SplitWorkOrderModal = ({
     const partsTotal = workOrder.parts
       .filter(part => !selectedParts.includes(part._id))
       .reduce((total, part) => total + (part.price * part.quantity), 0);
-    
+
     const laborTotal = workOrder.labor
       .filter(labor => !selectedLabor.includes(labor._id))
-      .reduce((total, labor) => total + (labor.hours * labor.rate), 0);
-    
+      .reduce((total, labor) => {
+        const qty = labor.quantity || labor.hours || 0;
+        return total + (qty * labor.rate);
+      }, 0);
+
     return { partsTotal, laborTotal, total: partsTotal + laborTotal };
   };
 
@@ -191,10 +197,10 @@ const SplitWorkOrderModal = ({
                     </div>
                     <div className="text-right">
                       <p className="text-sm text-gray-900">
-                        {labor.hours} hrs × {formatCurrency(labor.rate)}
+                        {labor.quantity || labor.hours}{labor.billingType !== 'fixed' ? ' hrs' : ''} × {formatCurrency(labor.rate)}
                       </p>
                       <p className="font-medium text-gray-900">
-                        {formatCurrency(labor.hours * labor.rate)}
+                        {formatCurrency((labor.quantity || labor.hours) * labor.rate)}
                       </p>
                     </div>
                   </div>

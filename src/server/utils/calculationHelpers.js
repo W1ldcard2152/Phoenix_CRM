@@ -14,12 +14,14 @@ const calculatePartsCost = (parts = []) => {
 
 /**
  * Calculate total cost of labor
- * @param {Array} labor - Array of labor objects with hours and rate
+ * @param {Array} labor - Array of labor objects with quantity/hours and rate
  * @returns {Number} Total labor cost
  */
 const calculateLaborCost = (labor = []) => {
   return labor.reduce((total, item) => {
-    return total + (item.hours * item.rate);
+    // Support both new quantity field and legacy hours field
+    const qty = item.quantity || item.hours || 0;
+    return total + (qty * item.rate);
   }, 0);
 };
 

@@ -59,7 +59,8 @@
       "Bash(npx vite build:*)",
       "Bash(npx craco build:*)",
       "Bash(ls:*)",
-      "Bash(npx react-scripts build)"
+      "Bash(npx react-scripts build)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

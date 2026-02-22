@@ -9,17 +9,31 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import QuoteDisplay from '../../components/quotes/QuoteDisplay';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
 import { formatCurrency } from '../../utils/formatters';
+import businessConfig from '../../config/businessConfig';
+import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 
 const QuoteDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const printableRef = useRef();
+  const printableRef = useRef(); // Keep for QuoteDisplay component
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   const predefinedVendors = [
     'Walmart', 'Tractor Supply', 'Advance Auto Parts', 'Autozone',
     'Napa Auto Parts', 'Rock Auto', 'eBay.com', 'Amazon.com',
     'ECS Tuning', 'FCP Euro', 'Other'
   ];
+
+  // Business settings from centralized config (for QuoteDisplay component)
+  const businessSettings = {
+    businessName: businessConfig.name,
+    businessAddressLine1: businessConfig.addressLine1,
+    businessAddressLine2: businessConfig.addressLine2,
+    businessPhone: businessConfig.phone,
+    businessEmail: businessConfig.email,
+    businessWebsite: businessConfig.website,
+    businessLogo: businessConfig.logo
+  };
 
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,17 +65,6 @@ const QuoteDetail = () => {
   const [newLabor, setNewLabor] = useState({
     description: '', hours: 1, rate: 75
   });
-
-  // Business settings for print
-  const businessSettings = {
-    businessName: 'Phoenix Automotive Group, Inc.',
-    businessAddressLine1: '201 Ford St',
-    businessAddressLine2: 'Newark NY 14513',
-    businessPhone: '315-830-0008',
-    businessEmail: 'phxautosalvage@gmail.com',
-    businessWebsite: 'www.phxautogroup.com',
-    businessLogo: '/phxLogo.svg'
-  };
 
   useEffect(() => {
     const fetchQuoteData = async () => {
@@ -329,29 +332,46 @@ const QuoteDetail = () => {
     }
   };
 
+  // Download PDF handler
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  // Get document data for printing/PDF
+  const getDocumentData = () => ({
+    documentNumber: quote._id?.slice(-8).toUpperCase(),
+    documentDate: quote.createdAt,
+    status: quote.status,
+    customer: quote.customer,
+    vehicle: quote.vehicle,
+    serviceRequested: quote.serviceRequested,
+    parts: quote.parts || [],
+    labor: quote.labor || [],
+    customerFacingNotes: notes.filter(n => n.isCustomerFacing)
+  });
+
   // Print handler
   const handlePrint = () => {
-    if (printableRef.current) {
-      const printContents = printableRef.current.innerHTML;
-      const popupWin = window.open('', '_blank', 'top=0,left=0,height=auto,width=auto');
-      popupWin.document.open();
-      popupWin.document.write(`
-        <html>
-          <head>
-            <title>Quote ${quote?._id?.slice(-8)?.toUpperCase() || 'Detail'}</title>
-            <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
-            <style>
-              body { margin: 0; padding: 20px; font-family: sans-serif; }
-              @media print {
-                .no-print { display: none !important; }
-                body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-              }
-            </style>
-          </head>
-          <body onload="window.print();window.close()">${printContents}</body>
-        </html>
-      `);
-      popupWin.document.close();
+    if (!quote) return;
+    const html = generateDocumentHtml('quote', getDocumentData());
+    printHtml(html);
+  };
+
+  // Download PDF handler
+  const handleDownloadPDF = async () => {
+    if (!quote) return;
+    setGeneratingPDF(true);
+    try {
+      const html = generateDocumentHtml('quote', getDocumentData());
+      const filename = generatePdfFilename(
+        quote.customer?.name,
+        quote.vehicle?.make,
+        quote.vehicle?.model
+      );
+      await generatePdfFromHtml(html, filename);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setError(`Failed to generate PDF: ${err.message}`);
+    } finally {
+      setGeneratingPDF(false);
     }
   };
 
@@ -416,7 +436,10 @@ const QuoteDetail = () => {
 
   // Calculate totals
   const partsCost = (quote.parts || []).reduce((total, part) => total + (part.price * part.quantity), 0);
-  const laborCost = (quote.labor || []).reduce((total, labor) => total + (labor.hours * labor.rate), 0);
+  const laborCost = (quote.labor || []).reduce((total, labor) => {
+    const qty = labor.quantity || labor.hours || 0;
+    return total + (qty * labor.rate);
+  }, 0);
   const subtotal = partsCost + laborCost;
   const taxRate = 0.08;
   const taxAmount = subtotal * taxRate;
@@ -465,23 +488,6 @@ const QuoteDetail = () => {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button to={`/quotes/${id}/edit`} variant="outline">
-            <i className="fas fa-edit mr-1"></i>Edit
-          </Button>
-          <Button variant="outline" onClick={handlePrint}>
-            <i className="fas fa-print mr-1"></i>Print Quote
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleArchiveQuote}
-            disabled={archiving}
-          >
-            {archiving ? (
-              <><i className="fas fa-spinner fa-spin mr-1"></i>Archiving...</>
-            ) : (
-              <><i className="fas fa-archive mr-1"></i>Archive</>
-            )}
-          </Button>
           <Button
             variant="primary"
             onClick={() => setConvertModalOpen(true)}
@@ -492,6 +498,48 @@ const QuoteDetail = () => {
           <Button variant="danger" onClick={() => setDeleteModalOpen(true)}>
             <i className="fas fa-trash mr-1"></i>Delete
           </Button>
+          {/* More Actions Dropdown */}
+          <div className="relative">
+            <Button variant="outline" onClick={() => setMoreActionsOpen(!moreActionsOpen)}>
+              More Actions<span className="ml-2">☰</span>
+            </Button>
+            {moreActionsOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMoreActionsOpen(false)}></div>
+                <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg z-20 border border-gray-200">
+                  <Link
+                    to={`/quotes/${id}/edit`}
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => setMoreActionsOpen(false)}
+                  >
+                    <i className="fas fa-edit mr-2"></i>Edit
+                  </Link>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => { handlePrint(); setMoreActionsOpen(false); }}
+                  >
+                    <i className="fas fa-print mr-2"></i>Print
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => { handleDownloadPDF(); setMoreActionsOpen(false); }}
+                    disabled={generatingPDF}
+                  >
+                    <i className={`fas ${generatingPDF ? 'fa-spinner fa-spin' : 'fa-download'} mr-2`}></i>
+                    {generatingPDF ? 'Generating...' : 'Download'}
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => { handleArchiveQuote(); setMoreActionsOpen(false); }}
+                    disabled={archiving}
+                  >
+                    <i className={`fas ${archiving ? 'fa-spinner fa-spin' : 'fa-archive'} mr-2`}></i>
+                    {archiving ? 'Archiving...' : 'Archive'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -879,9 +927,9 @@ const QuoteDetail = () => {
                     ) : (
                       <>
                         <td className="px-4 py-2 text-sm font-medium text-gray-900">{labor.description}</td>
-                        <td className="px-4 py-2 text-sm text-right">{labor.hours}</td>
-                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(labor.rate)}</td>
-                        <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(labor.hours * labor.rate)}</td>
+                        <td className="px-4 py-2 text-sm text-right">{labor.quantity || labor.hours}{labor.billingType !== 'fixed' ? ' hrs' : ''}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(labor.rate)}{labor.billingType !== 'fixed' ? '/hr' : ''}</td>
+                        <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency((labor.quantity || labor.hours) * labor.rate)}</td>
                         <td className="px-4 py-2 text-right">
                           <button
                             onClick={() => setEditingLabor(index)}

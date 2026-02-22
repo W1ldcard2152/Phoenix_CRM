@@ -11,7 +11,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       if (invoiceData?.workOrder?._id) {
         try {
           const response = await workOrderNotesService.getCustomerFacingNotes(invoiceData.workOrder._id);
-          setCustomerFacingNotes(response.data.notes || []);
+          setCustomerFacingNotes(response.notes || []);
         } catch (error) {
           console.error('Error fetching customer-facing notes:', error);
           setCustomerFacingNotes([]);
@@ -167,20 +167,25 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
             <thead className="bg-gray-100">
               <tr>
                 <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Hours</th>
+                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
                 <th className="border border-gray-300 p-2 text-right font-semibold">Rate</th>
                 <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
               </tr>
             </thead>
             <tbody>
-              {labor.map((laborItem, index) => (
-                <tr key={laborItem._id || `labor-${index}`}>
-                  <td className="border border-gray-300 p-2">{laborItem.description}</td>
-                  <td className="border border-gray-300 p-2 text-right">{laborItem.hours}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.total)}</td>
-                </tr>
-              ))}
+              {labor.map((laborItem, index) => {
+                const qty = laborItem.quantity || laborItem.hours || 0;
+                const isHourly = laborItem.billingType !== 'fixed';
+                const total = laborItem.total || (qty * laborItem.rate);
+                return (
+                  <tr key={laborItem._id || `labor-${index}`}>
+                    <td className="border border-gray-300 p-2">{laborItem.description}</td>
+                    <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(total)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

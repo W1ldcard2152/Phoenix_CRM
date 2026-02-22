@@ -9,6 +9,7 @@ import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
+import AvailabilityCalendar from '../../components/appointments/AvailabilityCalendar';
 import AppointmentService from '../../services/appointmentService';
 import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
@@ -45,6 +46,7 @@ const AppointmentForm = () => {
   const [hasConflicts, setHasConflicts] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const [workOrderContext, setWorkOrderContext] = useState(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const AMERICA_NEW_YORK = 'America/New_York';
 
@@ -379,6 +381,26 @@ const AppointmentForm = () => {
 
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
       {hasConflicts && <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4"><p className="font-medium">Warning: Scheduling Conflict</p><p>{conflictMessage}</p></div>}
+
+      {/* Calendar Toggle */}
+      <div className="mb-4">
+        <Button
+          type="button"
+          variant={showCalendar ? 'primary' : 'outline'}
+          onClick={() => setShowCalendar(!showCalendar)}
+          size="sm"
+        >
+          <i className={`fas fa-calendar-alt mr-2`}></i>
+          {showCalendar ? 'Hide Availability' : 'View Availability'}
+        </Button>
+      </div>
+
+      {/* Compact Availability Calendar */}
+      {showCalendar && (
+        <div className="mb-4">
+          <AvailabilityCalendar />
+        </div>
+      )}
 
       <Card>
         <Formik

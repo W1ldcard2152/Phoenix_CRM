@@ -64,7 +64,12 @@ const LaborSchema = new Schema({
     required: true,
     trim: true
   },
-  hours: {
+  billingType: {
+    type: String,
+    enum: ['hourly', 'fixed'],
+    default: 'hourly'
+  },
+  quantity: {
     type: Number,
     required: true,
     min: 0
@@ -72,6 +77,11 @@ const LaborSchema = new Schema({
   rate: {
     type: Number,
     required: true,
+    min: 0
+  },
+  // Legacy field - kept for backward compatibility, maps to quantity for hourly items
+  hours: {
+    type: Number,
     min: 0
   }
 });
@@ -336,6 +346,10 @@ const WorkOrderSchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Technician'
     },
+    invoice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Invoice'
+    },
     skipDiagnostics: {
       type: Boolean,
       default: false
@@ -365,7 +379,8 @@ WorkOrderSchema.virtual('partsCost').get(function() {
 // Virtual for labor cost calculation
 WorkOrderSchema.virtual('laborCost').get(function() {
   return this.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
+    const qty = labor.quantity || labor.hours || 0;
+    return total + (qty * labor.rate);
   }, 0);
 });
 

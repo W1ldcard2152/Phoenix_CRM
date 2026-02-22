@@ -15,6 +15,8 @@ import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
+import { formatCurrency } from '../../utils/formatters';
+import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -80,6 +82,10 @@ const WorkOrderDetail = () => {
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [linkedInvoice, setLinkedInvoice] = useState(null);
+
+  // Print/PDF state
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
@@ -633,7 +639,8 @@ const WorkOrderDetail = () => {
     setEditingLabor(null);
     setNewLabor({
       description: '',
-      hours: 1,
+      billingType: 'hourly',
+      quantity: 1,
       rate: 75
     });
     setLaborModalOpen(true);
@@ -643,7 +650,8 @@ const WorkOrderDetail = () => {
     setEditingLabor({ ...labor, index });
     setNewLabor({
       description: labor.description || '',
-      hours: labor.hours || 1,
+      billingType: labor.billingType || 'hourly',
+      quantity: labor.quantity || labor.hours || 1,
       rate: labor.rate || 75
     });
     setLaborModalOpen(true);
@@ -924,13 +932,54 @@ const WorkOrderDetail = () => {
   };
 
   const generateInvoice = () => {
+    // If invoice already exists, navigate to view it instead of generating a new one
     if (linkedInvoice) {
-      const confirmed = window.confirm(
-        `An invoice (#${linkedInvoice.invoiceNumber || linkedInvoice._id.slice(-6)}) already exists for this work order.\n\nAre you sure you want to generate another invoice?`
-      );
-      if (!confirmed) return;
+      navigate(`/invoices/${linkedInvoice._id}`);
+      return;
     }
     navigate(`/invoices/generate?workOrder=${id}`);
+  };
+
+  // Get document data for printing/PDF
+  const getDocumentData = () => ({
+    documentNumber: workOrder._id?.slice(-6).toUpperCase(),
+    documentDate: workOrder.createdAt,
+    status: workOrder.status,
+    customer: workOrder.customer,
+    vehicle: workOrder.vehicle,
+    vehicleMileage: workOrder.vehicleMileage,
+    serviceRequested: workOrder.serviceRequested,
+    diagnosticNotes: workOrder.diagnosticNotes,
+    parts: workOrder.parts || [],
+    labor: workOrder.labor || [],
+    customerFacingNotes: notes.filter(n => n.isCustomerFacing)
+  });
+
+  // Print handler
+  const handlePrint = () => {
+    if (!workOrder) return;
+    const html = generateDocumentHtml('workorder', getDocumentData());
+    printHtml(html);
+  };
+
+  // Download PDF handler
+  const handleDownloadPDF = async () => {
+    if (!workOrder) return;
+    setGeneratingPDF(true);
+    try {
+      const html = generateDocumentHtml('workorder', getDocumentData());
+      const filename = generatePdfFilename(
+        workOrder.customer?.name,
+        workOrder.vehicle?.make,
+        workOrder.vehicle?.model
+      );
+      await generatePdfFromHtml(html, filename);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setError(`Failed to generate PDF: ${err.message}`);
+    } finally {
+      setGeneratingPDF(false);
+    }
   };
 
   const handleSplitWorkOrder = async (splitData) => {
@@ -951,14 +1000,6 @@ const WorkOrderDetail = () => {
       console.error('Error splitting work order:', err);
       setError('Failed to split work order. Please try again.');
     }
-  };
-
-  // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount || 0);
   };
 
   // Status options for dropdown
@@ -1013,7 +1054,8 @@ const WorkOrderDetail = () => {
   }, 0);
   
   const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
+    const qty = labor.quantity || labor.hours || 0;
+    return total + (qty * labor.rate);
   }, 0);
   
   const subtotalWithoutTax = partsCost + laborCost;
@@ -1054,29 +1096,53 @@ const WorkOrderDetail = () => {
             Edit Work Order
           </Button>
           <Button
-            variant="secondary"
-            onClick={() => setSplitModalOpen(true)}
-            disabled={(!workOrder.parts || workOrder.parts.length === 0) && (!workOrder.labor || workOrder.labor.length === 0)}
-          >
-            Split Work Order
-          </Button>
-          <Button
             variant="outline"
-            onClick={handleGenerateQuote}
-            disabled={generatingQuote}
+            onClick={handlePrint}
           >
-            {generatingQuote ? (
-              <><i className="fas fa-spinner fa-spin mr-1"></i>Generating...</>
-            ) : (
-              <><i className="fas fa-file-alt mr-1"></i>Generate Quote</>
+            <i className="fas fa-print mr-1"></i>Print
+          </Button>
+          {/* More Actions Dropdown */}
+          <div className="relative">
+            <Button variant="outline" onClick={() => setMoreActionsOpen(!moreActionsOpen)}>
+              More Actions<span className="ml-2">☰</span>
+            </Button>
+            {moreActionsOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMoreActionsOpen(false)}></div>
+                <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg z-20 border border-gray-200">
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    onClick={() => { handleDownloadPDF(); setMoreActionsOpen(false); }}
+                    disabled={generatingPDF}
+                  >
+                    <i className={`fas ${generatingPDF ? 'fa-spinner fa-spin' : 'fa-download'} mr-2`}></i>
+                    {generatingPDF ? 'Generating...' : 'Download'}
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                    onClick={() => { setSplitModalOpen(true); setMoreActionsOpen(false); }}
+                    disabled={(!workOrder.parts || workOrder.parts.length === 0) && (!workOrder.labor || workOrder.labor.length === 0)}
+                  >
+                    <i className="fas fa-code-branch mr-2"></i>Split Work Order
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                    onClick={() => { handleGenerateQuote(); setMoreActionsOpen(false); }}
+                    disabled={generatingQuote}
+                  >
+                    <i className={`fas ${generatingQuote ? 'fa-spinner fa-spin' : 'fa-file-alt'} mr-2`}></i>
+                    {generatingQuote ? 'Generating...' : 'Generate Quote'}
+                  </button>
+                  <button
+                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => { setDeleteModalOpen(true); setMoreActionsOpen(false); }}
+                  >
+                    <i className="fas fa-trash mr-2"></i>Delete
+                  </button>
+                </div>
+              </>
             )}
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => setDeleteModalOpen(true)}
-          >
-            Delete
-          </Button>
+          </div>
         </div>
       </div>
 
@@ -1134,26 +1200,27 @@ const WorkOrderDetail = () => {
           title="Totals"
           headerActions={
             <div className="flex items-center space-x-2">
-              {linkedInvoice && (
+              {linkedInvoice ? (
                 <Link
                   to={`/invoices/${linkedInvoice._id}`}
-                  className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                    linkedInvoice.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                    linkedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-800' :
-                    linkedInvoice.status === 'Overdue' ? 'bg-red-100 text-red-800' :
-                    'bg-blue-100 text-blue-800'
+                  className={`inline-flex items-center px-3 py-1.5 text-sm font-semibold rounded ${
+                    linkedInvoice.status === 'Paid' ? 'bg-green-100 text-green-800 hover:bg-green-200' :
+                    linkedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' :
+                    linkedInvoice.status === 'Overdue' ? 'bg-red-100 text-red-800 hover:bg-red-200' :
+                    'bg-blue-100 text-blue-800 hover:bg-blue-200'
                   }`}
                 >
-                  Invoice #{linkedInvoice.invoiceNumber || linkedInvoice._id.slice(-6)} - {linkedInvoice.status || 'Issued'}
+                  View Invoice #{linkedInvoice.invoiceNumber || linkedInvoice._id.slice(-6)} ({linkedInvoice.status || 'Issued'})
                 </Link>
+              ) : (
+                <Button
+                  onClick={generateInvoice}
+                  variant="primary"
+                  size="sm"
+                >
+                  Generate Invoice
+                </Button>
               )}
-              <Button
-                onClick={generateInvoice}
-                variant="primary"
-                size="sm"
-              >
-                Generate Invoice
-              </Button>
             </div>
           }
         >
@@ -1866,7 +1933,7 @@ const WorkOrderDetail = () => {
                       Description
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Hours
+                      Qty
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Rate
@@ -1880,46 +1947,50 @@ const WorkOrderDetail = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {workOrder.labor.map((labor, index) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-gray-900">
-                          {labor.description}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {labor.hours}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {formatCurrency(labor.rate)}/hr
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {formatCurrency(labor.hours * labor.rate)}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-right">
-                        <div className="flex justify-end space-x-2">
-                          <button
-                            onClick={() => openEditLaborModal(labor, index)}
-                            className="text-blue-600 hover:text-blue-800 text-xs"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleRemoveLabor(index)}
-                            className="text-red-600 hover:text-red-800 text-xs"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {workOrder.labor.map((labor, index) => {
+                    const qty = labor.quantity || labor.hours || 0;
+                    const isHourly = labor.billingType !== 'fixed';
+                    return (
+                      <tr key={index}>
+                        <td className="px-4 py-2">
+                          <div className="font-medium text-gray-900">
+                            {labor.description}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {qty}{isHourly ? ' hrs' : ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatCurrency(qty * labor.rate)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap text-right">
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => openEditLaborModal(labor, index)}
+                              className="text-blue-600 hover:text-blue-800 text-xs"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleRemoveLabor(index)}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -2184,37 +2255,48 @@ const WorkOrderDetail = () => {
                   required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Billing Type
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newLabor.billingType}
+                  onChange={(e) => setNewLabor({ ...newLabor, billingType: e.target.value })}
+                >
+                  <option value="hourly">Hourly (hours × rate/hr)</option>
+                  <option value="fixed">Fixed Price (qty × unit price)</option>
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Hours
+                    {newLabor.billingType === 'hourly' ? 'Hours' : 'Quantity'}
                   </label>
                   <input
                     type="number"
                     min="0.1"
-                    step="0.1"
+                    step={newLabor.billingType === 'hourly' ? '0.1' : '1'}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    value={newLabor.hours}
+                    value={newLabor.quantity}
                     onChange={(e) => {
                       const value = e.target.value;
-                      // Allow empty, decimal point, or valid numbers
                       if (value === '' || value === '.') {
-                        setNewLabor({ ...newLabor, hours: value });
+                        setNewLabor({ ...newLabor, quantity: value });
                       } else {
                         const parsed = parseFloat(value);
-                        setNewLabor({ ...newLabor, hours: isNaN(parsed) ? 0 : parsed });
+                        setNewLabor({ ...newLabor, quantity: isNaN(parsed) ? 0 : parsed });
                       }
                     }}
                     onBlur={(e) => {
-                      // On blur, ensure we have a valid number
                       const value = parseFloat(e.target.value) || 0;
-                      setNewLabor({ ...newLabor, hours: value });
+                      setNewLabor({ ...newLabor, quantity: value });
                     }}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Hourly Rate
+                    {newLabor.billingType === 'hourly' ? 'Rate/hr' : 'Unit Price'}
                   </label>
                   <input
                     type="number"
@@ -2228,7 +2310,7 @@ const WorkOrderDetail = () => {
               </div>
               <div className="border p-3 rounded bg-gray-50">
                 <p className="text-sm text-gray-600 mb-1">Calculated Total:</p>
-                <p className="font-medium">{formatCurrency((newLabor.hours || 0) * (newLabor.rate || 0))}</p>
+                <p className="font-medium">{formatCurrency((newLabor.quantity || 0) * (newLabor.rate || 0))}</p>
               </div>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
@@ -2244,7 +2326,7 @@ const WorkOrderDetail = () => {
               <Button
                 variant="primary"
                 onClick={editingLabor ? handleEditLabor : handleAddLabor}
-                disabled={!newLabor.description || !newLabor.hours || newLabor.rate < 0}
+                disabled={!newLabor.description || !newLabor.quantity || newLabor.rate < 0}
               >
                 {editingLabor ? 'Update Labor' : 'Add Labor'}
               </Button>

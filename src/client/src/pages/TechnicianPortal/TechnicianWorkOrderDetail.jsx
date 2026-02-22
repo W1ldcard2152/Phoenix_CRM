@@ -52,9 +52,9 @@ const TechnicianWorkOrderDetail = () => {
     try {
       setNotesLoading(true);
       const response = await workOrderNotesService.getNotes(id);
-      
-      if (response && response.data && response.data.notes) {
-        setNotes(response.data.notes);
+
+      if (response && response.notes) {
+        setNotes(response.notes);
       } else {
         setNotes([]);
       }
@@ -305,7 +305,8 @@ const TechnicianWorkOrderDetail = () => {
   }, 0);
   
   const laborCost = workOrder.labor.reduce((total, labor) => {
-    return total + (labor.hours * labor.rate);
+    const qty = labor.quantity || labor.hours || 0;
+    return total + (qty * labor.rate);
   }, 0);
   
   const subtotalWithoutTax = partsCost + laborCost;
@@ -724,7 +725,7 @@ const TechnicianWorkOrderDetail = () => {
                       Description
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Hours
+                      Qty
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Rate
@@ -735,30 +736,34 @@ const TechnicianWorkOrderDetail = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {workOrder.labor.map((labor, index) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-gray-900">
-                          {labor.description}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {labor.hours}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {formatCurrency(labor.rate)}/hr
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {formatCurrency(labor.hours * labor.rate)}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {workOrder.labor.map((labor, index) => {
+                    const qty = labor.quantity || labor.hours || 0;
+                    const isHourly = labor.billingType !== 'fixed';
+                    return (
+                      <tr key={index}>
+                        <td className="px-4 py-2">
+                          <div className="font-medium text-gray-900">
+                            {labor.description}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {qty}{isHourly ? ' hrs' : ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : ''}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatCurrency(qty * labor.rate)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

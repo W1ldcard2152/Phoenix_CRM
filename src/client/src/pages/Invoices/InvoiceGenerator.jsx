@@ -3,16 +3,16 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService';
-import InvoiceService from '../../services/invoiceService'; // Added InvoiceService import
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import InvoiceService from '../../services/invoiceService';
+import workOrderNotesService from '../../services/workOrderNotesService';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
-import InvoiceDisplay from '../../components/invoice/InvoiceDisplay'; // Import the new component
-// formatCurrency is now imported from utils/formatters, so local definition is removed.
+import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import { formatCurrency, getTodayForInput } from '../../utils/formatters';
+import businessConfig from '../../config/businessConfig';
+import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 
 
 const InvoiceGenerator = () => {
@@ -45,16 +45,17 @@ const InvoiceGenerator = () => {
   const [loading, setLoading] = useState(true); // Set to true initially for the first load
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('invoice'); // 'invoice' or 'preview'
+  const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
 
-  // Business settings
+  // Business settings from centralized config (for InvoiceDisplay component)
   const settings = {
-    businessName: 'Phoenix Automotive Group, Inc.',
-    businessAddressLine1: '201 Ford St',
-    businessAddressLine2: 'Newark NY 14513',
-    businessPhone: '315-830-0008',
-    businessEmail: 'phxautosalvage@gmail.com',
-    businessWebsite: 'www.phxautogroup.com',
-    businessLogo: '/phxLogo.svg' // This path needs to be updated
+    businessName: businessConfig.name,
+    businessAddressLine1: businessConfig.addressLine1,
+    businessAddressLine2: businessConfig.addressLine2,
+    businessPhone: businessConfig.phone,
+    businessEmail: businessConfig.email,
+    businessWebsite: businessConfig.website,
+    businessLogo: businessConfig.logo
   };
 
   // Enhanced loadWorkOrder function
@@ -80,6 +81,15 @@ const InvoiceGenerator = () => {
 
       const workOrder = response.data.workOrder;
       setSelectedWorkOrder(workOrder);
+
+      // Fetch customer-facing notes for the work order
+      try {
+        const notesResponse = await workOrderNotesService.getCustomerFacingNotes(workOrderId);
+        setCustomerFacingNotes(notesResponse.notes || []);
+      } catch (noteErr) {
+        console.error('Error fetching customer-facing notes:', noteErr);
+        setCustomerFacingNotes([]);
+      }
 
       setSelectedCustomer(null);
       setVehicles([]);
@@ -330,59 +340,46 @@ const InvoiceGenerator = () => {
     setInvoiceData(prev => ({ ...prev, taxRate: isNaN(value) ? 0 : value }));
   };
 
+  // Get document data for print/PDF
+  const getDocumentData = () => ({
+    documentNumber: invoiceData.invoiceNumber,
+    documentDate: invoiceData.invoiceDate,
+    customer: selectedCustomer,
+    vehicle: selectedVehicle,
+    vehicleMileage: selectedWorkOrder?.vehicleMileage,
+    parts: invoiceData.parts.map(p => ({
+      name: p.name || p.description,
+      partNumber: p.partNumber,
+      quantity: p.quantity,
+      price: p.price
+    })),
+    labor: invoiceData.labor.map(l => ({
+      description: l.description,
+      hours: l.hours,
+      rate: l.rate
+    })),
+    customerFacingNotes,
+    taxRate: invoiceData.taxRate || 0,
+    terms: invoiceData.terms
+  });
+
   const generatePDF = async () => {
-    if (!printTemplateRef.current) {
-      setError("Preview template is not available. Cannot generate PDF.");
-      return;
+    try {
+      const html = generateDocumentHtml('invoice', getDocumentData());
+      const filename = generatePdfFilename(
+        selectedCustomer?.name,
+        selectedVehicle?.make,
+        selectedVehicle?.model
+      );
+      await generatePdfFromHtml(html, filename);
+    } catch (err) {
+      setError(`Failed to generate PDF: ${err.message}.`);
     }
-    setActiveTab('preview');
-    setTimeout(async () => {
-      try {
-        const canvas = await html2canvas(printTemplateRef.current, { scale: 2, useCORS: true, logging: true });
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfPageHeight = pdf.internal.pageSize.getHeight();
-        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        let heightLeft = imgHeight;
-        let position = 0;
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-        heightLeft -= pdfPageHeight;
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
-          pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-          heightLeft -= pdfPageHeight;
-        }
-        pdf.save(`Invoice-${invoiceData.invoiceNumber || 'draft'}.pdf`);
-      } catch (err) {
-        setError(`Failed to generate PDF: ${err.message}.`);
-      }
-    }, 100);
   };
 
   const printInvoice = () => {
-    setActiveTab('preview');
-    setTimeout(() => {
-      if (printTemplateRef.current) {
-        const printContents = printTemplateRef.current.innerHTML;
-        const popupWin = window.open('', '_blank', 'top=0,left=0,height=auto,width=auto');
-        popupWin.document.open();
-        popupWin.document.write(`
-          <html>
-            <head>
-              <title>Invoice ${invoiceData.invoiceNumber || 'Draft'}</title>
-              <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
-              <style> body { margin: 0; padding: 20px; font-family: sans-serif; } @media print { .no-print { display: none; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } } </style>
-            </head>
-            <body onload="window.print();window.close()">${printContents}</body>
-          </html>`);
-        popupWin.document.close();
-      } else {
-        setError("Preview template not ready for printing.");
-      }
-    }, 100);
+    const html = generateDocumentHtml('invoice', getDocumentData());
+    printHtml(html);
   };
 
   const saveInvoice = async () => {
@@ -434,7 +431,7 @@ const InvoiceGenerator = () => {
         <h1 className="text-3xl font-bold text-gray-800">Invoice Generator</h1>
         <div className="flex space-x-2">
           <button onClick={saveInvoice} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Save Invoice</button>
-          <button onClick={generatePDF} className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">Download PDF</button>
+          <button onClick={generatePDF} className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"><i className="fas fa-download mr-2"></i>Download</button>
           <button onClick={printInvoice} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Print Invoice</button>
         </div>
       </div>

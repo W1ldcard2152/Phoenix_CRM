@@ -111,31 +111,41 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     );
   }
   
-  // If a work order is referenced, verify it exists
+  // If a work order is referenced, verify it exists and doesn't already have an invoice
+  let workOrderToUpdate = null;
   if (workOrderId) {
-    const workOrder = await WorkOrder.findById(workOrderId);
-    
-    if (!workOrder) {
+    workOrderToUpdate = await WorkOrder.findById(workOrderId);
+
+    if (!workOrderToUpdate) {
       return next(new AppError('No work order found with that ID', 404));
     }
-    
-    // Update work order status and totalActual
-    workOrder.status = 'Repair Complete - Invoiced';
-    
+
+    // Check if work order already has an invoice linked
+    if (workOrderToUpdate.invoice) {
+      const existingInvoice = await Invoice.findById(workOrderToUpdate.invoice);
+      if (existingInvoice) {
+        return next(new AppError(
+          `This work order already has an invoice (#${existingInvoice.invoiceNumber || existingInvoice._id.toString().slice(-6)}). Only one invoice per work order is allowed.`,
+          400
+        ));
+      }
+    }
+
     // Calculate totalActual from the work order's parts and labor
-    const partsCost = workOrder.parts.reduce((total, part) => {
+    const partsCost = workOrderToUpdate.parts.reduce((total, part) => {
       return total + (part.price * part.quantity);
     }, 0);
-    
-    const laborCost = workOrder.labor.reduce((total, labor) => {
-      return total + (labor.hours * labor.rate);
+
+    const laborCost = workOrderToUpdate.labor.reduce((total, labor) => {
+      const qty = labor.quantity || labor.hours || 0;
+      return total + (qty * labor.rate);
     }, 0);
-    
-    workOrder.totalActual = partsCost + laborCost;
-    
-    await workOrder.save();
+
+    workOrderToUpdate.totalActual = partsCost + laborCost;
+    workOrderToUpdate.status = 'Repair Complete - Invoiced';
+    // Note: work order will be saved after invoice is created to include invoice reference
   }
-  
+
   // Combine parts and labor into invoice items
   const items = [
     ...parts.map(part => ({
@@ -147,14 +157,18 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
       total: part.total || (part.quantity * part.price),
       taxable: true // Could be configurable
     })),
-    ...labor.map(labor => ({
-      type: 'Labor',
-      description: labor.description,
-      quantity: labor.hours,
-      unitPrice: labor.rate,
-      total: labor.total || (labor.hours * labor.rate),
-      taxable: true // Could be configurable
-    }))
+    ...labor.map(labor => {
+      const qty = labor.quantity || labor.hours || 0;
+      return {
+        type: 'Labor',
+        description: labor.description,
+        quantity: qty,
+        unitPrice: labor.rate,
+        total: labor.total || (qty * labor.rate),
+        taxable: true, // Could be configurable
+        billingType: labor.billingType || 'hourly'
+      };
+    })
   ];
   
   // Calculate due date if not provided
@@ -197,7 +211,13 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
   };
   
   const newInvoice = await Invoice.create(invoiceData);
-  
+
+  // Update work order with invoice reference and save all pending changes
+  if (workOrderToUpdate) {
+    workOrderToUpdate.invoice = newInvoice._id;
+    await workOrderToUpdate.save();
+  }
+
   res.status(201).json({
     status: 'success',
     data: {
@@ -255,15 +275,21 @@ exports.deleteInvoice = catchAsync(async (req, res, next) => {
     );
   }
   
-  // If there's a work order attached, revert its status
+  // If there's a work order attached, revert its status and remove invoice reference
   if (invoice.workOrder) {
     const workOrder = await WorkOrder.findById(invoice.workOrder);
-    
-    if (workOrder && workOrder.status === 'Repair Complete - Invoiced') {
-      workOrder.status = workOrder.parts.some(part => !part.received) 
-        ? 'Parts Ordered' 
-        : 'Parts Received';
-      
+
+    if (workOrder) {
+      // Remove invoice reference
+      workOrder.invoice = null;
+
+      // Revert status if it was invoiced
+      if (workOrder.status === 'Repair Complete - Invoiced') {
+        workOrder.status = workOrder.parts.some(part => !part.received)
+          ? 'Parts Ordered'
+          : 'Parts Received';
+      }
+
       await workOrder.save();
     }
   }

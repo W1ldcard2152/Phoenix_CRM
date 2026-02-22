@@ -10,9 +10,9 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
       if (quoteData?._id) {
         try {
           const response = await workOrderNotesService.getCustomerFacingNotes(quoteData._id);
-          setCustomerFacingNotes(response.data.notes || []);
+          setCustomerFacingNotes(response.notes || []);
         } catch (error) {
-          console.error('Error fetching customer-facing notes:', error);
+          // Silently handle errors - quotes may not have notes and that's fine
           setCustomerFacingNotes([]);
         }
       }
@@ -31,7 +31,10 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
   const calculatedPartsCost = partsCost !== undefined ? partsCost
     : parts.reduce((sum, part) => sum + ((parseFloat(part.price) || 0) * (parseFloat(part.quantity) || 0)), 0);
   const calculatedLaborCost = laborCost !== undefined ? laborCost
-    : labor.reduce((sum, l) => sum + ((parseFloat(l.hours) || 0) * (parseFloat(l.rate) || 0)), 0);
+    : labor.reduce((sum, l) => {
+        const qty = parseFloat(l.quantity) || parseFloat(l.hours) || 0;
+        return sum + (qty * (parseFloat(l.rate) || 0));
+      }, 0);
   const calculatedSubtotal = subtotal !== undefined ? subtotal : calculatedPartsCost + calculatedLaborCost;
   const calculatedTaxAmount = taxAmount !== undefined ? taxAmount : calculatedSubtotal * (parseFloat(taxRate) / 100);
   const calculatedTotal = total !== undefined ? total : calculatedSubtotal + calculatedTaxAmount;
@@ -131,20 +134,24 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
             <thead className="bg-gray-100">
               <tr>
                 <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Hours</th>
+                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
                 <th className="border border-gray-300 p-2 text-right font-semibold">Rate</th>
                 <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
               </tr>
             </thead>
             <tbody>
-              {labor.map((laborItem, index) => (
-                <tr key={laborItem._id || `labor-${index}`}>
-                  <td className="border border-gray-300 p-2">{laborItem.description}</td>
-                  <td className="border border-gray-300 p-2 text-right">{laborItem.hours}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency((parseFloat(laborItem.hours) || 0) * (parseFloat(laborItem.rate) || 0))}</td>
-                </tr>
-              ))}
+              {labor.map((laborItem, index) => {
+                const qty = parseFloat(laborItem.quantity) || parseFloat(laborItem.hours) || 0;
+                const isHourly = laborItem.billingType !== 'fixed';
+                return (
+                  <tr key={laborItem._id || `labor-${index}`}>
+                    <td className="border border-gray-300 p-2">{laborItem.description}</td>
+                    <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(qty * (parseFloat(laborItem.rate) || 0))}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
