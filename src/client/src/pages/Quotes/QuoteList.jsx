@@ -5,7 +5,7 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import QuoteService from '../../services/quoteService';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../utils/formatters';
 
 const QuoteList = () => {
   const navigate = useNavigate();
@@ -300,7 +300,7 @@ const QuoteList = () => {
                       onClick={() => navigate(`/quotes/${quote._id}`)}
                     >
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(quote.date).toLocaleDateString()}
+                        {formatDate(quote.date)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
@@ -391,7 +391,7 @@ const QuoteList = () => {
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-xs text-gray-500 mb-1">
-                        {new Date(quote.date).toLocaleDateString()}
+                        {formatDate(quote.date)}
                       </div>
                       {isArchived ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">

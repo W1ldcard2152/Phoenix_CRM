@@ -1,6 +1,6 @@
 import html2canvas from 'html2canvas';
 import businessConfig from '../config/businessConfig';
-import { formatCurrency } from './formatters';
+import { formatCurrency, formatDate } from './formatters';
 
 /**
  * Generate a filename based on customer/vehicle info
@@ -44,7 +44,7 @@ export const generatePdfFromHtml = async (htmlContent, filename) => {
       <head>
         <style>
           html, body { margin: 0; padding: 0; background: white; height: auto; }
-          #pdf-content { padding: 30px 0 20px 0; }
+          #pdf-content { padding: 30px 20px 20px 20px; }
         </style>
       </head>
       <body><div id="pdf-content">${htmlContent}</div></body>
@@ -102,7 +102,7 @@ export const generatePdfFromHtml = async (htmlContent, filename) => {
  * @param {string} htmlContent - The HTML string to print
  */
 export const printHtml = (htmlContent) => {
-  const popupWin = window.open('', '_blank', 'top=0,left=0,height=auto,width=auto');
+  const popupWin = window.open('', '_blank', `top=0,left=0,height=${window.screen.height},width=${window.screen.width}`);
   popupWin.document.open();
   popupWin.document.write(`
     <html>
@@ -180,7 +180,7 @@ export const generateDocumentHtml = (type, data) => {
   const hasAddress = custAddr && (custAddr.street || custAddr.city);
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; max-width: 680px; margin: 0 auto; padding: 0; color: #111827; font-size: 13px; line-height: 1.5; background: white;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; max-width: 100%; margin: 0 auto; padding: 0; color: #111827; font-size: 13px; line-height: 1.5; background: white;">
       <!-- Header -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         <tr>
@@ -195,7 +195,7 @@ export const generateDocumentHtml = (type, data) => {
           <td style="text-align: right; vertical-align: top;">
             <h2 style="margin: 0 0 4px 0; font-size: 28px; font-weight: bold; color: #1f2937;">${typeLabels[type] || 'DOCUMENT'}</h2>
             <p style="margin: 0; font-size: 13px; white-space: nowrap;"><span style="font-weight: 600;">${numberLabels[type] || 'Number:'} </span>${documentNumber || 'N/A'}</p>
-            <p style="margin: 0; font-size: 13px;"><span style="font-weight: 600;">Date: </span>${documentDate ? new Date(documentDate).toLocaleDateString() : 'N/A'}</p>
+            <p style="margin: 0; font-size: 13px;"><span style="font-weight: 600;">Date: </span>${documentDate ? formatDate(documentDate) : 'N/A'}</p>
           </td>
         </tr>
       </table>
@@ -262,7 +262,7 @@ export const generateDocumentHtml = (type, data) => {
 
       <!-- Parts -->
       ${parts.length > 0 ? `
-      <div style="margin-bottom: 16px;">
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
         <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Parts:</p>
         <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
           <thead>
@@ -291,7 +291,7 @@ export const generateDocumentHtml = (type, data) => {
 
       <!-- Labor -->
       ${labor.length > 0 ? `
-      <div style="margin-bottom: 24px;">
+      <div style="margin-bottom: 24px; page-break-inside: avoid;">
         <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Labor:</p>
         <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
           <thead>
@@ -321,7 +321,7 @@ export const generateDocumentHtml = (type, data) => {
       ` : ''}
 
       <!-- Totals -->
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; page-break-inside: avoid;">
         <tr>
           <td style="width: 60%;"></td>
           <td style="width: 40%;">
@@ -357,7 +357,7 @@ export const generateDocumentHtml = (type, data) => {
           ${customerFacingNotes.map((note, index) => `
             <div style="padding: 12px;${index > 0 ? ' border-top: 1px solid #e5e7eb;' : ''}">
               <p style="margin: 0 0 4px 0; font-size: 12px; color: #6b7280;">
-                ${note.createdAt ? new Date(note.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                ${note.createdAt ? formatDate(note.createdAt) : ''}
               </p>
               <p style="margin: 0; white-space: pre-wrap; color: #374151;">${note.content || note}</p>
             </div>

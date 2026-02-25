@@ -60,7 +60,16 @@
       "Bash(npx craco build:*)",
       "Bash(ls:*)",
       "Bash(npx react-scripts build)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(npx jest:*)",
+      "WebFetch(domain:docs.x.ai)",
+      "Bash(git mv:*)",
+      "Bash(npx concurrently:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm ls:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

@@ -11,28 +11,28 @@ router.use(authController.protect);
 router.get('/', technicianController.getAllTechnicians);
 router.get('/:id', technicianController.getTechnicianById);
 
-// Write operations - restricted to admin and manager roles
+// Write operations - restricted to admin and management roles
 router.post(
   '/',
-  authController.restrictTo('admin', 'manager'),
+  authController.restrictTo('admin', 'management'),
   technicianController.createTechnician
 );
 
 router.patch(
   '/:id',
-  authController.restrictTo('admin', 'manager'),
+  authController.restrictTo('admin', 'management'),
   technicianController.updateTechnician
 );
 
 router.put(
   '/:id',
-  authController.restrictTo('admin', 'manager'),
+  authController.restrictTo('admin', 'management'),
   technicianController.updateTechnician
 );
 
 router.delete(
   '/:id',
-  authController.restrictTo('admin', 'manager'),
+  authController.restrictTo('admin'),
   technicianController.deleteTechnician
 );
 

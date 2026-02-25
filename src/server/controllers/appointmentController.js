@@ -10,8 +10,7 @@ const { validateEntityExists, validateVehicleOwnership } = require('../utils/val
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 const cacheService = require('../services/cacheService');
-
-const AMERICA_NEW_YORK = "America/New_York";
+const { TIMEZONE } = require('../config/timezone');
 
 // Get all appointments
 exports.getAllAppointments = catchAsync(async (req, res, next) => {
@@ -37,10 +36,10 @@ exports.getAllAppointments = catchAsync(async (req, res, next) => {
   if (startDate || endDate) {
     query.startTime = {};
     if (startDate) {
-      query.startTime.$gte = moment.tz(startDate, AMERICA_NEW_YORK).startOf('day').utc().toDate();
+      query.startTime.$gte = moment.tz(startDate, TIMEZONE).startOf('day').utc().toDate();
     }
     if (endDate) {
-      query.startTime.$lte = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
+      query.startTime.$lte = moment.tz(endDate, TIMEZONE).endOf('day').utc().toDate();
     }
   }
 
@@ -93,8 +92,8 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
   }
   
   // Check for scheduling conflicts
-  const newStartTime = moment.tz(req.body.startTime, AMERICA_NEW_YORK).utc().toDate();
-  const newEndTime = moment.tz(req.body.endTime, AMERICA_NEW_YORK).utc().toDate();
+  const newStartTime = moment.tz(req.body.startTime, TIMEZONE).utc().toDate();
+  const newEndTime = moment.tz(req.body.endTime, TIMEZONE).utc().toDate();
 
   if (req.body.technician) {
     const conflicts = await Appointment.checkConflicts(
@@ -247,11 +246,11 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
       appointment.status !== 'Completed') {
     
     const startTime = req.body.startTime
-      ? moment.tz(req.body.startTime, AMERICA_NEW_YORK).utc().toDate()
+      ? moment.tz(req.body.startTime, TIMEZONE).utc().toDate()
       : appointment.startTime;
       
     const endTime = req.body.endTime
-      ? moment.tz(req.body.endTime, AMERICA_NEW_YORK).utc().toDate()
+      ? moment.tz(req.body.endTime, TIMEZONE).utc().toDate()
       : appointment.endTime;
       
     const technician = req.body.technician || appointment.technician;
@@ -464,8 +463,8 @@ exports.getAppointmentsByDateRange = catchAsync(async (req, res, next) => {
     );
   }
 
-  const start = moment.tz(startDate, AMERICA_NEW_YORK).startOf('day').utc().toDate();
-  const end = moment.tz(endDate, AMERICA_NEW_YORK).endOf('day').utc().toDate();
+  const start = moment.tz(startDate, TIMEZONE).startOf('day').utc().toDate();
+  const end = moment.tz(endDate, TIMEZONE).endOf('day').utc().toDate();
 
   if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
@@ -557,8 +556,8 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
     );
   }
   
-  const start = moment.tz(startTime, AMERICA_NEW_YORK).utc().toDate();
-  const end = moment.tz(endTime, AMERICA_NEW_YORK).utc().toDate();
+  const start = moment.tz(startTime, TIMEZONE).utc().toDate();
+  const end = moment.tz(endTime, TIMEZONE).utc().toDate();
   
   if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
@@ -588,7 +587,7 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
 
 // Get today's appointments
 exports.getTodayAppointments = catchAsync(async (req, res, next) => {
-  const today = moment.tz(AMERICA_NEW_YORK).format('YYYY-MM-DD');
+  const today = moment.tz(TIMEZONE).format('YYYY-MM-DD');
   const cacheKey = `appointments:today:${today}`;
 
   // Check cache first
@@ -597,8 +596,8 @@ exports.getTodayAppointments = catchAsync(async (req, res, next) => {
     return res.status(200).json(cached);
   }
 
-  const todayStart = moment.tz(AMERICA_NEW_YORK).startOf('day').utc().toDate();
-  const tomorrowStart = moment.tz(AMERICA_NEW_YORK).add(1, 'day').startOf('day').utc().toDate();
+  const todayStart = moment.tz(TIMEZONE).startOf('day').utc().toDate();
+  const tomorrowStart = moment.tz(TIMEZONE).add(1, 'day').startOf('day').utc().toDate();
 
   const appointments = await applyPopulation(
     Appointment.find({ startTime: { $gte: todayStart, $lt: tomorrowStart } }).sort({ startTime: 1 }),

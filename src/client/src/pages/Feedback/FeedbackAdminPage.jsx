@@ -5,6 +5,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
+import { formatDate } from '../../utils/formatters';
 
 const FeedbackAdminPage = () => {
   const [feedbackEntries, setFeedbackEntries] = useState([]);
@@ -165,7 +166,7 @@ const FeedbackAdminPage = () => {
                   <tr key={entry._id}>
                     <td className="py-2 px-4 border-b">{entry.user ? entry.user.name : 'N/A'}</td>
                     <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
-                    <td className="py-2 px-4 border-b">{new Date(entry.createdAt).toLocaleDateString()}</td>
+                    <td className="py-2 px-4 border-b">{formatDate(entry.createdAt)}</td>
                     <td className="py-2 px-4 border-b">
                       <div className="flex flex-row space-x-2">
                         <Button onClick={() => handleCopyClick(entry.feedbackText)} className="bg-gray-500 hover:bg-gray-700" size="sm">Copy</Button>
@@ -207,7 +208,7 @@ const FeedbackAdminPage = () => {
                     <tr key={entry._id}>
                       <td className="py-2 px-4 border-b">{entry.user ? entry.user.name : 'N/A'}</td>
                       <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
-                      <td className="py-2 px-4 border-b">{new Date(entry.archivedAt).toLocaleDateString()}</td>
+                      <td className="py-2 px-4 border-b">{formatDate(entry.archivedAt)}</td>
                       <td className="py-2 px-4 border-b">
                         <div className="flex flex-row space-x-2">
                           <Button onClick={() => handleRestoreClick(entry._id)} className="bg-blue-500 hover:bg-blue-700" size="sm">Restore</Button>

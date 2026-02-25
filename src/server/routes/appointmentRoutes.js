@@ -6,6 +6,9 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Restrict all appointment routes to office staff
+router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
 // Get appointments for today
 router.get('/today', appointmentController.getTodayAppointments);
 

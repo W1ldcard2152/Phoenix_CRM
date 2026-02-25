@@ -5,7 +5,7 @@ import moment from 'moment-timezone';
 import Card from '../common/Card';
 import Button from '../common/Button';
 import AppointmentService from '../../services/appointmentService';
-import { formatDateTimeToET } from '../../utils/formatters';
+import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 
 const AppointmentCalendar = () => {
   const [appointments, setAppointments] = useState([]);
@@ -125,7 +125,7 @@ const AppointmentCalendar = () => {
     return appointments
       .filter(appointment => {
         // Convert appointment.startTime (UTC) to ET for date comparison
-        const appointmentDateET = moment.utc(appointment.startTime).tz('America/New_York').format('YYYY-MM-DD');
+        const appointmentDateET = moment.utc(appointment.startTime).tz(TIMEZONE).format('YYYY-MM-DD');
         // Filter out appointments linked to "Invoiced" work orders
         return appointmentDateET === day.format('YYYY-MM-DD') && appointment.workOrder?.status !== 'Repair Complete - Invoiced';
       })

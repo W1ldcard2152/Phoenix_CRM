@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
-import { formatDateTimeToET } from '../../utils/formatters';
+import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 
 /**
  * AppointmentCard component - Smart card for swimming lane calendar
@@ -65,13 +65,13 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
 
   // Format time for display
   const formatTime = (dateTime) => {
-    return moment.utc(dateTime).tz('America/New_York').format('h:mm A');
+    return moment.utc(dateTime).tz(TIMEZONE).format('h:mm A');
   };
 
   // Calculate duration in minutes, excluding closed hours (6pm-8am) for multi-day appointments
   const getDurationMinutes = () => {
-    const startET = moment.utc(appointment.startTime).tz('America/New_York');
-    const endET = moment.utc(appointment.endTime).tz('America/New_York');
+    const startET = moment.utc(appointment.startTime).tz(TIMEZONE);
+    const endET = moment.utc(appointment.endTime).tz(TIMEZONE);
 
     // Business hours: 8 AM to 6 PM (18:00)
     const BUSINESS_START_HOUR = 8;

@@ -4,6 +4,7 @@ import AppointmentService from '../../services/appointmentService';
 import TimeAxis from './TimeAxis';
 import TechnicianRow from './TechnicianRow';
 import Card from '../common/Card';
+import { TIMEZONE } from '../../utils/formatters';
 
 /**
  * GanttCalendar component - Gantt-style resource calendar for shop scheduling
@@ -40,7 +41,7 @@ const GanttCalendar = () => {
 
           // Check if we need to show weekends
           const hasWeekendAppointments = filteredAppointments.some(appointment => {
-            const day = moment.utc(appointment.startTime).tz('America/New_York').day();
+            const day = moment.utc(appointment.startTime).tz(TIMEZONE).day();
             return day === 0 || day === 6; // Sunday = 0, Saturday = 6
           });
           setShowWeekends(hasWeekendAppointments);

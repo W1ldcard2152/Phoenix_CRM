@@ -81,15 +81,17 @@ const partValidation = [
     .withMessage('isActive must be a boolean')
 ];
 
-// Routes
+// Read routes - open to all authenticated users
 router.get('/', partController.getAllParts);
 router.get('/search', partController.searchParts);
 router.get('/categories', partController.getCategories);
 router.get('/vendors', partController.getVendors);
 router.get('/brands', partController.getBrands);
 router.get('/:id', partController.getPartById);
-router.post('/', partValidation, partController.createPart);
-router.put('/:id', partValidation, partController.updatePart);
-router.delete('/:id', partController.deletePart);
+
+// Write routes - restricted to admin and management
+router.post('/', authController.restrictTo('admin', 'management'), partValidation, partController.createPart);
+router.put('/:id', authController.restrictTo('admin', 'management'), partValidation, partController.updatePart);
+router.delete('/:id', authController.restrictTo('admin', 'management'), partController.deletePart);
 
 module.exports = router;

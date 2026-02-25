@@ -8,6 +8,7 @@ const {
   getCustomerFacingNotes
 } = require('../controllers/workOrderNotesController');
 const authController = require('../controllers/authController');
+const { restrictToOwnNote } = require('../middleware/restrictToOwn');
 
 // Protect all routes - require authentication
 router.use(authController.protect);
@@ -24,10 +25,10 @@ router.post('/', createWorkOrderNote);
 // GET /api/workorders/:workOrderId/notes/customer-facing - Get only customer-facing notes (for invoices)
 router.get('/customer-facing', getCustomerFacingNotes);
 
-// PUT /api/workorders/:workOrderId/notes/:noteId - Update a specific note
-router.put('/:noteId', updateWorkOrderNote);
+// PUT /api/workorders/:workOrderId/notes/:noteId - Update own note, or any note if admin/management
+router.put('/:noteId', restrictToOwnNote('admin', 'management'), updateWorkOrderNote);
 
-// DELETE /api/workorders/:workOrderId/notes/:noteId - Delete a specific note
-router.delete('/:noteId', deleteWorkOrderNote);
+// DELETE /api/workorders/:workOrderId/notes/:noteId - Delete own note, or any note if admin/management
+router.delete('/:noteId', restrictToOwnNote('admin', 'management'), deleteWorkOrderNote);
 
 module.exports = router;

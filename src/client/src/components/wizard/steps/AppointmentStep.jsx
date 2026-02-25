@@ -8,6 +8,7 @@ import Button from '../../common/Button';
 import Input from '../../common/Input';
 import TextArea from '../../common/TextArea';
 import SelectInput from '../../common/SelectInput';
+import { TIMEZONE } from '../../../utils/formatters';
 
 const AppointmentSchema = Yup.object().shape({
   startDate: Yup.string().required('Start date is required'),
@@ -23,7 +24,6 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
   const [hasConflicts, setHasConflicts] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
 
-  const AMERICA_NEW_YORK = 'America/New_York';
 
   // Fetch technicians
   useEffect(() => {
@@ -69,8 +69,8 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
     }
 
     try {
-      const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
-      const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+      const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+      const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
 
       const response = await AppointmentService.checkConflicts({
         startTime: startDateTime,
@@ -97,8 +97,8 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
       setLoading(true);
 
       // Convert date/time to UTC for server
-      const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
-      const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+      const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+      const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
 
       const appointmentData = {
         customer: customer._id,
@@ -150,7 +150,7 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
   };
 
   const calculateEndTime = (startDate, startTime, durationHours) => {
-    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK);
+    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE);
     const endMoment = startMoment.clone().add(durationHours, 'hours');
     return {
       date: endMoment.format('YYYY-MM-DD'),
@@ -167,7 +167,7 @@ const AppointmentStep = ({ customer, vehicle, workOrder, onAppointmentCreate, on
   ];
 
   // Initial form values
-  const nowET = moment.tz(AMERICA_NEW_YORK);
+  const nowET = moment.tz(TIMEZONE);
   nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
   const estimatedDuration = estimateAppointmentDuration(workOrder);
   const endTime = calculateEndTime(

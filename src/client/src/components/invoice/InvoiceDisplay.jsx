@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency, parseLocalDate } from '../../utils/formatters'; // Import centralized formatter
+import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters'; // Import centralized formatter
 import workOrderNotesService from '../../services/workOrderNotesService';
 
 const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref) => {
@@ -106,7 +106,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
         <div className="text-right">
           <h2 className="text-3xl font-bold text-gray-800">INVOICE</h2>
           <p className="text-md"><span className="font-semibold">Invoice #: </span>{invoiceNumber}</p>
-          <p><span className="font-semibold">Date: </span>{parseLocalDate(invoiceDate).toLocaleDateString()}</p>
+          <p><span className="font-semibold">Date: </span>{formatDate(invoiceDate)}</p>
           {/* Work Order # removed as per request */}
         </div>
       </div>
@@ -219,11 +219,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
                 <div key={note._id} className="p-3">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs text-gray-500">
-                      {new Date(note.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {formatDateTime(note.createdAt)}
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap text-gray-700">{note.content}</p>

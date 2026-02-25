@@ -14,6 +14,7 @@ import AppointmentService from '../../services/appointmentService';
 import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService';
+import { TIMEZONE } from '../../utils/formatters';
 
 const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
@@ -48,7 +49,6 @@ const AppointmentForm = () => {
   const [workOrderContext, setWorkOrderContext] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const AMERICA_NEW_YORK = 'America/New_York';
 
   // Helper to format moment objects for form fields
   const formatDateForField = (momentDate) => momentDate.format('YYYY-MM-DD');
@@ -128,7 +128,7 @@ const AppointmentForm = () => {
       setError(null);
 
       // Define nowET and laterTimeET inside the effect
-      const nowET = moment.tz(AMERICA_NEW_YORK);
+      const nowET = moment.tz(TIMEZONE);
       nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
       const laterTimeET = nowET.clone().add(1, 'hour');
 
@@ -170,10 +170,10 @@ const AppointmentForm = () => {
             customer: apptCustomerId || '',
             vehicle: appt.vehicle?._id || appt.vehicle || '',
             serviceType: appt.serviceType || '',
-            startDate: formatDateForField(moment.utc(appt.startTime).tz(AMERICA_NEW_YORK)),
-            startTime: formatTimeForField(moment.utc(appt.startTime).tz(AMERICA_NEW_YORK)),
-            endDate: formatDateForField(moment.utc(appt.endTime).tz(AMERICA_NEW_YORK)),
-            endTime: formatTimeForField(moment.utc(appt.endTime).tz(AMERICA_NEW_YORK)),
+            startDate: formatDateForField(moment.utc(appt.startTime).tz(TIMEZONE)),
+            startTime: formatTimeForField(moment.utc(appt.startTime).tz(TIMEZONE)),
+            endDate: formatDateForField(moment.utc(appt.endTime).tz(TIMEZONE)),
+            endTime: formatTimeForField(moment.utc(appt.endTime).tz(TIMEZONE)),
             technician: appt.technician?._id || appt.technician || '',
             status: appt.status || 'Scheduled',
             notes: appt.notes || '',
@@ -246,8 +246,8 @@ const AppointmentForm = () => {
   };
 
   const checkForConflicts = async (values) => {
-    const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
-    const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+    const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+    const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
 
     if (!values.startDate || !values.startTime || !values.endDate || !values.endTime || !values.technician) {
       setHasConflicts(false);
@@ -278,8 +278,8 @@ const AppointmentForm = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     // Combine date and time, then format as ISO string (UTC) for the server
-    const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
-    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK).toISOString();
+    const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
 
     const formattedValues = {
       ...values,
@@ -333,7 +333,7 @@ const AppointmentForm = () => {
   };
 
   const calculateEndTime = (startDate, startTime, durationHours) => {
-    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', AMERICA_NEW_YORK);
+    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE);
     const endMoment = startMoment.clone().add(durationHours, 'hours');
     return {
       date: formatDateForField(endMoment),

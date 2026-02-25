@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import WorkOrderService from '../../services/workOrderService';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDate } from '../../utils/formatters';
 
 const TechnicianPortal = () => {
   const navigate = useNavigate();
@@ -403,7 +404,7 @@ const TechnicianPortal = () => {
                   <div className="flex items-center gap-2">
                     {getPriorityIndicator(workOrder.priority)}
                     <span className="text-xs text-gray-500">
-                      {new Date(workOrder.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {formatDate(workOrder.date, 'MMM D')}
                     </span>
                   </div>
                 </div>
@@ -518,7 +519,7 @@ const TechnicianPortal = () => {
                   {filteredWorkOrders.map((workOrder) => (
                     <tr key={workOrder._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
+                        <div className="text-sm text-gray-900">{formatDate(workOrder.date)}</div>
                         <div className="text-xs text-gray-500">#{workOrder._id.slice(-6)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">

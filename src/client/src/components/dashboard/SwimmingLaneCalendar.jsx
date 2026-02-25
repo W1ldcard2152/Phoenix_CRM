@@ -4,6 +4,7 @@ import AppointmentService from '../../services/appointmentService';
 import DailyView from './DailyView';
 import WeeklyView from './WeeklyView';
 import Card from '../common/Card';
+import { TIMEZONE } from '../../utils/formatters';
 
 /**
  * SwimmingLaneCalendar component - Main calendar with daily/weekly toggle
@@ -53,7 +54,7 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
           // Check if we need to show weekends (weekly view only)
           if (viewType === 'weekly') {
             const hasWeekendAppointments = fetchedAppointments.some(appointment => {
-              const day = moment.utc(appointment.startTime).tz('America/New_York').day();
+              const day = moment.utc(appointment.startTime).tz(TIMEZONE).day();
               return day === 0 || day === 6;
             });
             setShowWeekends(hasWeekendAppointments);

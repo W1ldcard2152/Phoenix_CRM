@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
+const { formatDateTime, formatDate } = require('../config/timezone');
 
 const CustomerInteractionSchema = new Schema(
   {
@@ -108,22 +109,12 @@ CustomerInteractionSchema.index({ createdAt: -1 });
 
 // Virtual for formatted dates
 CustomerInteractionSchema.virtual('formattedCreatedAt').get(function() {
-  return this.createdAt.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatDateTime(this.createdAt);
 });
 
 CustomerInteractionSchema.virtual('formattedFollowUpDate').get(function() {
   if (!this.followUpDate) return null;
-  return this.followUpDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
+  return formatDate(this.followUpDate);
 });
 
 // Check if follow-up is overdue

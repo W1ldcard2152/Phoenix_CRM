@@ -8,6 +8,7 @@ import WorkOrderService from '../../services/workOrderService';
 import workOrderNotesService from '../../services/workOrderNotesService';
 import QuoteDisplay from '../../components/quotes/QuoteDisplay';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
+import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import { formatCurrency } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
@@ -45,6 +46,7 @@ const QuoteDetail = () => {
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
 
   // Notes state
   const [notes, setNotes] = useState([]);
@@ -115,6 +117,11 @@ const QuoteDetail = () => {
       setIsOtherVendor(false);
       setNewPart({ ...newPart, vendor: selectedVendor });
     }
+  };
+
+  const handleReceiptImportSuccess = (updatedQuote, extractedParts) => {
+    setQuote(updatedQuote);
+    alert(`Successfully extracted and added ${extractedParts.length} part(s)!`);
   };
 
   // Parts CRUD
@@ -692,9 +699,14 @@ const QuoteDetail = () => {
       <Card
         title="Parts"
         headerActions={
-          <Button variant="primary" size="sm" onClick={() => setPartModalOpen(true)}>
-            <i className="fas fa-plus mr-1"></i>Add Part
-          </Button>
+          <div className="flex space-x-2">
+            <Button variant="success" size="sm" onClick={() => setReceiptModalOpen(true)}>
+              <i className="fas fa-file-import mr-1"></i>Import Parts
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setPartModalOpen(true)}>
+              <i className="fas fa-plus mr-1"></i>Add Part
+            </Button>
+          </div>
         }
         className="mb-6"
       >
@@ -1091,6 +1103,14 @@ const QuoteDetail = () => {
           </div>
         </div>
       </Card>
+
+      {/* Import Parts Modal */}
+      <ReceiptImportModal
+        isOpen={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        entityId={id}
+        onSuccess={handleReceiptImportSuccess}
+      />
 
       {/* Add Part Modal */}
       {partModalOpen && (

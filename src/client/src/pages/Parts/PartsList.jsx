@@ -5,8 +5,11 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import partService from '../../services/partService';
+import { useAuth } from '../../contexts/AuthContext';
+import { permissions } from '../../utils/permissions';
 
 const PartsList = () => {
+  const { currentUser } = useAuth();
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -168,9 +171,11 @@ const PartsList = () => {
     <div className="container mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Parts Inventory</h1>
-        <Button to="/parts/new" variant="primary">
-          Add New Part
-        </Button>
+        {permissions.parts.canCreate(currentUser) && (
+          <Button to="/parts/new" variant="primary">
+            Add New Part
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -341,13 +346,15 @@ const PartsList = () => {
                         >
                           View
                         </Button>
-                        <Button
-                          to={`/parts/${part._id}/edit`}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Edit
-                        </Button>
+                        {permissions.parts.canEdit(currentUser) && (
+                          <Button
+                            to={`/parts/${part._id}/edit`}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Edit
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

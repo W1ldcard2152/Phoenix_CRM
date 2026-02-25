@@ -6,6 +6,7 @@ import { MobileCard, MobileSection, MobileContainer } from '../../components/com
 import WorkOrderService from '../../services/workOrderService';
 import MediaService from '../../services/mediaService';
 import customerInteractionService from '../../services/customerInteractionService';
+import { formatDate } from '../../utils/formatters';
 
 const ServiceWritersCorner = () => {
   const navigate = useNavigate();
@@ -483,7 +484,7 @@ const ServiceWritersCorner = () => {
                   <tr key={workOrder._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {new Date(workOrder.date).toLocaleDateString()}
+                        {formatDate(workOrder.date)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -620,7 +621,7 @@ const ServiceWritersCorner = () => {
                   </div>
                   <div className="text-right ml-4">
                     <div className="text-xs text-gray-500 mb-1">
-                      {new Date(workOrder.date).toLocaleDateString()}
+                      {formatDate(workOrder.date)}
                     </div>
                     <div className="relative">
                       <select

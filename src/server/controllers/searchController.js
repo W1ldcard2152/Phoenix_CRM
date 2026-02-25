@@ -3,6 +3,7 @@ const Vehicle = require('../models/Vehicle');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { formatDate } = require('../config/timezone');
 
 /**
  * Escape special regex characters to prevent ReDoS and NoSQL injection attacks
@@ -170,7 +171,7 @@ const globalSearch = catchAsync(async (req, res, next) => {
             id: workOrder._id,
             title: `Work Order - ${workOrder.customer ? workOrder.customer.name : 'Unknown Customer'}`,
             subtitle: vehicleInfo,
-            description: `Created: ${workOrder.createdAt.toLocaleDateString()}`
+            description: `Created: ${formatDate(workOrder.createdAt)}`
           });
         }
       });

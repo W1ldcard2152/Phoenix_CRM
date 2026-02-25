@@ -7,12 +7,13 @@ import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import Button from '../../components/common/Button';
-import QuoteService from '../../services/quoteService';
+import DocumentService from '../../services/documentService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService';
 import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
-const QuoteSchema = Yup.object().shape({
+// Validation schema - skipDiagnostics only for work orders
+const getValidationSchema = (isQuote) => Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
   vehicle: Yup.string(),
   currentMileage: Yup.number()
@@ -26,10 +27,15 @@ const QuoteSchema = Yup.object().shape({
     })
   ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
-  diagnosticNotes: Yup.string()
+  diagnosticNotes: Yup.string(),
+  ...(isQuote ? {} : { skipDiagnostics: Yup.boolean() })
 });
 
-const QuoteForm = () => {
+const DocumentForm = ({ mode = 'workorder' }) => {
+  const isQuote = mode === 'quote';
+  const typeLabel = isQuote ? 'Quote' : 'Work Order';
+  const basePath = isQuote ? '/quotes' : '/work-orders';
+
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -50,7 +56,8 @@ const QuoteForm = () => {
     priority: 'Normal',
     diagnosticNotes: '',
     parts: [],
-    labor: []
+    labor: [],
+    ...(isQuote ? {} : { status: 'Work Order Created', skipDiagnostics: false })
   });
 
   useEffect(() => {
@@ -67,47 +74,51 @@ const QuoteForm = () => {
         setCustomers(sortedCustomers);
 
         if (id) {
-          const quoteResponse = await QuoteService.getQuote(id);
-          const quoteData = quoteResponse.data.workOrder;
+          const response = await DocumentService.getDocument(id);
+          const docData = response.data.workOrder;
 
           let servicesArray = [];
-          if (quoteData.services && quoteData.services.length > 0) {
-            servicesArray = quoteData.services;
-          } else if (quoteData.serviceRequested) {
-            servicesArray = quoteData.serviceRequested.split('\n')
+          if (docData.services && docData.services.length > 0) {
+            servicesArray = docData.services;
+          } else if (docData.serviceRequested) {
+            servicesArray = docData.serviceRequested.split('\n')
               .filter(line => line.trim().length > 0)
               .map(line => ({ description: line.trim() }));
             if (servicesArray.length === 0) {
-              servicesArray = [{ description: quoteData.serviceRequested }];
+              servicesArray = [{ description: docData.serviceRequested }];
             }
           } else {
             servicesArray = [{ description: '' }];
           }
 
-          const loadedVehicleId = typeof quoteData.vehicle === 'object'
-            ? quoteData.vehicle._id
-            : quoteData.vehicle;
+          const loadedVehicleId = typeof docData.vehicle === 'object'
+            ? docData.vehicle._id
+            : docData.vehicle;
 
           setInitialValues({
-            customer: typeof quoteData.customer === 'object'
-              ? quoteData.customer._id
-              : quoteData.customer,
+            customer: typeof docData.customer === 'object'
+              ? docData.customer._id
+              : docData.customer,
             vehicle: loadedVehicleId,
-            currentMileage: quoteData.currentMileage || '',
-            date: formatDateForInput(quoteData.date),
+            currentMileage: docData.currentMileage || '',
+            date: formatDateForInput(docData.date),
             services: servicesArray,
-            priority: quoteData.priority || 'Normal',
-            diagnosticNotes: quoteData.diagnosticNotes || '',
-            parts: quoteData.parts || [],
-            labor: quoteData.labor || []
+            priority: docData.priority || 'Normal',
+            diagnosticNotes: docData.diagnosticNotes || '',
+            parts: docData.parts || [],
+            labor: docData.labor || [],
+            ...(isQuote ? {} : {
+              status: docData.status || 'Work Order Created',
+              skipDiagnostics: docData.skipDiagnostics || false
+            })
           });
 
-          if (quoteData.customer) {
-            const customerIdToFetch = typeof quoteData.customer === 'object'
-              ? quoteData.customer._id
-              : quoteData.customer;
+          if (docData.customer) {
+            const customerIdToFetch = typeof docData.customer === 'object'
+              ? docData.customer._id
+              : docData.customer;
             await fetchVehiclesForCustomer(customerIdToFetch);
-            if (loadedVehicleId && !quoteData.currentMileage) {
+            if (loadedVehicleId && !docData.currentMileage) {
               await fetchAndSetLatestMileage(loadedVehicleId, (mileage) => {
                 setInitialValues(prev => ({ ...prev, currentMileage: mileage }));
               });
@@ -208,16 +219,16 @@ const QuoteForm = () => {
       };
 
       if (id) {
-        await QuoteService.updateQuote(id, finalData);
-        navigate(`/quotes/${id}`);
+        await DocumentService.updateDocument(id, finalData);
+        navigate(`${basePath}/${id}`);
       } else {
-        const response = await QuoteService.createQuote(finalData);
-        const newQuoteId = response.data.quote._id;
-        navigate(`/quotes/${newQuoteId}`);
+        const response = await DocumentService.createDocument(finalData, isQuote);
+        const newDoc = isQuote ? response.data.quote : response.data.workOrder;
+        navigate(`${basePath}/${newDoc._id}`);
       }
     } catch (err) {
-      console.error('Error saving quote:', err);
-      setError('Failed to save quote. Please try again later.');
+      console.error(`Error saving ${typeLabel.toLowerCase()}:`, err);
+      setError(`Failed to save ${typeLabel.toLowerCase()}. Please try again later.`);
       setSubmitting(false);
     }
   };
@@ -256,7 +267,7 @@ const QuoteForm = () => {
     <div className="container mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800">
-          {id ? 'Edit Quote' : 'Create New Quote'}
+          {id ? `Edit ${typeLabel}` : `Create New ${typeLabel}`}
         </h1>
       </div>
 
@@ -269,7 +280,7 @@ const QuoteForm = () => {
       <Card>
         <Formik
           initialValues={initialValues}
-          validationSchema={QuoteSchema}
+          validationSchema={getValidationSchema(isQuote)}
           onSubmit={handleSubmit}
           enableReinitialize
         >
@@ -346,6 +357,30 @@ const QuoteForm = () => {
                   />
                 </div>
 
+                {/* Skip Diagnostics - Work Orders only */}
+                {!isQuote && (
+                  <div className="md:col-span-2">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="skipDiagnostics"
+                        name="skipDiagnostics"
+                        checked={values.skipDiagnostics}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        className="mr-3 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="skipDiagnostics" className="text-sm font-medium text-gray-700">
+                        This order does not require diagnostics/inspection
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1 ml-7">
+                      Check this for work that doesn't need diagnosis (e.g., brake pads, oil changes).
+                      Work orders will skip directly to "Inspection Complete" status.
+                    </p>
+                  </div>
+                )}
+
                 {/* Services Section */}
                 <div className="md:col-span-2">
                   <FieldArray name="services">
@@ -353,7 +388,7 @@ const QuoteForm = () => {
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Services Quoted <span className="text-red-500">*</span>
+                            {isQuote ? 'Services Quoted' : 'Services Requested'} <span className="text-red-500">*</span>
                           </label>
                           <button
                             type="button"
@@ -417,7 +452,7 @@ const QuoteForm = () => {
 
                 <div className="md:col-span-2">
                   <TextArea
-                    label="Notes (Customer Facing)"
+                    label={isQuote ? 'Notes (Customer Facing)' : 'Initial Notes (Customer Facing)'}
                     name="diagnosticNotes"
                     value={values.diagnosticNotes}
                     onChange={handleChange}
@@ -425,7 +460,10 @@ const QuoteForm = () => {
                     error={errors.diagnosticNotes}
                     touched={touched.diagnosticNotes}
                     rows={4}
-                    placeholder="Enter notes about the quote (visible to customer)"
+                    placeholder={isQuote
+                      ? 'Enter notes about the quote (visible to customer)'
+                      : 'Enter initial notes about the service request (visible to customer)'
+                    }
                   />
                 </div>
               </div>
@@ -433,7 +471,7 @@ const QuoteForm = () => {
               {id && (
                 <div className="mt-6 text-gray-500 text-sm">
                   <p>
-                    To add or update parts and labor, please use the Quote Details page after saving.
+                    To add or update parts and labor, please use the {typeLabel} Details page after saving.
                   </p>
                 </div>
               )}
@@ -442,7 +480,7 @@ const QuoteForm = () => {
                 <Button
                   type="button"
                   variant="light"
-                  onClick={() => navigate(id ? `/quotes/${id}` : '/quotes')}
+                  onClick={() => navigate(id ? `${basePath}/${id}` : basePath)}
                 >
                   Cancel
                 </Button>
@@ -451,7 +489,7 @@ const QuoteForm = () => {
                   variant="primary"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Quote'}
+                  {isSubmitting ? 'Saving...' : `Save ${typeLabel}`}
                 </Button>
               </div>
             </Form>
@@ -462,4 +500,4 @@ const QuoteForm = () => {
   );
 };
 
-export default QuoteForm;
+export default DocumentForm;

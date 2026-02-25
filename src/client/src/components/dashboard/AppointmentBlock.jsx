@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
-import { formatDateTimeToET } from '../../utils/formatters';
+import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 
 /**
  * AppointmentBlock component - Individual appointment block in the Gantt calendar
@@ -32,7 +32,7 @@ const AppointmentBlock = ({ appointment, startMinutes, durationMinutes, isPartia
 
   // Format time for display
   const formatTime = (dateTime) => {
-    return moment.utc(dateTime).tz('America/New_York').format('h:mm A');
+    return moment.utc(dateTime).tz(TIMEZONE).format('h:mm A');
   };
 
   // Format vehicle info

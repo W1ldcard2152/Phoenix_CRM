@@ -6,6 +6,7 @@ import VehicleSection from './sections/VehicleSection';
 import WorkOrderSection from './sections/WorkOrderSection';
 import AppointmentSection from './sections/AppointmentSection';
 import Button from '../../components/common/Button';
+import { formatDateTime } from '../../utils/formatters';
 
 const IntakePage = () => {
   const navigate = useNavigate();
@@ -105,7 +106,7 @@ const IntakePage = () => {
     : null;
 
   const appointmentSummary = appointment
-    ? `${new Date(appointment.startTime).toLocaleDateString()} ${new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    ? formatDateTime(appointment.startTime)
     : null;
 
   return (

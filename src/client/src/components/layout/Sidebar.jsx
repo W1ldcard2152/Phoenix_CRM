@@ -75,7 +75,7 @@ const Sidebar = () => {
     { name: 'Quotes', path: '/quotes', icon: 'fas fa-file-alt', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
     { name: 'Appointments', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
-    { name: 'Parts', path: '/parts', icon: 'fas fa-cogs', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Parts', path: '/parts', icon: 'fas fa-cogs', roles: null },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];
 

@@ -19,11 +19,9 @@ import VehicleList from './pages/Vehicles/VehicleList';
 import VehicleDetail from './pages/Vehicles/VehicleDetail';
 import VehicleForm from './pages/Vehicles/VehicleForm';
 import WorkOrderList from './pages/WorkOrders/WorkOrderList';
-import WorkOrderDetail from './pages/WorkOrders/WorkOrderDetail';
-import WorkOrderForm from './pages/WorkOrders/WorkOrderForm';
 import QuoteList from './pages/Quotes/QuoteList';
-import QuoteDetail from './pages/Quotes/QuoteDetail';
-import QuoteForm from './pages/Quotes/QuoteForm';
+import DocumentDetail from './pages/Documents/DocumentDetail';
+import DocumentForm from './pages/Documents/DocumentForm';
 import AppointmentList from './pages/Appointments/AppointmentList';
 import AppointmentDetail from './pages/Appointments/AppointmentDetail';
 import AppointmentForm from './pages/Appointments/AppointmentForm';
@@ -97,42 +95,42 @@ const App = () => {
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/intake" element={<IntakePage />} />
                       
-                      {/* Customer Routes */}
-                      <Route path="/customers" element={<CustomerList />} />
-                      <Route path="/customers/new" element={<CustomerForm />} />
-                      <Route path="/customers/:id" element={<CustomerDetail />} />
-                      <Route path="/customers/:id/edit" element={<CustomerForm />} />
+                      {/* Customer Routes (office staff) */}
+                      <Route path="/customers" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><CustomerList /></RoleRoute>} />
+                      <Route path="/customers/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><CustomerForm /></RoleRoute>} />
+                      <Route path="/customers/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><CustomerDetail /></RoleRoute>} />
+                      <Route path="/customers/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><CustomerForm /></RoleRoute>} />
                       
-                      {/* Vehicle Routes */}
-                      <Route path="/vehicles" element={<VehicleList />} />
-                      <Route path="/vehicles/new" element={<VehicleForm />} />
-                      <Route path="/vehicles/:id" element={<VehicleDetail />} />
-                      <Route path="/vehicles/:id/edit" element={<VehicleForm />} />
+                      {/* Vehicle Routes (office staff) */}
+                      <Route path="/vehicles" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleList /></RoleRoute>} />
+                      <Route path="/vehicles/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleForm /></RoleRoute>} />
+                      <Route path="/vehicles/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleDetail /></RoleRoute>} />
+                      <Route path="/vehicles/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleForm /></RoleRoute>} />
                       
                       {/* Work Order Routes */}
                       <Route path="/work-orders" element={<WorkOrderList />} />
-                      <Route path="/work-orders/new" element={<WorkOrderForm />} />
-                      <Route path="/work-orders/:id" element={<WorkOrderDetail />} />
-                      <Route path="/work-orders/:id/edit" element={<WorkOrderForm />} />
+                      <Route path="/work-orders/new" element={<DocumentForm mode="workorder" />} />
+                      <Route path="/work-orders/:id" element={<DocumentDetail />} />
+                      <Route path="/work-orders/:id/edit" element={<DocumentForm mode="workorder" />} />
 
-                      {/* Quote Routes */}
-                      <Route path="/quotes" element={<QuoteList />} />
-                      <Route path="/quotes/new" element={<QuoteForm />} />
-                      <Route path="/quotes/:id" element={<QuoteDetail />} />
-                      <Route path="/quotes/:id/edit" element={<QuoteForm />} />
+                      {/* Quote Routes (office staff) */}
+                      <Route path="/quotes" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><QuoteList /></RoleRoute>} />
+                      <Route path="/quotes/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentForm mode="quote" /></RoleRoute>} />
+                      <Route path="/quotes/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentDetail /></RoleRoute>} />
+                      <Route path="/quotes/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentForm mode="quote" /></RoleRoute>} />
                       
-                      {/* Appointment Routes */}
-                      <Route path="/appointments" element={<AppointmentList />} />
-                      <Route path="/appointments/new" element={<AppointmentForm />} />
-                      <Route path="/appointments/:id" element={<AppointmentDetail />} />
-                      <Route path="/appointments/:id/edit" element={<AppointmentForm />} />
+                      {/* Appointment Routes (office staff) */}
+                      <Route path="/appointments" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><AppointmentList /></RoleRoute>} />
+                      <Route path="/appointments/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><AppointmentForm /></RoleRoute>} />
+                      <Route path="/appointments/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><AppointmentDetail /></RoleRoute>} />
+                      <Route path="/appointments/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><AppointmentForm /></RoleRoute>} />
                       
-                      {/* Invoice Routes */}
-                      <Route path="/invoices" element={<InvoiceList />} />
-                      <Route path="/invoices/new" element={<InvoiceGenerator />} />
-                      <Route path="/invoices/new/:id" element={<InvoiceGenerator />} />
-                      <Route path="/invoices/generate" element={<InvoiceGenerator />} />
-                      <Route path="/invoices/:id" element={<InvoiceDetail />} /> {/* Added InvoiceDetail Route */}
+                      {/* Invoice Routes (office staff) */}
+                      <Route path="/invoices" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceList /></RoleRoute>} />
+                      <Route path="/invoices/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceGenerator /></RoleRoute>} />
+                      <Route path="/invoices/new/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceGenerator /></RoleRoute>} />
+                      <Route path="/invoices/generate" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceGenerator /></RoleRoute>} />
+                      <Route path="/invoices/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceDetail /></RoleRoute>} />
 
                       {/* Technician Routes */}
                       <Route path="/technicians" element={<TechniciansPage />} />
@@ -140,13 +138,13 @@ const App = () => {
                       {/* Admin Routes */}
                       <Route path="/admin" element={<RoleRoute roles={['admin', 'management']}><AdminPage /></RoleRoute>} />
 
-                      {/* Feedback Admin Route */}
-                      <Route path="/feedback" element={<FeedbackAdminPage />} />
+                      {/* Feedback Admin Route (admin only) */}
+                      <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
 
-                      {/* Parts Routes */}
+                      {/* Parts Routes (list open to all, create/edit admin+management) */}
                       <Route path="/parts" element={<PartsList />} />
-                      <Route path="/parts/new" element={<PartsForm />} />
-                      <Route path="/parts/:id/edit" element={<PartsForm />} />
+                      <Route path="/parts/new" element={<RoleRoute roles={['admin', 'management']}><PartsForm /></RoleRoute>} />
+                      <Route path="/parts/:id/edit" element={<RoleRoute roles={['admin', 'management']}><PartsForm /></RoleRoute>} />
 
                       {/* Technician Portal Routes */}
                       <Route path="/technician-portal" element={<TechnicianPortal />} />

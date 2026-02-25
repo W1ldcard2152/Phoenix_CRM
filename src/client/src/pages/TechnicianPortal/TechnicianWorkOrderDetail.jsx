@@ -9,6 +9,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import MediaService from '../../services/mediaService';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
+import { formatDate, formatDateTime } from '../../utils/formatters';
 
 const TechnicianWorkOrderDetail = () => {
   const { id } = useParams();
@@ -379,7 +380,7 @@ const TechnicianWorkOrderDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Date</p>
               <p className="font-medium">
-                {new Date(workOrder.date).toLocaleDateString()}
+                {formatDate(workOrder.date)}
               </p>
             </div>
             
@@ -549,13 +550,7 @@ const TechnicianWorkOrderDetail = () => {
                             )}
                           </span>
                           <span className="text-xs text-gray-500">
-                            {new Date(note.createdAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {formatDateTime(note.createdAt)}
                           </span>
                           {note.createdBy?.name && (
                             <span className="text-xs text-gray-500">

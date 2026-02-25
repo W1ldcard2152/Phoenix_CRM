@@ -1,4 +1,5 @@
 import api from './api';
+import { formatDate, formatTime } from '../utils/formatters';
 
 const customerInteractionService = {
   // Get all interactions for a work order
@@ -102,15 +103,8 @@ const customerInteractionService = {
 
   // Helper function to format interaction for display
   formatInteraction: (interaction) => {
-    const date = new Date(interaction.createdAt);
-    const time = date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-    const dateStr = date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    const time = formatTime(interaction.createdAt);
+    const dateStr = formatDate(interaction.createdAt, 'MMM D');
     
     return {
       ...interaction,

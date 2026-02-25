@@ -6,6 +6,9 @@ const authController = require('../controllers/authController');
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Restrict all interaction routes to office staff
+router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
 // Batch endpoint for getting stats for multiple work orders
 router.post('/batch-stats', customerInteractionController.getBatchInteractionStats);
 

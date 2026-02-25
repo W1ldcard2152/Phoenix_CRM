@@ -2,6 +2,7 @@ import React from 'react';
 import moment from 'moment-timezone';
 import AppointmentBlock from './AppointmentBlock';
 import { SHOP_OPEN_HOUR, SHOP_CLOSE_HOUR, PIXELS_PER_HOUR } from './TimeAxis';
+import { TIMEZONE } from '../../utils/formatters';
 
 /**
  * TechnicianRow component - Displays one technician's schedule across all days
@@ -20,7 +21,7 @@ const TechnicianRow = ({ technician, days, appointments }) => {
    * Calculate minutes from shop open (8am) for a given time
    */
   const getMinutesFromShopOpen = (dateTime) => {
-    const time = moment.utc(dateTime).tz('America/New_York');
+    const time = moment.utc(dateTime).tz(TIMEZONE);
     const hour = time.hour();
     const minute = time.minute();
     return (hour - SHOP_OPEN_HOUR) * 60 + minute;
@@ -30,8 +31,8 @@ const TechnicianRow = ({ technician, days, appointments }) => {
    * Get duration in minutes between start and end time
    */
   const getDurationMinutes = (startTime, endTime) => {
-    const start = moment.utc(startTime).tz('America/New_York');
-    const end = moment.utc(endTime).tz('America/New_York');
+    const start = moment.utc(startTime).tz(TIMEZONE);
+    const end = moment.utc(endTime).tz(TIMEZONE);
     return end.diff(start, 'minutes');
   };
 
@@ -46,8 +47,8 @@ const TechnicianRow = ({ technician, days, appointments }) => {
 
     return appointments
       .map(appointment => {
-        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
-        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
+        const apptStart = moment.utc(appointment.startTime).tz(TIMEZONE);
+        const apptEnd = moment.utc(appointment.endTime).tz(TIMEZONE);
         const apptStartDay = apptStart.format('YYYY-MM-DD');
         const apptEndDay = apptEnd.format('YYYY-MM-DD');
 

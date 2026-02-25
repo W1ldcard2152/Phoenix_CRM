@@ -8,8 +8,12 @@ import WorkOrderService from '../../services/workOrderService';
 import invoiceService from '../../services/invoiceService';
 import MediaService from '../../services/mediaService';
 import customerInteractionService from '../../services/customerInteractionService';
+import { useAuth } from '../../contexts/AuthContext';
+import { permissions } from '../../utils/permissions';
+import { formatDate } from '../../utils/formatters';
 
 const WorkOrderList = () => {
+  const { currentUser } = useAuth();
   const [workOrders, setWorkOrders] = useState([]); // Active work orders only
   const [invoicedWorkOrders, setInvoicedWorkOrders] = useState([]); // Separate state for invoiced
   const [onHoldCancelledWorkOrders, setOnHoldCancelledWorkOrders] = useState([]); // Separate state for on hold/cancelled
@@ -644,9 +648,11 @@ const WorkOrderList = () => {
     <div className="container mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Work Orders</h1>
-        <Button to="/work-orders/new" variant="primary">
-          Create Work Order
-        </Button>
+        {permissions.workOrders.canCreate(currentUser) && (
+          <Button to="/work-orders/new" variant="primary">
+            Create Work Order
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -786,7 +792,7 @@ const WorkOrderList = () => {
                   <tr key={workOrder._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {new Date(workOrder.date).toLocaleDateString()}
+                        {formatDate(workOrder.date)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -942,7 +948,7 @@ const WorkOrderList = () => {
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-xs text-gray-500 mb-1">
-                        {new Date(workOrder.date).toLocaleDateString()}
+                        {formatDate(workOrder.date)}
                       </div>
                       <div className="relative">
                         <select
@@ -1123,7 +1129,7 @@ const WorkOrderList = () => {
                     {sortedInvoicedWorkOrders.map((workOrder) => (
                       <tr key={workOrder._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
+                          <div className="text-sm text-gray-900">{formatDate(workOrder.date)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="font-medium text-gray-900">{workOrder.customer?.name || 'Unknown Customer'}</div>
@@ -1275,7 +1281,7 @@ const WorkOrderList = () => {
                     {sortedOnHoldCancelledWorkOrders.map((workOrder) => (
                       <tr key={workOrder._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{new Date(workOrder.date).toLocaleDateString()}</div>
+                          <div className="text-sm text-gray-900">{formatDate(workOrder.date)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="font-medium text-gray-900">{workOrder.customer?.name || 'Unknown Customer'}</div>

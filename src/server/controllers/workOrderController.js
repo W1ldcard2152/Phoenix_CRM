@@ -13,6 +13,7 @@ const { calculateWorkOrderTotal, getWorkOrderCostBreakdown } = require('../utils
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 const cacheService = require('../services/cacheService');
+const { formatDate } = require('../config/timezone');
 
 // Status aliases for backward compatibility - defined once at module level
 const STATUS_ALIASES = {
@@ -877,7 +878,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     priority: originalWorkOrder.priority,
     status: 'Created',
     serviceRequested: newWorkOrderTitle || `Split from WO ${originalWorkOrder._id.toString().slice(-6)}`,
-    diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${new Date().toLocaleDateString()}`,
+    diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${formatDate(new Date())}`,
     parts: partsToMoveItems.map(part => ({
       name: part.name,
       partNumber: part.partNumber,
@@ -914,7 +915,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   if (!originalWorkOrder.diagnosticNotes) {
     originalWorkOrder.diagnosticNotes = '';
   }
-  originalWorkOrder.diagnosticNotes += `\n\nWork order split on ${new Date().toLocaleDateString()}. Moved items to new work order.`;
+  originalWorkOrder.diagnosticNotes += `\n\nWork order split on ${formatDate(new Date())}. Moved items to new work order.`;
 
   // Save both work orders
   await Promise.all([
@@ -1026,113 +1027,163 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
   res.status(200).json(responseData);
 });
 
-// Process receipt and extract parts using AI
-exports.processReceipt = catchAsync(async (req, res, next) => {
-  const openAIService = require('../services/openAIService');
-  const s3Service = require('../services/s3Service');
-  const multer = require('multer');
+// Step 1: Extract parts from receipt using AI (returns raw parts for user review)
+// Multer setup for receipt upload (used as route-level middleware)
+const multer = require('multer');
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }
+}).single('receipt');
+exports.receiptUpload = receiptUpload;
 
-  // Configure multer for memory storage
-  const storage = multer.memoryStorage();
-  const upload = multer({
-    storage,
-    limits: {
-      fileSize: 10 * 1024 * 1024 // 10MB
+exports.extractReceipt = catchAsync(async (req, res, next) => {
+  const aiService = require('../services/aiService');
+  const s3Service = require('../services/s3Service');
+  const Media = require('../models/Media');
+
+  const workOrderId = req.params.id;
+
+  const workOrder = await WorkOrder.findById(workOrderId);
+  if (!workOrder) {
+    return next(new AppError('Work order not found', 404));
+  }
+
+  let receiptData, dataType, mimeType = 'image/png', mediaDoc = null;
+
+  if (req.file) {
+    mimeType = req.file.mimetype;
+
+    // Upload receipt to S3
+    const uploadResult = await s3Service.uploadFile(
+      req.file.buffer,
+      `receipt-${workOrderId}-${Date.now()}-${req.file.originalname}`,
+      req.file.mimetype
+    );
+
+    // Create Media document so receipt appears in Attached Files
+    mediaDoc = await Media.create({
+      workOrder: workOrderId,
+      vehicle: workOrder.vehicle,
+      customer: workOrder.customer,
+      type: 'Parts Receipt',
+      fileUrl: uploadResult.fileUrl,
+      s3Key: uploadResult.key,
+      fileName: req.file.originalname,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size,
+      notes: 'Receipt uploaded - pending part selection',
+      uploadedBy: req.user ? `${req.user.firstName} ${req.user.lastName}` : 'System'
+    });
+
+    if (req.file.mimetype === 'application/pdf') {
+      // Convert PDF pages to images for vision API
+      const { pdfToPng } = require('pdf-to-png-converter');
+      const pngPages = await pdfToPng(req.file.buffer, {
+        viewportScale: 2.0,
+        disableFontFace: false,
+        verbosityLevel: 0
+      });
+      console.log(`[extractReceipt] PDF converted to ${pngPages.length} page image(s)`);
+      // Send page images to AI — parseReceipt handles single or multi-page
+      receiptData = pngPages.map(p => p.content);
+      dataType = 'image';
+      mimeType = 'image/png';
+    } else {
+      receiptData = req.file.buffer;
+      dataType = 'image';
+    }
+  } else if (req.body.receiptText) {
+    receiptData = req.body.receiptText;
+    dataType = 'text';
+  } else {
+    return next(new AppError('Please provide either a receipt file or text', 400));
+  }
+
+  // Extract raw parts (no markup, no shipping amortization yet)
+  const { parts, shippingTotal } = await aiService.parseReceipt(receiptData, dataType, mimeType);
+
+  if (!parts || parts.length === 0) {
+    return next(new AppError('No parts could be extracted from the receipt', 400));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      parts,
+      shippingTotal,
+      mediaId: mediaDoc ? mediaDoc._id : null,
+      mediaS3Key: mediaDoc ? mediaDoc.s3Key : null
     }
   });
+});
 
-  // Handle file upload using multer
-  const uploadMiddleware = upload.single('receipt');
+// Step 2: Add user-selected parts to work order (with shipping amortization + markup)
+exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
+  const aiService = require('../services/aiService');
+  const Media = require('../models/Media');
 
-  uploadMiddleware(req, res, async (err) => {
-    if (err) {
-      return next(new AppError(`File upload error: ${err.message}`, 400));
+  const workOrderId = req.params.id;
+  const { selectedParts, shippingTotal, isOrder, mediaId, mediaS3Key } = req.body;
+
+  if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
+    return next(new AppError('No parts selected', 400));
+  }
+
+  const workOrder = await WorkOrder.findById(workOrderId);
+  if (!workOrder) {
+    return next(new AppError('Work order not found', 404));
+  }
+
+  // Apply shipping amortization and 30% markup to selected parts only
+  const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder);
+
+  // Link receipt media to each part
+  const partsWithReceipt = finalizedParts.map(part => ({
+    ...part,
+    receiptImageUrl: mediaS3Key || null
+  }));
+
+  workOrder.parts.push(...partsWithReceipt);
+
+  // Auto-advance status if all parts ordered
+  if (isOrder) {
+    const allPartsOrdered = workOrder.parts.every(part => part.ordered === true);
+    const preOrderStatuses = [
+      'Work Order Created',
+      'Appointment Scheduled',
+      'Inspection In Progress',
+      'Inspection/Diag Complete'
+    ];
+
+    if (allPartsOrdered && preOrderStatuses.includes(workOrder.status)) {
+      workOrder.status = 'Parts Ordered';
     }
+  }
 
+  await workOrder.save();
+
+  // Update media doc notes with final count
+  if (mediaId) {
     try {
-      const workOrderId = req.params.id;
-
-      // Validate work order exists
-      const workOrder = await WorkOrder.findById(workOrderId);
-      if (!workOrder) {
-        return next(new AppError('Work order not found', 404));
+      const mediaDoc = await Media.findById(mediaId);
+      if (mediaDoc) {
+        mediaDoc.notes = `AI-imported ${isOrder ? 'receipt' : 'quote'} - ${partsWithReceipt.length} part(s) added`;
+        await mediaDoc.save();
       }
+    } catch (e) {
+      console.error('Error updating media notes:', e);
+    }
+  }
 
-      let receiptData, dataType, receiptUrl = null;
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
 
-      // Get isOrder flag (defaults to true for backward compatibility)
-      const isOrder = req.body.isOrder === 'true' || req.body.isOrder === true;
-
-      // Check if file was uploaded or text was provided
-      if (req.file) {
-        // Image/file receipt
-        receiptData = req.file.buffer;
-        dataType = 'image';
-
-        // Upload receipt to S3 (private)
-        const uploadResult = await s3Service.uploadFile(
-          req.file.buffer,
-          `receipt-${workOrderId}-${Date.now()}-${req.file.originalname}`,
-          req.file.mimetype
-        );
-        receiptUrl = uploadResult.key; // Store the S3 key instead of URL
-      } else if (req.body.receiptText) {
-        // Text receipt
-        receiptData = req.body.receiptText;
-        dataType = 'text';
-      } else {
-        return next(new AppError('Please provide either a receipt image or text', 400));
-      }
-
-      // Parse receipt using OpenAI
-      const extractedParts = await openAIService.parseReceipt(receiptData, dataType, isOrder);
-
-      if (!extractedParts || extractedParts.length === 0) {
-        return next(new AppError('No parts could be extracted from the receipt', 400));
-      }
-
-      // Add receipt URL to each part
-      const partsWithReceipt = extractedParts.map(part => ({
-        ...part,
-        receiptImageUrl: receiptUrl
-      }));
-
-      // Add extracted parts to work order
-      workOrder.parts.push(...partsWithReceipt);
-
-      // Check if all parts are now ordered and update status if needed (only if isOrder is true)
-      if (isOrder) {
-        const allPartsOrdered = workOrder.parts.every(part => part.ordered === true);
-        const preOrderStatuses = [
-          'Work Order Created',
-          'Appointment Scheduled',
-          'Inspection In Progress',
-          'Inspection/Diag Complete'
-        ];
-
-        if (allPartsOrdered && preOrderStatuses.includes(workOrder.status)) {
-          workOrder.status = 'Parts Ordered';
-        }
-      }
-
-      await workOrder.save();
-
-      // Clear relevant caches
-      cacheService.invalidateAllWorkOrders();
-      cacheService.invalidateServiceWritersCorner();
-
-      res.status(200).json({
-        status: 'success',
-        message: `Successfully extracted and added ${partsWithReceipt.length} part(s)`,
-        data: {
-          workOrder,
-          extractedParts: partsWithReceipt,
-          receiptUrl
-        }
-      });
-    } catch (error) {
-      console.error('Error processing receipt:', error);
-      return next(new AppError(`Failed to process receipt: ${error.message}`, 500));
+  res.status(200).json({
+    status: 'success',
+    message: `Successfully added ${partsWithReceipt.length} part(s)`,
+    data: {
+      workOrder,
+      addedParts: partsWithReceipt
     }
   });
 });

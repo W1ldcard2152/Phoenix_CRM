@@ -4,8 +4,12 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
+import { useAuth } from '../../contexts/AuthContext';
+import { permissions } from '../../utils/permissions';
+import { formatDate } from '../../utils/formatters';
 
 const CustomerDetail = () => {
+  const { currentUser } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
@@ -96,12 +100,14 @@ const CustomerDetail = () => {
           >
             Edit Customer
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => setDeleteModalOpen(true)}
-          >
-            Delete
-          </Button>
+          {permissions.customers.canDelete(currentUser) && (
+            <Button
+              variant="danger"
+              onClick={() => setDeleteModalOpen(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 
@@ -241,7 +247,7 @@ const CustomerDetail = () => {
                           {workOrder.serviceRequested}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {new Date(workOrder.date).toLocaleDateString()}
+                          {formatDate(workOrder.date)}
                         </p>
                       </div>
                       <div>

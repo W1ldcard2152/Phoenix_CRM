@@ -6,10 +6,13 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
-router
-  .route('/')
-  .get(feedbackController.getAllFeedback)
-  .post(feedbackController.createFeedback);
+// Create feedback - open to all authenticated users
+router.post('/', feedbackController.createFeedback);
+
+// All remaining feedback routes require admin only
+router.use(authController.restrictTo('admin'));
+
+router.get('/', feedbackController.getAllFeedback);
 
 router
   .route('/:id')

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
+const { formatDateTime } = require('../config/timezone');
 
 const WorkOrderNoteSchema = new Schema(
   {
@@ -47,13 +48,7 @@ WorkOrderNoteSchema.index({ workOrder: 1, isCustomerFacing: 1 });
 
 // Virtual for getting formatted creation date
 WorkOrderNoteSchema.virtual('formattedCreatedAt').get(function() {
-  return this.createdAt.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatDateTime(this.createdAt);
 });
 
 // Ensure virtuals are included when converting to JSON

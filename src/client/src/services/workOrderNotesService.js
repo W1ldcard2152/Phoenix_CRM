@@ -10,12 +10,16 @@ const workOrderNotesService = {
    * @param {boolean|null} customerFacing - Filter by customer-facing status (true/false/null for all)
    * @returns {Promise} API response with notes
    */
-  getNotes: async (workOrderId, customerFacing = null) => {
+  getNotes: async (workOrderId, params = null) => {
     try {
       let url = `/workorders/${workOrderId}/notes`;
 
-      if (customerFacing !== null) {
-        url += `?customerFacing=${customerFacing}`;
+      // Support both legacy boolean (customerFacing) and object params ({noteType, customerFacing})
+      if (params !== null && typeof params === 'object') {
+        const query = new URLSearchParams(params).toString();
+        if (query) url += `?${query}`;
+      } else if (params !== null) {
+        url += `?customerFacing=${params}`;
       }
 
       const response = await API.get(url);

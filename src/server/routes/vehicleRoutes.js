@@ -6,6 +6,14 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Mileage routes - open to all authenticated roles (technicians record mileage)
+router.get('/:id/mileage-history', vehicleController.getMileageHistory);
+router.post('/:id/mileage', vehicleController.addMileageRecord);
+router.get('/:id/mileage-at-date', vehicleController.getMileageAtDate);
+
+// All remaining vehicle routes require office staff
+router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
 // Check if VIN exists
 router.get('/check-vin', vehicleController.checkVinExists);
 
@@ -14,15 +22,6 @@ router.get('/search', vehicleController.searchVehicles);
 
 // Get vehicle service history
 router.get('/:id/service-history', vehicleController.getVehicleServiceHistory);
-
-// Get vehicle mileage history
-router.get('/:id/mileage-history', vehicleController.getMileageHistory);
-
-// Add mileage record
-router.post('/:id/mileage', vehicleController.addMileageRecord);
-
-// Get estimated mileage at a specific date
-router.get('/:id/mileage-at-date', vehicleController.getMileageAtDate);
 
 // Basic CRUD routes
 router
@@ -34,6 +33,9 @@ router
   .route('/:id')
   .get(vehicleController.getVehicle)
   .patch(vehicleController.updateVehicle)
-  .delete(vehicleController.deleteVehicle);
+  .delete(
+    authController.restrictTo('admin', 'management'),
+    vehicleController.deleteVehicle
+  );
 
 module.exports = router;

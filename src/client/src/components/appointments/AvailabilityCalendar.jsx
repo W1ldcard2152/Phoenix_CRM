@@ -3,8 +3,7 @@ import ReactDOM from 'react-dom';
 import moment from 'moment-timezone';
 import AppointmentService from '../../services/appointmentService';
 import technicianService from '../../services/technicianService';
-
-const TIMEZONE = 'America/New_York';
+import { TIMEZONE } from '../../utils/formatters';
 const SHOP_OPEN = 8; // 8 AM
 const SHOP_CLOSE = 18; // 6 PM
 const HOUR_HEIGHT = 20; // pixels per hour (compact)

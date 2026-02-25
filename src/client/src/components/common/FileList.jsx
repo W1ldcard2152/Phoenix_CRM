@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
+import { formatDateTime } from '../../utils/formatters';
 
 const FileThumbnail = ({ file }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState(null);
@@ -222,13 +223,7 @@ const FileList = ({ files, onDelete, onShare, onView, loading = false }) => {
                 </div>
                 <div className="text-sm text-gray-500 space-y-1">
                   <p>{formatFileSize(file.fileSize)}</p>
-                  <p>Uploaded: {new Date(file.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}</p>
+                  <p>Uploaded: {formatDateTime(file.createdAt)}</p>
                   {file.uploadedBy && <p>By: {file.uploadedBy}</p>}
                   {file.notes && <p className="text-gray-700 mt-1">"{file.notes}"</p>}
                 </div>

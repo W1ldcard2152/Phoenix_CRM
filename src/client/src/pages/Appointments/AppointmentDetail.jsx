@@ -4,7 +4,7 @@ import moment from 'moment-timezone';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import AppointmentService from '../../services/appointmentService';
-import { formatDateTimeToET } from '../../utils/formatters';
+import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 
 const AppointmentDetail = () => {
   const { id } = useParams();
@@ -79,8 +79,8 @@ const AppointmentDetail = () => {
     if (!startTime || !endTime) return '';
 
     // Convert UTC times from server to ET moment objects
-    const startET = moment.utc(startTime).tz('America/New_York');
-    const endET = moment.utc(endTime).tz('America/New_York');
+    const startET = moment.utc(startTime).tz(TIMEZONE);
+    const endET = moment.utc(endTime).tz(TIMEZONE);
 
     // Business hours: 8 AM to 6 PM (18:00)
     const BUSINESS_START_HOUR = 8;

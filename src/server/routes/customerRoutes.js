@@ -6,6 +6,9 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Restrict all customer routes to office staff (admin, management, service-writer)
+router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
 // Search customers
 router.get('/search', customerController.searchCustomers);
 
@@ -26,7 +29,7 @@ router
   .get(customerController.getCustomer)
   .patch(customerController.updateCustomer)
   .delete(
-    authController.restrictTo('admin', 'manager'),
+    authController.restrictTo('admin', 'management'),
     customerController.deleteCustomer
   );
 

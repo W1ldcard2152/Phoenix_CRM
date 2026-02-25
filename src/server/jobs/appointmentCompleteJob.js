@@ -3,8 +3,7 @@ const moment = require('moment-timezone');
 const Appointment = require('../models/Appointment');
 const WorkOrder = require('../models/WorkOrder');
 const cacheService = require('../services/cacheService');
-
-const TIMEZONE = 'America/New_York';
+const { TIMEZONE } = require('../config/timezone');
 
 // Statuses that should auto-transition to 'Appointment Complete' at close of business
 const TRANSITIONAL_WO_STATUSES = [

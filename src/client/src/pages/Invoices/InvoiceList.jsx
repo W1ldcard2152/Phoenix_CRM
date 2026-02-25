@@ -5,7 +5,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
-import { parseLocalDate } from '../../utils/formatters';
+import { parseLocalDate, formatDate } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 
 const InvoiceList = () => {
@@ -229,7 +229,7 @@ const InvoiceList = () => {
                         <span className="text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{parseLocalDate(invoice.invoiceDate).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(invoice.invoiceDate)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${invoice.total?.toFixed(2) || '0.00'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <SelectInput

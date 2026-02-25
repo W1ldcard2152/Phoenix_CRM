@@ -14,6 +14,6 @@ router.use(authController.protect);
  * @body {File} registration - The registration image file
  * @returns {Object} Extracted vehicle data (VIN, license plate, etc.)
  */
-router.post('/scan', upload.single('registration'), scanRegistration);
+router.post('/scan', authController.restrictTo('admin', 'management', 'service-writer'), upload.single('registration'), scanRegistration);
 
 module.exports = router;

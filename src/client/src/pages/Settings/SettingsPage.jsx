@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthService from '../../services/authService';
+import { formatDate } from '../../utils/formatters';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -325,13 +326,13 @@ const SettingsPage = () => {
             <div className="flex justify-between">
               <span className="text-gray-600">Account Created:</span>
               <span className="font-medium text-gray-800">
-                {currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleDateString() : 'N/A'}
+                {currentUser?.createdAt ? formatDate(currentUser.createdAt) : 'N/A'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Last Updated:</span>
               <span className="font-medium text-gray-800">
-                {currentUser?.updatedAt ? new Date(currentUser.updatedAt).toLocaleDateString() : 'N/A'}
+                {currentUser?.updatedAt ? formatDate(currentUser.updatedAt) : 'N/A'}
               </span>
             </div>
           </div>

@@ -2,60 +2,64 @@ const express = require('express');
 const workOrderController = require('../controllers/workOrderController');
 const workOrderNotesRoutes = require('./workOrderNotesRoutes');
 const authController = require('../controllers/authController');
+const { restrictToOwnWorkOrder } = require('../middleware/restrictToOwn');
 const router = express.Router();
 
 // Protect all routes - require authentication
 router.use(authController.protect);
 
-// Quote-specific routes
-router.get('/quotes', workOrderController.getAllQuotes);
-router.post('/quotes', workOrderController.createQuote);
-router.post('/:id/convert-to-work-order', workOrderController.convertQuoteToWorkOrder);
-router.post('/:id/generate-quote', workOrderController.generateQuoteFromWorkOrder);
-router.post('/:id/archive-quote', workOrderController.archiveQuote);
-router.post('/:id/unarchive-quote', workOrderController.unarchiveQuote);
+// Quote-specific routes (office staff only)
+router.get('/quotes', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.getAllQuotes);
+router.post('/quotes', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.createQuote);
+router.post('/:id/convert-to-work-order', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.convertQuoteToWorkOrder);
+router.post('/:id/generate-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.generateQuoteFromWorkOrder);
+router.post('/:id/archive-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.archiveQuote);
+router.post('/:id/unarchive-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.unarchiveQuote);
 
-// Search work orders
+// Search work orders (all authenticated)
 router.get('/search', workOrderController.searchWorkOrders);
 
-// Get work orders awaiting scheduling (Parts Received with no future appointments)
-router.get('/awaiting-scheduling', workOrderController.getWorkOrdersAwaitingScheduling);
+// Get work orders awaiting scheduling (office staff only)
+router.get('/awaiting-scheduling', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.getWorkOrdersAwaitingScheduling);
 
-// Get all work orders that need scheduling (for appointments page)
-router.get('/needing-scheduling', workOrderController.getWorkOrdersNeedingScheduling);
+// Get all work orders that need scheduling (office staff only)
+router.get('/needing-scheduling', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.getWorkOrdersNeedingScheduling);
 
-// Get Service Writer's Corner data
-router.get('/service-writers-corner', workOrderController.getServiceWritersCorner);
+// Get Service Writer's Corner data (office staff only)
+router.get('/service-writers-corner', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.getServiceWritersCorner);
 
-// Get active work orders by multiple statuses in a single call (Dashboard optimization)
+// Get active work orders by multiple statuses in a single call (all authenticated)
 router.get('/active-by-statuses', workOrderController.getActiveWorkOrdersByStatuses);
 
-// Get work orders for Technician Portal (server-side filtering)
+// Get work orders for Technician Portal (all authenticated)
 router.get('/technician-portal', workOrderController.getTechnicianWorkOrders);
 
-// Get work orders by status
+// Get work orders by status (all authenticated)
 router.get('/status/:status', workOrderController.getWorkOrdersByStatus);
 
-// Update work order status
-router.patch('/:id/status', workOrderController.updateStatus);
+// Update work order status (office staff or own assigned WO)
+router.patch('/:id/status', restrictToOwnWorkOrder('admin', 'management', 'service-writer'), workOrderController.updateStatus);
 
-// Add part to work order
-router.post('/:id/parts', workOrderController.addPart);
+// Add part to work order (office staff only)
+router.post('/:id/parts', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addPart);
 
-// Add labor to work order
-router.post('/:id/labor', workOrderController.addLabor);
+// Add labor to work order (office staff or own assigned WO)
+router.post('/:id/labor', restrictToOwnWorkOrder('admin', 'management', 'service-writer'), workOrderController.addLabor);
 
-// Process receipt and extract parts
-router.post('/:id/process-receipt', workOrderController.processReceipt);
+// Receipt import: Step 1 - extract parts from receipt (office staff only)
+router.post('/:id/extract-receipt', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.receiptUpload, workOrderController.extractReceipt);
 
-// Get signed URL for receipt image
-router.get('/receipt-signed-url', workOrderController.getReceiptSignedUrl);
+// Receipt import: Step 2 - confirm and add selected parts (office staff only)
+router.post('/:id/confirm-receipt-parts', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.confirmReceiptParts);
 
-// Generate invoice
-router.get('/:id/invoice', workOrderController.generateInvoice);
+// Get signed URL for receipt image (office staff only)
+router.get('/receipt-signed-url', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.getReceiptSignedUrl);
 
-// Split work order
-router.post('/:id/split', workOrderController.splitWorkOrder);
+// Generate invoice (office staff only)
+router.get('/:id/invoice', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.generateInvoice);
+
+// Split work order (office staff only)
+router.post('/:id/split', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.splitWorkOrder);
 
 // Work order notes routes - mount under /:workOrderId/notes
 router.use('/:workOrderId/notes', workOrderNotesRoutes);
@@ -64,12 +68,12 @@ router.use('/:workOrderId/notes', workOrderNotesRoutes);
 router
   .route('/')
   .get(workOrderController.getAllWorkOrders)
-  .post(workOrderController.createWorkOrder);
+  .post(authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.createWorkOrder);
 
 router
   .route('/:id')
   .get(workOrderController.getWorkOrder)
-  .patch(workOrderController.updateWorkOrder)
-  .delete(workOrderController.deleteWorkOrder);
+  .patch(restrictToOwnWorkOrder('admin', 'management', 'service-writer'), workOrderController.updateWorkOrder)
+  .delete(authController.restrictTo('admin', 'management'), workOrderController.deleteWorkOrder);
 
 module.exports = router;

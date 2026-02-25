@@ -1,5 +1,6 @@
 const sgMail = require('@sendgrid/mail');
 const AppError = require('../utils/appError');
+const { formatDate, formatTime } = require('../config/timezone');
 
 // Initialize SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -39,15 +40,9 @@ exports.sendEmail = async (options) => {
  * @returns {Promise} Send result
  */
 exports.sendAppointmentConfirmation = async (appointment, customer, vehicle) => {
-  const date = new Date(appointment.startTime).toLocaleDateString();
-  const startTime = new Date(appointment.startTime).toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
-  const endTime = new Date(appointment.endTime).toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
+  const date = formatDate(appointment.startTime);
+  const startTime = formatTime(appointment.startTime);
+  const endTime = formatTime(appointment.endTime);
   
   const subject = `Appointment Confirmation - ${date} at ${startTime}`;
   

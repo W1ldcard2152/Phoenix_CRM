@@ -2,6 +2,7 @@ import React from 'react';
 import moment from 'moment-timezone';
 import HorizontalTimeAxis, { SHOP_OPEN_HOUR, SHOP_CLOSE_HOUR, PIXELS_PER_MINUTE } from './HorizontalTimeAxis';
 import AppointmentCard from './AppointmentCard';
+import { TIMEZONE } from '../../utils/formatters';
 
 /**
  * DailyView component - Swimming lane calendar showing one day
@@ -18,7 +19,7 @@ const DailyView = ({ date, appointments }) => {
    * Calculate minutes from shop open (8am) for a given time
    */
   const getMinutesFromShopOpen = (dateTime) => {
-    const time = moment.utc(dateTime).tz('America/New_York');
+    const time = moment.utc(dateTime).tz(TIMEZONE);
     const hour = time.hour();
     const minute = time.minute();
     return (hour - SHOP_OPEN_HOUR) * 60 + minute;
@@ -28,8 +29,8 @@ const DailyView = ({ date, appointments }) => {
    * Get duration in minutes
    */
   const getDurationMinutes = (startTime, endTime) => {
-    const start = moment.utc(startTime).tz('America/New_York');
-    const end = moment.utc(endTime).tz('America/New_York');
+    const start = moment.utc(startTime).tz(TIMEZONE);
+    const end = moment.utc(endTime).tz(TIMEZONE);
     return end.diff(start, 'minutes');
   };
 
@@ -45,14 +46,14 @@ const DailyView = ({ date, appointments }) => {
 
     return appointments
       .filter(appointment => {
-        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
-        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
+        const apptStart = moment.utc(appointment.startTime).tz(TIMEZONE);
+        const apptEnd = moment.utc(appointment.endTime).tz(TIMEZONE);
         // Check if appointment overlaps with this day
         return apptStart.isBefore(dayEnd) && apptEnd.isAfter(dayStart);
       })
       .map(appointment => {
-        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
-        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
+        const apptStart = moment.utc(appointment.startTime).tz(TIMEZONE);
+        const apptEnd = moment.utc(appointment.endTime).tz(TIMEZONE);
         const apptStartDay = apptStart.format('YYYY-MM-DD');
         const apptEndDay = apptEnd.format('YYYY-MM-DD');
 
@@ -69,15 +70,15 @@ const DailyView = ({ date, appointments }) => {
           if (isStartDay) {
             // First day: show from start time to 6pm
             displayStart = apptStart;
-            displayEnd = date.clone().tz('America/New_York').hour(SHOP_CLOSE_HOUR).minute(0);
+            displayEnd = date.clone().tz(TIMEZONE).hour(SHOP_CLOSE_HOUR).minute(0);
           } else if (isEndDay) {
             // Last day: show from 8am to end time
-            displayStart = date.clone().tz('America/New_York').hour(SHOP_OPEN_HOUR).minute(0);
+            displayStart = date.clone().tz(TIMEZONE).hour(SHOP_OPEN_HOUR).minute(0);
             displayEnd = apptEnd;
           } else {
             // Middle day: show full shop hours (8am to 6pm)
-            displayStart = date.clone().tz('America/New_York').hour(SHOP_OPEN_HOUR).minute(0);
-            displayEnd = date.clone().tz('America/New_York').hour(SHOP_CLOSE_HOUR).minute(0);
+            displayStart = date.clone().tz(TIMEZONE).hour(SHOP_OPEN_HOUR).minute(0);
+            displayEnd = date.clone().tz(TIMEZONE).hour(SHOP_CLOSE_HOUR).minute(0);
           }
 
           return {
@@ -141,8 +142,8 @@ const DailyView = ({ date, appointments }) => {
     const lanes = []; // Track end times of appointments in each lane
 
     sorted.forEach(appointment => {
-      const start = moment.utc(appointment.startTime).tz('America/New_York');
-      const end = moment.utc(appointment.endTime).tz('America/New_York');
+      const start = moment.utc(appointment.startTime).tz(TIMEZONE);
+      const end = moment.utc(appointment.endTime).tz(TIMEZONE);
 
       // Find the first lane where this appointment fits
       let laneIndex = 0;

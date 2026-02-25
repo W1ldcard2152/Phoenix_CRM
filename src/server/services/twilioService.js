@@ -1,5 +1,6 @@
 const twilio = require('twilio');
 const AppError = require('../utils/appError');
+const { formatDate, formatTime } = require('../config/timezone');
 
 // Initialize Twilio client
 const client = twilio(
@@ -67,11 +68,8 @@ exports.sendMMS = async (to, body, mediaUrl) => {
  * @returns {Promise<Object>} Message details
  */
 exports.sendAppointmentReminder = async (appointment, customer, vehicle) => {
-  const date = new Date(appointment.startTime).toLocaleDateString();
-  const time = new Date(appointment.startTime).toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
+  const date = formatDate(appointment.startTime);
+  const time = formatTime(appointment.startTime);
   
   const body = `Hi ${customer.name}, this is a reminder about your appointment for your ${vehicle.year} ${vehicle.make} ${vehicle.model} on ${date} at ${time}. Reply Y to confirm or call us to reschedule.`;
   

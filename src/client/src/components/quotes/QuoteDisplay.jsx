@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency, parseLocalDate } from '../../utils/formatters';
+import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters';
 import workOrderNotesService from '../../services/workOrderNotesService';
 
 const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost, laborCost, subtotal, taxRate = 0, taxAmount, total }, ref) => {
@@ -60,7 +60,7 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
         <div className="text-right">
           <h2 className="text-3xl font-bold text-gray-800">QUOTE</h2>
           <p className="text-md"><span className="font-semibold">Quote #: </span>{quoteData._id?.slice(-8)?.toUpperCase()}</p>
-          <p><span className="font-semibold">Quote Date: </span>{parseLocalDate(quoteData.date).toLocaleDateString()}</p>
+          <p><span className="font-semibold">Quote Date: </span>{formatDate(quoteData.date)}</p>
         </div>
       </div>
 
@@ -185,11 +185,7 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
                 <div key={note._id} className="p-3">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs text-gray-500">
-                      {new Date(note.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      })}
+                      {formatDateTime(note.createdAt)}
                     </span>
                   </div>
                   <p className="whitespace-pre-wrap text-gray-700">{note.content}</p>

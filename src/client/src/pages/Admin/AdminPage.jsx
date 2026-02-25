@@ -5,6 +5,7 @@ import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import Modal from '../../components/common/Modal';
 import API from '../../services/api';
+import { formatDate } from '../../utils/formatters';
 
 const roleOptions = [
   { value: 'admin', label: 'Admin' },
@@ -284,7 +285,7 @@ const AdminPage = () => {
                     )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                    {user.createdAt ? formatDate(user.createdAt) : '—'}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right text-sm space-x-2">
                     <button

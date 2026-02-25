@@ -1,6 +1,9 @@
 // src/utils/formatters.js
 import moment from 'moment-timezone';
 
+// Single source of truth for timezone on the client
+export const TIMEZONE = process.env.REACT_APP_TIMEZONE || 'America/New_York';
+
 /**
  * Format a number as currency
  * @param {number} amount - The amount to format
@@ -16,38 +19,45 @@ export const formatCurrency = (amount, currencyCode = 'USD', locale = 'en-US') =
       maximumFractionDigits: 2
     }).format(amount || 0);
   };
-  
-  /**
-   * Format a date to a locale string
-   * @param {string|Date} date - The date to format
-   * @param {Object} options - Intl.DateTimeFormat options
-   * @param {string} locale - Locale (default: en-US)
-   * @returns {string} Formatted date string
-   */
-  export const formatDate = (date, options = {}, locale = 'en-US') => {
-    if (!date) return '';
-    
-    const defaultOptions = {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    };
-    
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
-    return new Intl.DateTimeFormat(locale, { ...defaultOptions, ...options }).format(dateObj);
-  };
 
 /**
- * Format a UTC date string or Date object to a specified format in America/New_York timezone.
- * @param {string|Date} utcDate - The UTC date to format.
- * @param {string} formatString - The moment.js format string.
- * @returns {string} Formatted date-time string in ET.
+ * Format a UTC date to a localized date string in the configured timezone.
+ * @param {string|Date} date - UTC date from server
+ * @param {string} formatString - moment.js format (default: 'MMM D, YYYY')
+ * @returns {string} Formatted date string
  */
-export const formatDateTimeToET = (utcDate, formatString = 'MMM D, YYYY, h:mm A') => {
-  if (!utcDate) return '';
-  return moment.utc(utcDate).tz('America/New_York').format(formatString);
+export const formatDate = (date, formatString = 'MMM D, YYYY') => {
+  if (!date) return '';
+  return moment.utc(date).tz(TIMEZONE).format(formatString);
 };
-  
+
+/**
+ * Format a UTC date to a localized time string in the configured timezone.
+ * @param {string|Date} date - UTC date from server
+ * @param {string} formatString - moment.js format (default: 'h:mm A')
+ * @returns {string} Formatted time string
+ */
+export const formatTime = (date, formatString = 'h:mm A') => {
+  if (!date) return '';
+  return moment.utc(date).tz(TIMEZONE).format(formatString);
+};
+
+/**
+ * Format a UTC date to a localized date+time string in the configured timezone.
+ * @param {string|Date} date - UTC date from server
+ * @param {string} formatString - moment.js format (default: 'MMM D, YYYY, h:mm A')
+ * @returns {string} Formatted date-time string
+ */
+export const formatDateTime = (date, formatString = 'MMM D, YYYY, h:mm A') => {
+  if (!date) return '';
+  return moment.utc(date).tz(TIMEZONE).format(formatString);
+};
+
+// Backward-compatible alias
+export const formatDateTimeToET = (utcDate, formatString = 'MMM D, YYYY, h:mm A') => {
+  return formatDateTime(utcDate, formatString);
+};
+
   /**
    * Format a phone number as (XXX) XXX-XXXX
    * @param {string} phone - Phone number to format
@@ -55,15 +65,15 @@ export const formatDateTimeToET = (utcDate, formatString = 'MMM D, YYYY, h:mm A'
    */
   export const formatPhoneNumber = (phone) => {
     if (!phone) return '';
-    
+
     // Remove all non-digit characters
     const digits = phone.replace(/\D/g, '');
-    
+
     // Format as (XXX) XXX-XXXX if 10 digits
     if (digits.length === 10) {
       return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
     }
-    
+
     // Return original if not 10 digits
     return phone;
   };
@@ -86,15 +96,15 @@ export const capitalizeWords = (str) => {
  */
 export const formatDateForInput = (date) => {
   if (!date) return '';
-  
+
   // Use parseLocalDate for string dates to avoid timezone issues
   const dateObj = typeof date === 'string' ? parseLocalDate(date) : date;
-  
+
   // Use local date methods to avoid timezone conversion
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const day = String(dateObj.getDate()).padStart(2, '0');
-  
+
   return `${year}-${month}-${day}`;
 };
 
@@ -115,7 +125,7 @@ export const getTodayForInput = () => {
  */
 export const parseDateFromInput = (dateString) => {
   if (!dateString) return null;
-  
+
   const [year, month, day] = dateString.split('-').map(Number);
   return new Date(year, month - 1, day); // month is 0-indexed
 };

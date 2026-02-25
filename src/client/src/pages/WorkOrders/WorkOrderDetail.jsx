@@ -13,6 +13,7 @@ import OnHoldReasonModal from '../../components/workorder/OnHoldReasonModal';
 import QuoteService from '../../services/quoteService';
 import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
+import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
 import { formatCurrency } from '../../utils/formatters';
@@ -50,11 +51,7 @@ const WorkOrderDetail = () => {
   const [onHoldModalOpen, setOnHoldModalOpen] = useState(false);
   const [generatingQuote, setGeneratingQuote] = useState(false);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptText, setReceiptText] = useState('');
-  const [processingReceipt, setProcessingReceipt] = useState(false);
   const [showCost, setShowCost] = useState(false);
-  const [isOrder, setIsOrder] = useState(true); // true = order, false = quote
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
   const [viewerTitle, setViewerTitle] = useState('');
@@ -163,27 +160,27 @@ const WorkOrderDetail = () => {
       setError('Please select a vendor and enter an order number');
       return;
     }
-    
+
     try {
-      let updatedWorkOrder = { ...workOrder };
       let updatedCount = 0;
-      
-      updatedWorkOrder.parts = workOrder.parts.map(part => {
+
+      const updatedParts = workOrder.parts.map(part => {
         if (part.vendor === bulkOrderData.vendor) {
           updatedCount++;
-          return { 
-            ...part, 
+          return {
+            ...part,
             purchaseOrderNumber: bulkOrderData.orderNumber,
             ordered: true  // Automatically mark as ordered when assigning order number
           };
         }
         return part;
       });
-      
+
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
-      
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      const updateData = { parts: updatedParts, status: workOrder.status };
+      await checkAndUpdatePartsStatus(updateData);
+
+      const response = await WorkOrderService.updateWorkOrder(id, updateData);
       setWorkOrder(response.data.workOrder);
       
       setBulkOrderModalOpen(false);
@@ -624,7 +621,6 @@ const WorkOrderDetail = () => {
   const handleUpdateDiagnosticNotes = async () => {
     try {
       const response = await WorkOrderService.updateWorkOrder(id, {
-        ...workOrder,
         diagnosticNotes: editingDiagnosticNotes
       });
       setWorkOrder(response.data.workOrder);
@@ -665,9 +661,9 @@ const WorkOrderDetail = () => {
       // Check if all parts are now ordered and update status if needed
       updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
       
-      // If status was updated, save the change
+      // If status was updated by auto-status logic, save the change
       if (updatedWorkOrder.status !== response.data.workOrder.status) {
-        const statusResponse = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+        const statusResponse = await WorkOrderService.updateWorkOrder(id, { status: updatedWorkOrder.status });
         setWorkOrder(statusResponse.data.workOrder);
       } else {
         setWorkOrder(updatedWorkOrder);
@@ -694,20 +690,19 @@ const WorkOrderDetail = () => {
 
   const handleEditPart = async () => {
     try {
-      // Create an updated work order with the edited part
-      let updatedWorkOrder = { ...workOrder };
-      const updatedParts = [...updatedWorkOrder.parts];
+      // Create updated parts array with the edited part
+      const updatedParts = [...workOrder.parts];
       updatedParts[editingPart.index] = {
         ...updatedParts[editingPart.index],
         ...newPart
       };
-      updatedWorkOrder.parts = updatedParts;
-      
-      // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
 
-      // Send the entire updated work order to the server
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      // Check if all parts are now ordered and update status if needed
+      const updateData = { parts: updatedParts, status: workOrder.status };
+      await checkAndUpdatePartsStatus(updateData);
+
+      // Send only the changed fields to the server
+      const response = await WorkOrderService.updateWorkOrder(id, updateData);
       setWorkOrder(response.data.workOrder);
       setPartModalOpen(false);
       setEditingPart(null);
@@ -731,10 +726,9 @@ const WorkOrderDetail = () => {
 
   const handleRemovePart = async (index) => {
     try {
-      const updatedWorkOrder = { ...workOrder };
-      updatedWorkOrder.parts = workOrder.parts.filter((_, idx) => idx !== index);
+      const updatedParts = workOrder.parts.filter((_, idx) => idx !== index);
 
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setWorkOrder(response.data.workOrder);
     } catch (err) {
       console.error('Error removing part:', err);
@@ -742,59 +736,10 @@ const WorkOrderDetail = () => {
     }
   };
 
-  const handleProcessReceipt = async () => {
-    if (!receiptFile && !receiptText.trim()) {
-      setError('Please provide either a receipt image or text');
-      return;
-    }
-
-    try {
-      setProcessingReceipt(true);
-      setError(null);
-
-      const formData = new FormData();
-
-      if (receiptFile) {
-        formData.append('receipt', receiptFile);
-      } else {
-        formData.append('receiptText', receiptText);
-      }
-
-      // Add isOrder flag to indicate if this is an order or quote
-      formData.append('isOrder', isOrder.toString());
-
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/process-receipt`,
-        {
-          method: 'POST',
-          body: formData
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to process receipt');
-      }
-
-      // Update work order with new parts
-      setWorkOrder(data.data.workOrder);
-
-      // Close modal and reset state
-      setReceiptModalOpen(false);
-      setReceiptFile(null);
-      setReceiptText('');
-      setIsOrder(true);
-      setProcessingReceipt(false);
-
-      // Show success message
-      const messageType = isOrder ? 'order' : 'quote';
-      alert(`Successfully extracted and added ${data.data.extractedParts.length} part(s) from ${messageType}!`);
-    } catch (err) {
-      console.error('Error processing receipt:', err);
-      setError(err.message || 'Failed to process receipt. Please try again.');
-      setProcessingReceipt(false);
-    }
+  const handleReceiptImportSuccess = (updatedWorkOrder, extractedParts) => {
+    setWorkOrder(updatedWorkOrder);
+    fetchAttachedFiles();
+    alert(`Successfully extracted and added ${extractedParts.length} part(s)!`);
   };
 
   const handleAddLabor = async () => {
@@ -815,17 +760,15 @@ const WorkOrderDetail = () => {
 
   const handleEditLabor = async () => {
     try {
-      // Create an updated work order with the edited labor
-      const updatedWorkOrder = { ...workOrder };
-      const updatedLabor = [...updatedWorkOrder.labor];
+      // Create updated labor array with the edited labor
+      const updatedLabor = [...workOrder.labor];
       updatedLabor[editingLabor.index] = {
         ...updatedLabor[editingLabor.index],
         ...newLabor
       };
-      updatedWorkOrder.labor = updatedLabor;
 
-      // Send the entire updated work order to the server
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      // Send only the changed fields to the server
+      const response = await WorkOrderService.updateWorkOrder(id, { labor: updatedLabor });
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
       setEditingLabor(null);
@@ -842,10 +785,9 @@ const WorkOrderDetail = () => {
 
   const handleRemoveLabor = async (index) => {
     try {
-      const updatedWorkOrder = { ...workOrder };
-      updatedWorkOrder.labor = workOrder.labor.filter((_, idx) => idx !== index);
-      
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      const updatedLabor = workOrder.labor.filter((_, idx) => idx !== index);
+
+      const response = await WorkOrderService.updateWorkOrder(id, { labor: updatedLabor });
       setWorkOrder(response.data.workOrder);
     } catch (err) {
       console.error('Error removing labor:', err);
@@ -855,9 +797,8 @@ const WorkOrderDetail = () => {
 
   const handlePartStatusChange = async (partIndex, field, value) => {
     try {
-      let updatedWorkOrder = { ...workOrder };
-      const updatedParts = [...updatedWorkOrder.parts];
-      
+      const updatedParts = [...workOrder.parts];
+
       // Update the specific field
       updatedParts[partIndex] = {
         ...updatedParts[partIndex],
@@ -869,12 +810,11 @@ const WorkOrderDetail = () => {
         updatedParts[partIndex].received = false;
       }
 
-      updatedWorkOrder.parts = updatedParts;
-      
       // Check if all parts are now ordered and update status if needed
-      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
+      const updateData = { parts: updatedParts, status: workOrder.status };
+      await checkAndUpdatePartsStatus(updateData);
 
-      const response = await WorkOrderService.updateWorkOrder(id, updatedWorkOrder);
+      const response = await WorkOrderService.updateWorkOrder(id, updateData);
       setWorkOrder(response.data.workOrder);
     } catch (err) {
       console.error('Error updating part status:', err);
@@ -1719,8 +1659,8 @@ const WorkOrderDetail = () => {
                 variant="success"
                 size="sm"
               >
-                <i className="fas fa-receipt mr-1"></i>
-                Import Receipt
+                <i className="fas fa-file-import mr-1"></i>
+                Import Parts
               </Button>
               <Button
                 onClick={() => setPartsSelectorOpen(true)}
@@ -2451,111 +2391,13 @@ const WorkOrderDetail = () => {
         </div>
       )}
 
-      {/* Import Receipt Modal */}
-      {receiptModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
-              Import Receipt
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload Receipt Image
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    setReceiptFile(e.target.files[0]);
-                    setReceiptText(''); // Clear text if image is uploaded
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                />
-                {receiptFile && (
-                  <p className="text-sm text-gray-600 mt-2">
-                    Selected: {receiptFile.name}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center">
-                <div className="flex-1 border-t border-gray-300"></div>
-                <span className="px-4 text-sm text-gray-500">OR</span>
-                <div className="flex-1 border-t border-gray-300"></div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Paste Receipt Text
-                </label>
-                <textarea
-                  rows="6"
-                  placeholder="Paste receipt text here..."
-                  value={receiptText}
-                  onChange={(e) => {
-                    setReceiptText(e.target.value);
-                    setReceiptFile(null); // Clear file if text is entered
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2 p-4 border border-gray-300 rounded-md bg-gray-50">
-                <input
-                  type="checkbox"
-                  id="isOrder"
-                  checked={isOrder}
-                  onChange={(e) => setIsOrder(e.target.checked)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-                <label htmlFor="isOrder" className="text-sm font-medium text-gray-700">
-                  This is an order (parts have been ordered)
-                </label>
-              </div>
-              <p className="text-xs text-gray-500 -mt-2">
-                Uncheck if this is a quote - parts will be added but not marked as ordered
-              </p>
-
-              <div className="bg-blue-50 p-3 rounded-md">
-                <p className="text-sm text-blue-800">
-                  <strong>AI will extract:</strong> Part names, quantities, prices, vendors, order numbers, and item SKUs from your receipt.
-                  Parts will be automatically added with a 30% markup.
-                </p>
-              </div>
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
-                  {error}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <Button
-                variant="light"
-                onClick={() => {
-                  setReceiptModalOpen(false);
-                  setReceiptFile(null);
-                  setReceiptText('');
-                  setIsOrder(true);
-                  setError(null);
-                }}
-                disabled={processingReceipt}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleProcessReceipt}
-                disabled={(!receiptFile && !receiptText.trim()) || processingReceipt}
-              >
-                {processingReceipt ? 'Processing...' : 'Import & Extract Parts'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Import Parts Modal */}
+      <ReceiptImportModal
+        isOpen={receiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        entityId={id}
+        onSuccess={handleReceiptImportSuccess}
+      />
 
       {/* Split Work Order Modal */}
       <SplitWorkOrderModal

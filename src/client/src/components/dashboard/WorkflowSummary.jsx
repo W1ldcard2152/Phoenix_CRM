@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppointmentService from '../../services/appointmentService';
 import QuoteService from '../../services/quoteService';
 import WorkOrderService from '../../services/workOrderService';
+import { formatTime } from '../../utils/formatters';
 
 const WorkflowSummary = () => {
   const navigate = useNavigate();
@@ -40,11 +41,6 @@ const WorkflowSummary = () => {
   }, []);
 
   // Helpers
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
   };

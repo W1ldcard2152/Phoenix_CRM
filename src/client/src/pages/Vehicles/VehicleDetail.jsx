@@ -4,9 +4,12 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import AppointmentService from '../../services/appointmentService';
-import { getTodayForInput, parseLocalDate } from '../../utils/formatters';
+import { getTodayForInput, parseLocalDate, formatDate } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { permissions } from '../../utils/permissions';
 
 const VehicleDetail = () => {
+  const { currentUser } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [vehicle, setVehicle] = useState(null);
@@ -173,13 +176,6 @@ const VehicleDetail = () => {
     );
   }
 
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = parseLocalDate(dateString);
-    return date.toLocaleDateString();
-  };
-
   // Format mileage with commas
   const formatMileage = (mileage) => {
     if (mileage === undefined || mileage === null) return 'Not recorded';
@@ -199,12 +195,14 @@ const VehicleDetail = () => {
           >
             Edit Vehicle
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => setDeleteModalOpen(true)}
-          >
-            Delete
-          </Button>
+          {permissions.vehicles.canDelete(currentUser) && (
+            <Button
+              variant="danger"
+              onClick={() => setDeleteModalOpen(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 

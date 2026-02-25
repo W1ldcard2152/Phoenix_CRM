@@ -6,6 +6,9 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Restrict all invoice routes to office staff
+router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
 // Get invoice count (for generating invoice numbers)
 router.get('/count', invoiceController.getInvoicesCount);
 
@@ -34,6 +37,9 @@ router
   .route('/:id')
   .get(invoiceController.getInvoice)
   .patch(invoiceController.updateInvoice)
-  .delete(invoiceController.deleteInvoice);
+  .delete(
+    authController.restrictTo('admin', 'management'),
+    invoiceController.deleteInvoice
+  );
 
 module.exports = router;

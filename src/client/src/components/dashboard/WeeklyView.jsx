@@ -1,6 +1,7 @@
 import React from 'react';
 import moment from 'moment-timezone';
 import AppointmentCard from './AppointmentCard';
+import { TIMEZONE } from '../../utils/formatters';
 
 /**
  * WeeklyView component - Swimming lane calendar showing one week
@@ -35,7 +36,7 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
    * Calculate minutes from shop open (8am) for a given time
    */
   const getMinutesFromShopOpen = (dateTime) => {
-    const time = moment.utc(dateTime).tz('America/New_York');
+    const time = moment.utc(dateTime).tz(TIMEZONE);
     const hour = time.hour();
     const minute = time.minute();
     return (hour - SHOP_OPEN_HOUR) * 60 + minute;
@@ -45,8 +46,8 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
    * Get duration in minutes
    */
   const getDurationMinutes = (startTime, endTime) => {
-    const start = moment.utc(startTime).tz('America/New_York');
-    const end = moment.utc(endTime).tz('America/New_York');
+    const start = moment.utc(startTime).tz(TIMEZONE);
+    const end = moment.utc(endTime).tz(TIMEZONE);
     return end.diff(start, 'minutes');
   };
 
@@ -61,8 +62,8 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
 
     return appointments
       .map(appointment => {
-        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
-        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
+        const apptStart = moment.utc(appointment.startTime).tz(TIMEZONE);
+        const apptEnd = moment.utc(appointment.endTime).tz(TIMEZONE);
         const apptStartDay = apptStart.format('YYYY-MM-DD');
         const apptEndDay = apptEnd.format('YYYY-MM-DD');
 
@@ -135,8 +136,8 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
     // Only build technician list from appointments that fall within the displayed week
     appointments.forEach(appointment => {
       if (appointment.technician && appointment.technician._id) {
-        const apptStart = moment.utc(appointment.startTime).tz('America/New_York');
-        const apptEnd = moment.utc(appointment.endTime).tz('America/New_York');
+        const apptStart = moment.utc(appointment.startTime).tz(TIMEZONE);
+        const apptEnd = moment.utc(appointment.endTime).tz(TIMEZONE);
 
         // Check if appointment overlaps with this week
         if (apptStart.isBefore(weekEnd) && apptEnd.isAfter(weekStart)) {
