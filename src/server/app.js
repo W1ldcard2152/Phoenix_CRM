@@ -45,7 +45,46 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Set security HTTP headers
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          'https://cdnjs.cloudflare.com',
+          'https://fonts.googleapis.com',
+        ],
+        fontSrc: [
+          "'self'",
+          'https://cdnjs.cloudflare.com',
+          'https://fonts.gstatic.com',
+        ],
+        imgSrc: [
+          "'self'",
+          'data:',
+          'blob:',
+          'https://*.googleusercontent.com',
+          'https://phoenixautocrm.s3.us-east-2.amazonaws.com',
+          'https://phoenixautocrm.s3.amazonaws.com',
+        ],
+        connectSrc: [
+          "'self'",
+          'https://accounts.google.com',
+          'https://vpic.nhtsa.dot.gov',
+          'https://phoenixautocrm.s3.us-east-2.amazonaws.com',
+          'https://phoenixautocrm.s3.amazonaws.com',
+        ],
+        frameSrc: ["'self'", 'https://accounts.google.com'],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 // Development logging
 if (process.env.NODE_ENV === 'development') {

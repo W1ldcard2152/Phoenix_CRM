@@ -895,10 +895,10 @@ const QuoteDetail = () => {
                             type="number"
                             min="0"
                             step="0.25"
-                            value={labor.hours}
+                            value={labor.quantity || labor.hours || 0}
                             onChange={(e) => {
                               const updated = [...quote.labor];
-                              updated[index] = { ...updated[index], hours: parseFloat(e.target.value) || 0 };
+                              updated[index] = { ...updated[index], quantity: parseFloat(e.target.value) || 0 };
                               setQuote({ ...quote, labor: updated });
                             }}
                             className="w-20 border rounded px-2 py-1 text-sm text-right"
@@ -919,7 +919,7 @@ const QuoteDetail = () => {
                           />
                         </td>
                         <td className="px-4 py-2 text-right text-sm font-medium">
-                          {formatCurrency(labor.hours * labor.rate)}
+                          {formatCurrency((labor.quantity || labor.hours || 0) * labor.rate)}
                         </td>
                         <td className="px-4 py-2 text-right">
                           <button

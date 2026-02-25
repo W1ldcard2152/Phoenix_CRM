@@ -146,13 +146,16 @@ const InvoiceGenerator = () => {
             }))
           : [],
         labor: workOrder.labor
-          ? workOrder.labor.map((l, index) => ({
-              ...l,
-              _id: l._id || `labor-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-              hours: parseFloat(l.hours) || 0,
-              rate: parseFloat(l.rate) || 0,
-              total: (parseFloat(l.hours) || 0) * (parseFloat(l.rate) || 0),
-            }))
+          ? workOrder.labor.map((l, index) => {
+              const hrs = parseFloat(l.quantity) || parseFloat(l.hours) || 0;
+              return {
+                ...l,
+                _id: l._id || `labor-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+                hours: hrs,
+                rate: parseFloat(l.rate) || 0,
+                total: hrs * (parseFloat(l.rate) || 0),
+              };
+            })
           : [],
       }));
     } catch (err) {

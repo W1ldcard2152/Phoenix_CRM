@@ -320,7 +320,7 @@ const AppointmentForm = () => {
     let durationHours = 1;
     if (wo) {
       if (wo.labor && wo.labor.length > 0) {
-        const totalLaborHours = wo.labor.reduce((sum, item) => sum + (parseFloat(item.hours) || 0), 0);
+        const totalLaborHours = wo.labor.reduce((sum, item) => sum + (parseFloat(item.quantity) || parseFloat(item.hours) || 0), 0);
         durationHours = Math.max(1, totalLaborHours);
       }
       const service = wo.serviceRequested?.toLowerCase() || '';

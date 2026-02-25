@@ -389,6 +389,19 @@ WorkOrderSchema.virtual('totalCost').get(function() {
   return this.partsCost + this.laborCost;
 });
 
+// Pre-validate hook: migrate legacy data before validation runs
+WorkOrderSchema.pre('validate', function(next) {
+  // Migrate legacy labor: backfill quantity from hours if missing
+  if (this.labor && this.labor.length > 0) {
+    this.labor.forEach(item => {
+      if (item.quantity == null && item.hours != null) {
+        item.quantity = item.hours;
+      }
+    });
+  }
+  next();
+});
+
 // Middleware to handle backward compatibility and status change tracking
 WorkOrderSchema.pre('save', function(next) {
   // Track when status changes for age-based dashboard indicators

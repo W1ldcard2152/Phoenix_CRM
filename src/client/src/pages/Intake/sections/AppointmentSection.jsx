@@ -126,7 +126,7 @@ const AppointmentSection = ({ customer, vehicle, workOrder, onSaved, onError }) 
     let durationHours = 1;
 
     if (wo?.labor && wo.labor.length > 0) {
-      const totalLaborHours = wo.labor.reduce((sum, item) => sum + (parseFloat(item.hours) || 0), 0);
+      const totalLaborHours = wo.labor.reduce((sum, item) => sum + (parseFloat(item.quantity) || parseFloat(item.hours) || 0), 0);
       durationHours = Math.max(1, totalLaborHours);
     } else if (wo?.services) {
       wo.services.forEach(service => {

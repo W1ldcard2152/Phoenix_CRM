@@ -148,7 +148,7 @@ export const generateDocumentHtml = (type, data) => {
   } = data;
 
   const partsTotal = parts.reduce((sum, p) => sum + (parseFloat(p.price || p.unitPrice || 0) * (parseInt(p.quantity) || 1)), 0);
-  const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.hours || l.quantity) || 0)), 0);
+  const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.quantity || l.hours) || 0)), 0);
   const subtotal = partsTotal + laborTotal;
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount;
@@ -304,7 +304,7 @@ export const generateDocumentHtml = (type, data) => {
           </thead>
           <tbody>
             ${labor.map(item => {
-              const qty = item.hours || item.quantity || 0;
+              const qty = item.quantity || item.hours || 0;
               const rate = item.rate || item.unitPrice || 0;
               const itemTotal = qty * rate;
               return `
