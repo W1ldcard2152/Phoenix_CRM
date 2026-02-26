@@ -11,13 +11,18 @@ const signToken = (id) => {
 };
 
 // GET /api/auth/google — initiate Google OAuth
-router.get(
-  '/google',
+router.get('/google', (req, res, next) => {
+  if (!passport._strategy('google')) {
+    return res.status(503).json({
+      status: 'error',
+      message: 'Google OAuth is not configured on this server',
+    });
+  }
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    session: false
-  })
-);
+    session: false,
+  })(req, res, next);
+});
 
 // GET /api/auth/google/callback — handle Google callback
 router.get(

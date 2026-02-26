@@ -82,18 +82,17 @@ const VehicleDetail = () => {
     }
 
     try {
-      // Create a copy of vehicle with updated mileage history
-      const updatedVehicle = {
-        ...vehicle,
+      // Only send the fields being changed — avoid spreading the full populated vehicle
+      const updateData = {
         mileageHistory: [
-          ...vehicle.mileageHistory || [], 
+          ...vehicle.mileageHistory || [],
           newMileageRecord
         ],
         currentMileage: Math.max(vehicle.currentMileage || 0, parseInt(newMileageRecord.mileage))
       };
-      
+
       // Update the vehicle
-      await VehicleService.updateVehicle(id, updatedVehicle);
+      await VehicleService.updateVehicle(id, updateData);
       
       // Reload the vehicle data
       const vehicleResponse = await VehicleService.getVehicle(id);
@@ -129,14 +128,13 @@ const VehicleDetail = () => {
         newCurrentMileage = Math.max(...updatedMileageHistory.map(record => record.mileage));
       }
 
-      const updatedVehicle = {
-        ...vehicle,
+      const updateData = {
         mileageHistory: updatedMileageHistory,
         currentMileage: newCurrentMileage
       };
-      
+
       // Update the vehicle
-      await VehicleService.updateVehicle(id, updatedVehicle);
+      await VehicleService.updateVehicle(id, updateData);
       
       // Reload the vehicle data
       const vehicleResponse = await VehicleService.getVehicle(id);

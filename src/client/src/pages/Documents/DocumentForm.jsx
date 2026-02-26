@@ -213,9 +213,21 @@ const DocumentForm = ({ mode = 'workorder' }) => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
+      // Only send the fields the form actually edits — exclude parts/labor
+      // which may contain populated objects that fail Mongoose validation
       const finalData = {
-        ...values,
-        serviceRequested: values.services.map(s => s.description).join('\n')
+        customer: values.customer,
+        vehicle: values.vehicle,
+        currentMileage: values.currentMileage,
+        date: values.date,
+        services: values.services,
+        priority: values.priority,
+        diagnosticNotes: values.diagnosticNotes,
+        serviceRequested: values.services.map(s => s.description).join('\n'),
+        ...(isQuote ? {} : {
+          status: values.status,
+          skipDiagnostics: values.skipDiagnostics
+        })
       };
 
       if (id) {

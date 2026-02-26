@@ -87,9 +87,7 @@ const QuoteDetail = () => {
   const fetchNotes = useCallback(async () => {
     try {
       setNotesLoading(true);
-      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await workOrderNotesService.getNotes(id);
       if (data && data.data && data.data.notes) {
         const regularNotes = data.data.notes.filter(note => note.noteType !== 'interaction');
         setNotes(regularNotes);
@@ -131,9 +129,8 @@ const QuoteDetail = () => {
       return;
     }
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.parts = [...(updatedQuote.parts || []), { ...newPart }];
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const updatedParts = [...(quote.parts || []), { ...newPart }];
+      const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setQuote(response.data.workOrder);
       setPartModalOpen(false);
       setNewPart({ name: '', partNumber: '', itemNumber: '', quantity: 1, price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '' });
@@ -147,10 +144,9 @@ const QuoteDetail = () => {
 
   const handleUpdatePart = async (partIndex, updatedPart) => {
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.parts = [...quote.parts];
-      updatedQuote.parts[partIndex] = updatedPart;
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const updatedParts = [...quote.parts];
+      updatedParts[partIndex] = updatedPart;
+      const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setQuote(response.data.workOrder);
       setEditingPart(null);
       setError(null);
@@ -163,9 +159,8 @@ const QuoteDetail = () => {
   const handleDeletePart = async (partIndex) => {
     if (!window.confirm('Remove this part from the quote?')) return;
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.parts = quote.parts.filter((_, i) => i !== partIndex);
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const updatedParts = quote.parts.filter((_, i) => i !== partIndex);
+      const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setQuote(response.data.workOrder);
       setError(null);
     } catch (err) {
@@ -181,9 +176,8 @@ const QuoteDetail = () => {
       return;
     }
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.labor = [...(updatedQuote.labor || []), { ...newLabor }];
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const updatedLabor = [...(quote.labor || []), { ...newLabor }];
+      const response = await WorkOrderService.updateWorkOrder(id, { labor: updatedLabor });
       setQuote(response.data.workOrder);
       setLaborModalOpen(false);
       setNewLabor({ description: '', hours: 1, rate: 75 });
@@ -196,10 +190,9 @@ const QuoteDetail = () => {
 
   const handleUpdateLabor = async (laborIndex, updatedLabor) => {
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.labor = [...quote.labor];
-      updatedQuote.labor[laborIndex] = updatedLabor;
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const laborCopy = [...quote.labor];
+      laborCopy[laborIndex] = updatedLabor;
+      const response = await WorkOrderService.updateWorkOrder(id, { labor: laborCopy });
       setQuote(response.data.workOrder);
       setEditingLabor(null);
       setError(null);
@@ -212,9 +205,8 @@ const QuoteDetail = () => {
   const handleDeleteLabor = async (laborIndex) => {
     if (!window.confirm('Remove this labor entry from the quote?')) return;
     try {
-      const updatedQuote = { ...quote };
-      updatedQuote.labor = quote.labor.filter((_, i) => i !== laborIndex);
-      const response = await WorkOrderService.updateWorkOrder(id, updatedQuote);
+      const updatedLabor = quote.labor.filter((_, i) => i !== laborIndex);
+      const response = await WorkOrderService.updateWorkOrder(id, { labor: updatedLabor });
       setQuote(response.data.workOrder);
       setError(null);
     } catch (err) {
