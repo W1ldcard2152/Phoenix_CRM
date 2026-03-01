@@ -1,8 +1,8 @@
 // Phoenix CRM Service Worker - Enhanced PWA Functionality
-const CACHE_NAME = 'phoenix-crm-v2';
-const STATIC_CACHE = 'phoenix-crm-static-v2';
-const DYNAMIC_CACHE = 'phoenix-crm-dynamic-v2';
-const API_CACHE = 'phoenix-crm-api-v2';
+const CACHE_NAME = 'phoenix-crm-v3';
+const STATIC_CACHE = 'phoenix-crm-static-v3';
+const DYNAMIC_CACHE = 'phoenix-crm-dynamic-v3';
+const API_CACHE = 'phoenix-crm-api-v3';
 
 // Static assets to cache immediately
 const STATIC_ASSETS = [
@@ -14,8 +14,7 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/favicon.ico',
   '/web-app-manifest-192x192.png',
-  '/web-app-manifest-512x512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css'
+  '/web-app-manifest-512x512.png'
 ];
 
 // API endpoints that should be cached
@@ -75,6 +74,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Skip cross-origin requests — let the browser handle them directly
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
   // Handle different types of requests with appropriate strategies
   if (request.method !== 'GET') {
@@ -211,8 +215,7 @@ function isStaticAsset(request) {
          url.pathname.endsWith('.png') ||
          url.pathname.endsWith('.jpg') ||
          url.pathname.endsWith('.svg') ||
-         url.pathname.endsWith('.ico') ||
-         url.hostname.includes('cdnjs.cloudflare.com');
+         url.pathname.endsWith('.ico');
 }
 
 // Store failed requests for retry when online
