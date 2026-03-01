@@ -76,6 +76,8 @@ app.use(
           'https://vpic.nhtsa.dot.gov',
           'https://phoenixautocrm.s3.us-east-2.amazonaws.com',
           'https://phoenixautocrm.s3.amazonaws.com',
+          'https://cdnjs.cloudflare.com',
+          'https://*.googleusercontent.com',
         ],
         frameSrc: ["'self'", 'https://accounts.google.com'],
         objectSrc: ["'none'"],
