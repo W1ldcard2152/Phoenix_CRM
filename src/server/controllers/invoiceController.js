@@ -4,7 +4,8 @@ const Customer = require('../models/Customer');
 const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { parseLocalDate } = require('../utils/dateUtils');
+const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
+const { calculatePartsCost, calculateLaborCost } = require('../utils/calculationHelpers');
 const emailService = require('../services/emailService');
 
 // Get all invoices
@@ -132,16 +133,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     }
 
     // Calculate totalActual from the work order's parts and labor
-    const partsCost = workOrderToUpdate.parts.reduce((total, part) => {
-      return total + (part.price * part.quantity);
-    }, 0);
-
-    const laborCost = workOrderToUpdate.labor.reduce((total, labor) => {
-      const qty = labor.quantity || labor.hours || 0;
-      return total + (qty * labor.rate);
-    }, 0);
-
-    workOrderToUpdate.totalActual = partsCost + laborCost;
+    workOrderToUpdate.totalActual = calculatePartsCost(workOrderToUpdate.parts) + calculateLaborCost(workOrderToUpdate.labor);
     workOrderToUpdate.status = 'Repair Complete - Invoiced';
     // Note: work order will be saved after invoice is created to include invoice reference
   }
@@ -155,7 +147,10 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
       quantity: part.quantity,
       unitPrice: part.price,
       total: part.total || (part.quantity * part.price),
-      taxable: true // Could be configurable
+      taxable: true,
+      warranty: part.warranty || '',
+      coreCharge: part.coreChargeInvoiceable ? (part.coreCharge || 0) : 0,
+      coreChargeInvoiceable: part.coreChargeInvoiceable || false
     })),
     ...labor.map(labor => {
       const qty = labor.quantity || labor.hours || 0;
@@ -172,7 +167,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
   ];
   
   // Calculate due date if not provided
-  let dueDate = invoiceDueDate ? parseLocalDate(invoiceDueDate) : parseLocalDate(invoiceDate) || new Date();
+  let dueDate = invoiceDueDate ? parseLocalDate(invoiceDueDate) : parseLocalDate(invoiceDate) || todayInTz();
   
   // Adjust due date based on payment terms if due date not provided
   if (!invoiceDueDate) {
@@ -196,7 +191,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     customer: customerId,
     vehicle: vehicleId,
     workOrder: workOrderId,
-    invoiceDate: invoiceDate ? parseLocalDate(invoiceDate) : new Date(),
+    invoiceDate: invoiceDate ? parseLocalDate(invoiceDate) : todayInTz(),
     dueDate,
     items,
     subtotal,

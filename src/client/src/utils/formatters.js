@@ -89,52 +89,40 @@ export const capitalizeWords = (str) => {
 };
 
 /**
- * Convert a Date object to a local date string for HTML date inputs (YYYY-MM-DD)
- * This avoids timezone conversion issues by working with local dates
+ * Convert a date to YYYY-MM-DD string for HTML date inputs.
+ * Uses the business timezone so UTC dates from the server display the correct calendar date.
  * @param {Date|string} date - The date to format
- * @returns {string} Date string in YYYY-MM-DD format
+ * @returns {string} Date string in YYYY-MM-DD format in the business timezone
  */
 export const formatDateForInput = (date) => {
   if (!date) return '';
-
-  // Use parseLocalDate for string dates to avoid timezone issues
-  const dateObj = typeof date === 'string' ? parseLocalDate(date) : date;
-
-  // Use local date methods to avoid timezone conversion
-  const year = dateObj.getFullYear();
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const day = String(dateObj.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
+  return moment.utc(date).tz(TIMEZONE).format('YYYY-MM-DD');
 };
 
 /**
- * Get today's date as a local date string for HTML date inputs (YYYY-MM-DD)
+ * Get today's date as a YYYY-MM-DD string in the business timezone for HTML date inputs.
  * @returns {string} Today's date in YYYY-MM-DD format
  */
 export const getTodayForInput = () => {
-  const today = new Date();
-  return formatDateForInput(today);
+  return moment.tz(TIMEZONE).format('YYYY-MM-DD');
 };
 
 /**
- * Parse a date from an HTML date input and create a Date object
- * This ensures the date is treated as a local date, not UTC
+ * Parse a YYYY-MM-DD date string from an HTML input into a Date object
+ * at midnight in the business timezone.
  * @param {string} dateString - Date string in YYYY-MM-DD format
- * @returns {Date} Date object representing the local date
+ * @returns {Date} Date object representing midnight of that date in the business timezone
  */
 export const parseDateFromInput = (dateString) => {
   if (!dateString) return null;
-
-  const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(year, month - 1, day); // month is 0-indexed
+  return moment.tz(dateString, 'YYYY-MM-DD', TIMEZONE).toDate();
 };
 
 /**
- * Safe date parsing for server-side use that avoids timezone conversion issues
- * Parses YYYY-MM-DD strings as local dates instead of UTC
- * @param {string} dateString - Date string in YYYY-MM-DD format or ISO format
- * @returns {Date} Date object representing the local date
+ * Safe date parsing that creates dates at midnight in the business timezone.
+ * Handles YYYY-MM-DD strings and ISO strings from the server.
+ * @param {string|Date} dateString - Date string in YYYY-MM-DD format, ISO format, or Date object
+ * @returns {Date} Date object representing midnight of that date in the business timezone
  */
 export const parseLocalDate = (dateString) => {
   if (!dateString) return null;
@@ -146,13 +134,11 @@ export const parseLocalDate = (dateString) => {
   const dateStr = String(dateString).trim();
 
   // Extract just the date portion from ISO strings (e.g., "2025-10-12T00:00:00.000Z" -> "2025-10-12")
-  // This prevents timezone conversion issues with MongoDB dates
   const dateOnly = dateStr.split('T')[0];
 
-  // Check if it's a YYYY-MM-DD format string
+  // Parse YYYY-MM-DD as midnight in the business timezone
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
-    const [year, month, day] = dateOnly.split('-').map(Number);
-    return new Date(year, month - 1, day); // month is 0-indexed
+    return moment.tz(dateOnly, 'YYYY-MM-DD', TIMEZONE).toDate();
   }
 
   // Fallback to standard Date parsing for other formats

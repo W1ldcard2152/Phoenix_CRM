@@ -55,6 +55,40 @@ const PartSchema = new Schema({
   receiptImageUrl: { // Link to receipt in S3
     type: String,
     trim: true
+  },
+  url: { // Product URL
+    type: String,
+    trim: true
+  },
+  notes: { // Internal notes - NOT shown on invoice
+    type: String,
+    trim: true
+  },
+  warranty: { // Part warranty info - customer-facing
+    type: String,
+    trim: true
+  },
+  category: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  coreCharge: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  coreChargeInvoiceable: {
+    type: Boolean,
+    default: false
+  },
+  vin: { // VIN of source vehicle (for used parts)
+    type: String,
+    trim: true
+  },
+  stockNumber: { // Stock number of source vehicle (for used parts)
+    type: String,
+    trim: true
   }
 });
 
@@ -322,6 +356,10 @@ const WorkOrderSchema = new Schema(
     parts: [PartSchema],
     labor: [LaborSchema],
     media: [MediaSchema],
+    partsSortConfig: [{
+      column: { type: String },
+      direction: { type: String, enum: ['asc', 'desc'] }
+    }],
     totalEstimate: {
       type: Number,
       min: 0,

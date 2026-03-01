@@ -166,8 +166,15 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
         workOrderToUpdate.assignedTechnician = newAppointment.technician;
         woNeedsSave = true;
       }
-      // Update work order status to Appointment Scheduled whenever an appointment is created
-      if (workOrderToUpdate.status !== 'Appointment Scheduled') {
+      // Only set status to 'Appointment Scheduled' if the work order is in an
+      // early/idle state. Don't regress work orders that have already advanced
+      // past the appointment stage (e.g. Inspection, Parts Ordered, Repair, etc.)
+      const statusesEligibleForScheduledReset = [
+        'Work Order Created',
+        'Appointment Complete',
+        'On Hold'
+      ];
+      if (statusesEligibleForScheduledReset.includes(workOrderToUpdate.status)) {
         workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       }

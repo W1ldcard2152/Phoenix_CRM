@@ -9,7 +9,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import QuoteDisplay from '../../components/quotes/QuoteDisplay';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 
@@ -666,7 +666,7 @@ const QuoteDetail = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <p className="text-sm text-gray-500">Date</p>
-            <p className="font-medium">{new Date(quote.date).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(quote.date)}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Priority</p>
@@ -1001,7 +1001,7 @@ const QuoteDetail = () => {
                       {note.isCustomerFacing ? 'Customer-Facing' : 'Private'}
                     </span>
                     <span className="text-xs text-gray-500">
-                      {new Date(note.createdAt).toLocaleString()}
+                      {formatDateTime(note.createdAt)}
                     </span>
                     {note.createdByName && (
                       <span className="text-xs text-gray-500">by {note.createdByName}</span>

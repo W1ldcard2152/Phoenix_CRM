@@ -6,14 +6,14 @@ const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault } = require('../utils/dateUtils');
+const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault, todayInTz, startOfTodayInTz } = require('../utils/dateUtils');
 const { applyPopulation } = require('../utils/populationHelpers');
 const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
 const { calculateWorkOrderTotal, getWorkOrderCostBreakdown } = require('../utils/calculationHelpers');
 const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 const cacheService = require('../services/cacheService');
-const { formatDate } = require('../config/timezone');
+const { formatDate, TIMEZONE } = require('../config/timezone');
 
 // Status aliases for backward compatibility - defined once at module level
 const STATUS_ALIASES = {
@@ -295,7 +295,7 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
         // Check if this mileage entry already exists to avoid duplicates
         const existingMileageEntry = vehicleToUpdate.mileageHistory.find(
           entry => entry.mileage === mileageValue &&
-                   new Date(entry.date).toDateString() === entryDate.toDateString() &&
+                   formatDate(entry.date, 'YYYY-MM-DD') === formatDate(entryDate, 'YYYY-MM-DD') &&
                    (entry.source || '').includes(`Work Order #${req.params.id}`)
         );
 
@@ -874,21 +874,15 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     customer: originalWorkOrder.customer._id,
     vehicle: originalWorkOrder.vehicle._id,
     assignedTechnician: originalWorkOrder.assignedTechnician ? originalWorkOrder.assignedTechnician._id : null,
-    date: new Date(),
+    date: todayInTz(),
     priority: originalWorkOrder.priority,
     status: 'Created',
     serviceRequested: newWorkOrderTitle || `Split from WO ${originalWorkOrder._id.toString().slice(-6)}`,
-    diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${formatDate(new Date())}`,
-    parts: partsToMoveItems.map(part => ({
-      name: part.name,
-      partNumber: part.partNumber,
-      quantity: part.quantity,
-      price: part.price,
-      ordered: part.ordered,
-      received: part.received,
-      vendor: part.vendor,
-      purchaseOrderNumber: part.purchaseOrderNumber
-    })),
+    diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${formatDate(todayInTz())}`,
+    parts: partsToMoveItems.map(part => {
+      const { _id, ...partData } = part.toObject ? part.toObject() : part;
+      return partData;
+    }),
     labor: laborToMoveItems.map(labor => ({
       description: labor.description,
       billingType: labor.billingType || 'hourly',
@@ -915,7 +909,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   if (!originalWorkOrder.diagnosticNotes) {
     originalWorkOrder.diagnosticNotes = '';
   }
-  originalWorkOrder.diagnosticNotes += `\n\nWork order split on ${formatDate(new Date())}. Moved items to new work order.`;
+  originalWorkOrder.diagnosticNotes += `\n\nWork order split on ${formatDate(todayInTz())}. Moved items to new work order.`;
 
   // Save both work orders
   await Promise.all([
@@ -956,8 +950,7 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
   ];
 
   // Get only today and future appointments (not past)
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfToday = startOfTodayInTz();
 
   const appointments = await Appointment.find({
     workOrder: { $exists: true },
@@ -1134,8 +1127,10 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
     return next(new AppError('Work order not found', 404));
   }
 
-  // Apply shipping amortization and 30% markup to selected parts only
-  const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder);
+  // Apply shipping amortization and markup to selected parts
+  const Settings = require('../models/Settings');
+  const settings = await Settings.getSettings();
+  const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder, settings.partMarkupPercentage);
 
   // Link receipt media to each part
   const partsWithReceipt = finalizedParts.map(part => ({
@@ -1483,23 +1478,16 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       customer: quote.customer._id,
       vehicle: quote.vehicle ? quote.vehicle._id : null,
       currentMileage: quote.currentMileage,
-      date: new Date(),
+      date: todayInTz(),
       priority: quote.priority,
       status: 'Work Order Created',
       services: quote.services.map(s => ({ description: s.description })),
       serviceRequested: quote.serviceRequested,
       diagnosticNotes: `Converted from Quote #${quote._id.toString().slice(-8).toUpperCase()}`,
-      parts: partsToMove.map(part => ({
-        name: part.name,
-        partNumber: part.partNumber,
-        itemNumber: part.itemNumber,
-        quantity: part.quantity,
-        price: part.price,
-        cost: part.cost,
-        vendor: part.vendor,
-        supplier: part.supplier,
-        purchaseOrderNumber: part.purchaseOrderNumber
-      })),
+      parts: partsToMove.map(part => {
+        const { _id, ...partData } = part.toObject ? part.toObject() : part;
+        return partData;
+      }),
       labor: laborToMove.map(labor => ({
         description: labor.description,
         billingType: labor.billingType || 'hourly',
@@ -1594,22 +1582,16 @@ exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
     customer: workOrder.customer._id,
     vehicle: workOrder.vehicle ? workOrder.vehicle._id : null,
     currentMileage: workOrder.currentMileage,
-    date: new Date(),
+    date: todayInTz(),
     priority: workOrder.priority,
     status: 'Quote',
     services: workOrder.services.map(s => ({ description: s.description })),
     serviceRequested: workOrder.serviceRequested,
     diagnosticNotes: `Generated from Work Order #${workOrder._id.toString().slice(-8).toUpperCase()}`,
-    parts: partsSource.map(part => ({
-      name: part.name,
-      partNumber: part.partNumber,
-      itemNumber: part.itemNumber,
-      quantity: part.quantity,
-      price: part.price,
-      cost: part.cost,
-      vendor: part.vendor,
-      supplier: part.supplier
-    })),
+    parts: partsSource.map(part => {
+      const { _id, ordered, received, receiptImageUrl, ...partData } = part.toObject ? part.toObject() : part;
+      return partData;
+    }),
     labor: laborSource.map(labor => ({
       description: labor.description,
       billingType: labor.billingType || 'hourly',

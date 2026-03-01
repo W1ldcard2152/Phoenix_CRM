@@ -143,11 +143,16 @@ export const generateDocumentHtml = (type, data) => {
     parts = [],
     labor = [],
     customerFacingNotes = [],
+    customerNotes,
     taxRate = 0,
     terms
   } = data;
 
-  const partsTotal = parts.reduce((sum, p) => sum + (parseFloat(p.price || p.unitPrice || 0) * (parseInt(p.quantity) || 1)), 0);
+  const partsTotal = parts.reduce((sum, p) => {
+    const lineTotal = parseFloat(p.price || p.unitPrice || 0) * (parseInt(p.quantity) || 1);
+    const core = (p.coreChargeInvoiceable && p.coreCharge) ? parseFloat(p.coreCharge) : 0;
+    return sum + lineTotal + core;
+  }, 0);
   const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.quantity || l.hours) || 0)), 0);
   const subtotal = partsTotal + laborTotal;
   const taxAmount = subtotal * (taxRate / 100);
@@ -275,15 +280,31 @@ export const generateDocumentHtml = (type, data) => {
             </tr>
           </thead>
           <tbody>
-            ${parts.map(part => `
+            ${parts.map(part => {
+              const unitPrice = part.price || part.unitPrice || 0;
+              const qty = part.quantity || 1;
+              const lineTotal = unitPrice * qty;
+              const hasWarranty = part.warranty && part.warranty.trim();
+              const hasCoreCharge = part.coreChargeInvoiceable && part.coreCharge > 0;
+              return `
               <tr>
-                <td style="border: 1px solid #d1d5db;">${part.name || part.description || ''}</td>
+                <td style="border: 1px solid #d1d5db;">
+                  ${part.name || part.description || ''}
+                  ${hasWarranty ? `<div style="font-size: 11px; color: #4b5563; font-style: italic; margin-top: 2px;">Part Warranty: ${part.warranty}</div>` : ''}
+                </td>
                 <td style="border: 1px solid #d1d5db;">${part.partNumber || ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${part.quantity || 1}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(part.price || part.unitPrice || 0)}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency((part.price || part.unitPrice || 0) * (part.quantity || 1))}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right;">${qty}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(unitPrice)}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(lineTotal)}</td>
               </tr>
-            `).join('')}
+              ${hasCoreCharge ? `
+              <tr>
+                <td style="border: 1px solid #d1d5db; padding-left: 24px; font-size: 12px; color: #6b7280;" colspan="3">Core Charge - ${part.name || part.description || ''}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right; font-size: 12px;">${formatCurrency(part.coreCharge)}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right; font-size: 12px;">${formatCurrency(part.coreCharge)}</td>
+              </tr>
+              ` : ''}`;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -362,6 +383,16 @@ export const generateDocumentHtml = (type, data) => {
               <p style="margin: 0; white-space: pre-wrap; color: #374151;">${note.content || note}</p>
             </div>
           `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Customer Notes -->
+      ${customerNotes ? `
+      <div style="margin-bottom: 24px; font-size: 14px;">
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Notes:</p>
+        <div style="border: 1px solid #d1d5db; padding: 12px; background-color: #f9fafb;">
+          <p style="margin: 0; white-space: pre-wrap;">${customerNotes}</p>
         </div>
       </div>
       ` : ''}

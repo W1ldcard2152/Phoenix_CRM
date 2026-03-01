@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { parseLocalDate } = require('../utils/dateUtils');
+const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
 const Schema = mongoose.Schema;
 
 // Mileage History Schema
@@ -119,7 +119,7 @@ VehicleSchema.methods.getLatestWorkOrder = async function() {
 };
 
 // Method to add a mileage record
-VehicleSchema.methods.addMileageRecord = function(mileage, date = new Date(), notes = '', source = '') {
+VehicleSchema.methods.addMileageRecord = function(mileage, date = todayInTz(), notes = '', source = '') {
   this.mileageHistory.push({
     date,
     mileage,

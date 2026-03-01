@@ -18,10 +18,11 @@ import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
+import SettingsService from '../../services/settingsService';
 import { formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { permissions, isOfficeStaff } from '../../utils/permissions';
+import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
 
 const DocumentDetail = () => {
   const { currentUser } = useAuth();
@@ -30,12 +31,22 @@ const DocumentDetail = () => {
   const location = useLocation();
   const isQuoteRoute = location.pathname.startsWith('/quotes');
 
-  // Predefined vendors list
-  const predefinedVendors = [
-    'Walmart', 'Tractor Supply', 'Advance Auto Parts', 'Autozone',
-    'Napa Auto Parts', 'Rock Auto', 'eBay.com', 'Amazon.com',
-    'ECS Tuning', 'FCP Euro', 'Other'
-  ];
+  // Default vendor hostname map (used as fallback if settings haven't loaded yet)
+  const defaultVendorHostnames = {
+    'walmart.com': 'Walmart', 'tractorsupply.com': 'Tractor Supply',
+    'advanceautoparts.com': 'Advance Auto Parts', 'autozone.com': 'Autozone',
+    'napaonline.com': 'Napa Auto Parts', 'rockauto.com': 'Rock Auto',
+    'ebay.com': 'eBay.com', 'amazon.com': 'Amazon.com',
+    'ecstuning.com': 'ECS Tuning', 'fcpeuro.com': 'FCP Euro'
+  };
+
+  // Convert array of {hostname, vendor} to a lookup object
+  const hostnameArrayToMap = (arr) => {
+    if (!Array.isArray(arr)) return defaultVendorHostnames;
+    const map = {};
+    arr.forEach(item => { if (item.hostname && item.vendor) map[item.hostname] = item.vendor; });
+    return Object.keys(map).length > 0 ? map : defaultVendorHostnames;
+  };
 
   // Core state
   const [workOrder, setWorkOrder] = useState(null);
@@ -94,14 +105,33 @@ const DocumentDetail = () => {
   const [editingPart, setEditingPart] = useState(null);
   const [editingLabor, setEditingLabor] = useState(null);
   const [editingDiagnosticNotes, setEditingDiagnosticNotes] = useState('');
-  const [newPart, setNewPart] = useState({
+  const defaultPart = {
     name: '', partNumber: '', itemNumber: '', quantity: 1,
     price: 0, cost: 0, ordered: false, received: false,
-    vendor: '', supplier: '', purchaseOrderNumber: '', receiptImageUrl: ''
-  });
+    vendor: '', supplier: '', purchaseOrderNumber: '', receiptImageUrl: '',
+    url: '', notes: '', warranty: '', category: '', coreCharge: 0, coreChargeInvoiceable: false,
+    vin: '', stockNumber: ''
+  };
+  const [newPart, setNewPart] = useState({ ...defaultPart });
+  const [expandedPartIndex, setExpandedPartIndex] = useState(null);
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [bulkOrderModalOpen, setBulkOrderModalOpen] = useState(false);
   const [bulkOrderData, setBulkOrderData] = useState({ vendor: '', orderNumber: '' });
+  const [markupPercentage, setMarkupPercentage] = useState(30);
+  const [partsSortConfig, setPartsSortConfig] = useState([]);
+  const [vendorList, setVendorList] = useState([]);
+  const [categoryList, setCategoryList] = useState([]);
+  const [isOtherCategory, setIsOtherCategory] = useState(false);
+  const [addingNewVendor, setAddingNewVendor] = useState(false);
+  const [addingNewCategory, setAddingNewCategory] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [newVendorHostname, setNewVendorHostname] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [managingVendors, setManagingVendors] = useState(false);
+  const [managingCategories, setManagingCategories] = useState(false);
+  const [vendorHostnameMap, setVendorHostnameMap] = useState(defaultVendorHostnames);
+  const [detectedHostname, setDetectedHostname] = useState(null); // { hostname, suggestedName } when URL has unrecognized domain
+
   const [newLabor, setNewLabor] = useState({
     description: '', billingType: 'hourly', quantity: 1, rate: 75
   });
@@ -114,13 +144,146 @@ const DocumentDetail = () => {
 
   // ==================== Vendor Helpers ====================
   const handleVendorChange = (selectedVendor) => {
+    setDetectedHostname(null);
     if (selectedVendor === 'Other') {
       setIsOtherVendor(true);
+      setAddingNewVendor(false);
       setNewPart({ ...newPart, vendor: '' });
+    } else if (selectedVendor === '__add_new__') {
+      setAddingNewVendor(true);
+      setNewVendorName('');
     } else {
       setIsOtherVendor(false);
+      setAddingNewVendor(false);
       setNewPart({ ...newPart, vendor: selectedVendor });
     }
+  };
+
+  const handleCategoryChange = (selectedCategory) => {
+    if (selectedCategory === 'Other') {
+      setIsOtherCategory(true);
+      setAddingNewCategory(false);
+      setNewPart({ ...newPart, category: '' });
+    } else if (selectedCategory === '__add_new__') {
+      setAddingNewCategory(true);
+      setNewCategoryName('');
+    } else {
+      setIsOtherCategory(false);
+      setAddingNewCategory(false);
+      setNewPart({ ...newPart, category: selectedCategory });
+    }
+  };
+
+  const handleSaveNewVendor = async () => {
+    if (!newVendorName.trim()) return;
+    try {
+      const response = await SettingsService.addVendor(newVendorName.trim(), newVendorHostname.trim() || undefined);
+      const updatedSettings = response.data.settings;
+      setVendorList(updatedSettings.customVendors);
+      if (updatedSettings.vendorHostnames) {
+        setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
+      }
+      setNewPart(prev => ({ ...prev, vendor: newVendorName.trim() }));
+      setAddingNewVendor(false);
+      setIsOtherVendor(false);
+      setNewVendorName('');
+      setNewVendorHostname('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to add vendor');
+    }
+  };
+
+  const handleRemoveVendor = async (vendor) => {
+    if (!window.confirm(`Remove "${vendor}" from the vendor list? This won't affect existing parts.`)) return;
+    try {
+      const response = await SettingsService.removeVendor(vendor);
+      const updatedSettings = response.data.settings;
+      setVendorList(updatedSettings.customVendors);
+      if (updatedSettings.vendorHostnames) {
+        setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to remove vendor');
+    }
+  };
+
+  const handleSaveNewCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const response = await SettingsService.addCategory(newCategoryName.trim());
+      setCategoryList(response.data.settings.customCategories);
+      setNewPart(prev => ({ ...prev, category: newCategoryName.trim() }));
+      setAddingNewCategory(false);
+      setIsOtherCategory(false);
+      setNewCategoryName('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to add category');
+    }
+  };
+
+  const handleRemoveCategory = async (category) => {
+    if (!window.confirm(`Remove "${category}" from the category list? This won't affect existing parts.`)) return;
+    try {
+      const response = await SettingsService.removeCategory(category);
+      setCategoryList(response.data.settings.customCategories);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to remove category');
+    }
+  };
+
+  const extractHostname = (url) => {
+    if (!url) return null;
+    try {
+      return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      return null;
+    }
+  };
+
+  const detectVendorFromUrl = (hostname) => {
+    if (!hostname) return null;
+    for (const [domain, vendorName] of Object.entries(vendorHostnameMap)) {
+      if (hostname === domain || hostname.endsWith('.' + domain)) {
+        return vendorName;
+      }
+    }
+    return null;
+  };
+
+  // Format a hostname into a readable vendor name suggestion (e.g. "ebay.com" → "eBay")
+  const formatHostnameAsName = (hostname) => {
+    const name = hostname.replace(/\.(com|net|org|co|io)$/i, '');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
+
+  const handleUrlChange = (url) => {
+    const hostname = extractHostname(url);
+    setNewPart(prev => {
+      const updated = { ...prev, url };
+      // Only auto-fill vendor if currently empty
+      if (!prev.vendor) {
+        const detected = detectVendorFromUrl(hostname);
+        if (detected) {
+          updated.vendor = detected;
+          setIsOtherVendor(!vendorList.includes(detected));
+          setDetectedHostname(null);
+        } else if (hostname) {
+          // Unrecognized domain — show suggestion
+          setDetectedHostname({ hostname, suggestedName: formatHostnameAsName(hostname) });
+        }
+      }
+      return updated;
+    });
+  };
+
+  const getCategoryBadgeColor = (category) => {
+    const colorMap = {
+      'Maintenance': 'bg-blue-100 text-blue-800',
+      'Repair': 'bg-purple-100 text-purple-800',
+      'Fluid': 'bg-teal-100 text-teal-800',
+      'Software/License': 'bg-yellow-100 text-yellow-800'
+    };
+    return colorMap[category] || 'bg-gray-100 text-gray-800';
   };
 
   const getUniqueVendors = () => {
@@ -128,6 +291,72 @@ const DocumentDetail = () => {
     const vendors = [...new Set(workOrder.parts.map(part => part.vendor).filter(vendor => vendor && vendor.trim() !== ''))];
     return vendors.sort();
   };
+
+  // ==================== Parts Sorting ====================
+  const handlePartSort = (columnName) => {
+    setPartsSortConfig(prev => {
+      const existingIndex = prev.findIndex(s => s.column === columnName);
+      if (existingIndex >= 0) {
+        const existing = prev[existingIndex];
+        if (existing.direction === 'asc') {
+          const updated = [...prev];
+          updated[existingIndex] = { column: columnName, direction: 'desc' };
+          return updated;
+        } else {
+          return prev.filter((_, i) => i !== existingIndex);
+        }
+      } else {
+        return [...prev, { column: columnName, direction: 'asc' }].slice(0, 3);
+      }
+    });
+  };
+
+  const renderPartSortIndicator = (columnName) => {
+    const index = partsSortConfig.findIndex(s => s.column === columnName);
+    if (index < 0) return null;
+    const arrow = partsSortConfig[index].direction === 'asc' ? '\u25B2' : '\u25BC';
+    return <span className="ml-1 text-xs">{arrow}{partsSortConfig.length > 1 ? <sup>{index + 1}</sup> : ''}</span>;
+  };
+
+  const applyPartsSorting = (parts) => {
+    if (partsSortConfig.length === 0) return parts;
+    return [...parts].sort((a, b) => {
+      for (const config of partsSortConfig) {
+        let comparison = 0;
+        switch (config.column) {
+          case 'name':
+            comparison = (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+            break;
+          case 'price':
+            comparison = (a.price || 0) - (b.price || 0);
+            break;
+          case 'vendor':
+            comparison = (a.vendor || '').toLowerCase().localeCompare((b.vendor || '').toLowerCase());
+            break;
+          case 'category':
+            comparison = (a.category || '').toLowerCase().localeCompare((b.category || '').toLowerCase());
+            break;
+          default:
+            break;
+        }
+        if (comparison !== 0) {
+          return config.direction === 'desc' ? -comparison : comparison;
+        }
+      }
+      return 0;
+    });
+  };
+
+  // Save sort config when it changes
+  useEffect(() => {
+    if (workOrder && partsSortConfig !== undefined) {
+      const currentConfig = JSON.stringify(workOrder.partsSortConfig || []);
+      const newConfig = JSON.stringify(partsSortConfig);
+      if (currentConfig !== newConfig) {
+        DocumentService.updateDocument(id, { partsSortConfig }).catch(() => {});
+      }
+    }
+  }, [partsSortConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ==================== Parts Status Helper (WO only) ====================
   const checkAndUpdatePartsStatus = async (updatedWorkOrder) => {
@@ -158,9 +387,23 @@ const DocumentDetail = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await DocumentService.getDocument(id);
-        const fetchedDoc = response.data.workOrder;
+
+        // Fetch settings and document in parallel
+        const [docResponse, settingsResponse] = await Promise.all([
+          DocumentService.getDocument(id),
+          SettingsService.getSettings().catch(() => ({ data: { settings: { partMarkupPercentage: 30, customVendors: [], customCategories: [] } } }))
+        ]);
+
+        const fetchedDoc = docResponse.data.workOrder;
+        const settings = settingsResponse.data.settings;
         setWorkOrder(fetchedDoc);
+        setMarkupPercentage(settings.partMarkupPercentage);
+        setVendorList(settings.customVendors || []);
+        setCategoryList(settings.customCategories || []);
+        if (settings.vendorHostnames) {
+          setVendorHostnameMap(hostnameArrayToMap(settings.vendorHostnames));
+        }
+        setPartsSortConfig(fetchedDoc.partsSortConfig || []);
 
         // Fetch linked invoice (WO only - determined after we know the status)
         const docIsQuote = fetchedDoc.status === 'Quote' || fetchedDoc.status === 'Quote - Archived';
@@ -505,10 +748,7 @@ const DocumentDetail = () => {
   // ==================== Parts Handlers ====================
   const openAddPartModal = () => {
     setEditingPart(null);
-    setNewPart({
-      name: '', partNumber: '', quantity: 1, cost: 0, price: 0,
-      ordered: false, received: false, vendor: '', purchaseOrderNumber: ''
-    });
+    setNewPart({ ...defaultPart });
     setPartModalOpen(true);
   };
 
@@ -520,15 +760,27 @@ const DocumentDetail = () => {
   const openEditPartModal = (part, index) => {
     setEditingPart({ ...part, index });
     const vendor = part.vendor || '';
-    const isCustomVendor = vendor && !predefinedVendors.slice(0, -1).includes(vendor);
+    const isCustomVendor = vendor && !vendorList.includes(vendor);
+    const multiplier = 1 + markupPercentage / 100;
     setNewPart({
       name: part.name || '', partNumber: part.partNumber || '',
       quantity: part.quantity || 1,
-      cost: part.cost || (part.price ? parseFloat((part.price / 1.3).toFixed(2)) : 0),
+      cost: part.cost || (part.price ? parseFloat((part.price / multiplier).toFixed(2)) : 0),
       price: part.price || 0, ordered: part.ordered || false, received: part.received || false,
-      vendor: vendor, purchaseOrderNumber: part.purchaseOrderNumber || ''
+      vendor: vendor, supplier: part.supplier || '', purchaseOrderNumber: part.purchaseOrderNumber || '',
+      url: part.url || '', notes: part.notes || '', warranty: part.warranty || '',
+      category: part.category || '', coreCharge: part.coreCharge || 0,
+      coreChargeInvoiceable: part.coreChargeInvoiceable || false,
+      vin: part.vin || '', stockNumber: part.stockNumber || ''
     });
     setIsOtherVendor(isCustomVendor);
+    const cat = part.category || '';
+    setIsOtherCategory(cat && !categoryList.includes(cat));
+    setAddingNewVendor(false);
+    setAddingNewCategory(false);
+    setManagingVendors(false);
+    setManagingCategories(false);
+    setDetectedHostname(null);
     setPartModalOpen(true);
   };
 
@@ -544,8 +796,14 @@ const DocumentDetail = () => {
         setWorkOrder(updatedWorkOrder);
       }
       setPartModalOpen(false);
-      setNewPart({ name: '', partNumber: '', quantity: 1, cost: 0, price: 0, ordered: false, received: false, vendor: '', purchaseOrderNumber: '' });
+      setNewPart({ ...defaultPart });
       setIsOtherVendor(false);
+      setIsOtherCategory(false);
+      setAddingNewVendor(false);
+      setAddingNewCategory(false);
+      setManagingVendors(false);
+      setManagingCategories(false);
+      setDetectedHostname(null);
     } catch (err) {
       console.error('Error adding part:', err);
       setError('Failed to add part. Please try again later.');
@@ -562,8 +820,14 @@ const DocumentDetail = () => {
       setWorkOrder(response.data.workOrder);
       setPartModalOpen(false);
       setEditingPart(null);
-      setNewPart({ name: '', partNumber: '', quantity: 1, cost: 0, price: 0, ordered: false, received: false, vendor: '', purchaseOrderNumber: '' });
+      setNewPart({ ...defaultPart });
       setIsOtherVendor(false);
+      setIsOtherCategory(false);
+      setAddingNewVendor(false);
+      setAddingNewCategory(false);
+      setManagingVendors(false);
+      setManagingCategories(false);
+      setDetectedHostname(null);
     } catch (err) {
       console.error('Error updating part:', err);
       setError('Failed to update part. Please try again later.');
@@ -783,7 +1047,7 @@ const DocumentDetail = () => {
     vehicleMileage: workOrder.vehicleMileage,
     serviceRequested: workOrder.serviceRequested,
     diagnosticNotes: workOrder.diagnosticNotes,
-    parts: workOrder.parts || [],
+    parts: applyPartsSorting(workOrder.parts || []),
     labor: workOrder.labor || [],
     customerFacingNotes: notes.filter(n => n.isCustomerFacing)
   });
@@ -884,7 +1148,11 @@ const DocumentDetail = () => {
   }
 
   // ==================== Calculate Totals ====================
-  const partsCost = (workOrder.parts || []).reduce((total, part) => total + (part.price * part.quantity), 0);
+  const partsCost = (workOrder.parts || []).reduce((total, part) => {
+    const lineTotal = part.price * part.quantity;
+    const core = (part.coreChargeInvoiceable && part.coreCharge) ? part.coreCharge : 0;
+    return total + lineTotal + core;
+  }, 0);
   const laborCost = (workOrder.labor || []).reduce((total, labor) => {
     const qty = labor.quantity || labor.hours || 0;
     return total + (qty * labor.rate);
@@ -1460,12 +1728,23 @@ const DocumentDetail = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Part</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {!isQuote && showCost ? 'Cost' : 'Price'}
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                      onClick={() => handlePartSort('name')}>
+                      Part{renderPartSortIndicator('name')}
                     </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                      onClick={() => handlePartSort('price')}>
+                      {!isQuote && showCost ? 'Cost' : 'Price'}{renderPartSortIndicator('price')}
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                      onClick={() => handlePartSort('vendor')}>
+                      Vendor{renderPartSortIndicator('vendor')}
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                      onClick={() => handlePartSort('category')}>
+                      Cat.{renderPartSortIndicator('category')}
+                    </th>
                     {!isQuote && (
                       <>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PO/Order #</th>
@@ -1479,24 +1758,26 @@ const DocumentDetail = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {workOrder.parts
-                    .map((part, originalIndex) => ({ ...part, originalIndex }))
-                    .sort((a, b) => {
-                      const vendorA = (a.vendor || '').toLowerCase();
-                      const vendorB = (b.vendor || '').toLowerCase();
-                      if (!vendorA && !vendorB) return 0;
-                      if (!vendorA) return 1;
-                      if (!vendorB) return -1;
-                      return vendorA.localeCompare(vendorB);
-                    })
-                    .map((part) => (
-                    <tr key={part.originalIndex}>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="font-medium text-gray-900">{part.name}</div>
+                  {applyPartsSorting(
+                    workOrder.parts.map((part, originalIndex) => ({ ...part, originalIndex }))
+                  ).map((part) => (
+                    <React.Fragment key={part.originalIndex}>
+                    <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setExpandedPartIndex(expandedPartIndex === part.originalIndex ? null : part.originalIndex)}>
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-900 flex items-center">
+                          <i className={`fas fa-chevron-${expandedPartIndex === part.originalIndex ? 'down' : 'right'} text-xs text-gray-400 mr-2`}></i>
+                          {part.name}
+                        </div>
                         {part.partNumber && <div className="text-xs text-gray-500">PN: {part.partNumber}</div>}
                         {part.itemNumber && <div className="text-xs text-gray-500">SKU: {part.itemNumber}</div>}
+                        {part.warranty && <div className="text-xs text-green-600 italic">Part Warranty: {part.warranty}</div>}
+                        {part.coreCharge > 0 && (
+                          <div className="text-xs text-orange-600">
+                            Core: {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}
+                          </div>
+                        )}
                         {!isQuote && part.receiptImageUrl && (
-                          <button onClick={async () => {
+                          <button onClick={async (e) => { e.stopPropagation();
                             try {
                               const response = await fetch(
                                 `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
@@ -1516,18 +1797,32 @@ const DocumentDetail = () => {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.quantity}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                         {formatCurrency(!isQuote && showCost
-                          ? (part.cost > 0 ? part.cost : (part.price / 1.3))
+                          ? (part.cost > 0 ? part.cost : (part.price / (1 + markupPercentage / 100)))
                           : (part.price || 0)
                         )}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{part.vendor}</div>
+                        <div className="text-sm text-gray-900">
+                          {part.vendor}
+                          {part.url && (
+                            <a href={part.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 text-blue-500 hover:text-blue-700" title="Product link">
+                              <i className="fas fa-external-link-alt text-xs"></i>
+                            </a>
+                          )}
+                        </div>
                         {part.supplier && <div className="text-xs text-gray-500">Seller: {part.supplier}</div>}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {part.category && (
+                          <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${getCategoryBadgeColor(part.category)}`}>
+                            {part.category}
+                          </span>
+                        )}
                       </td>
                       {!isQuote && (
                         <>
                           <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.purchaseOrderNumber}</td>
-                          <td className="px-4 py-2 whitespace-nowrap">
+                          <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <div className="flex flex-col space-y-2">
                               <label className="flex items-center text-sm">
                                 <input type="checkbox" checked={part.ordered || false}
@@ -1548,19 +1843,61 @@ const DocumentDetail = () => {
                       {isQuote && (
                         <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(part.price * part.quantity)}</td>
                       )}
-                      <td className="px-4 py-2 whitespace-nowrap text-right">
+                      <td className="px-4 py-2 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end space-x-2">
                           <button onClick={() => openEditPartModal(part, part.originalIndex)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
                           <button onClick={() => handleRemovePart(part.originalIndex)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
                         </div>
                       </td>
                     </tr>
+                    {expandedPartIndex === part.originalIndex && (
+                      <tr>
+                        <td colSpan={isQuote ? 7 : 8} className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                            {part.url && (
+                              <div>
+                                <span className="font-medium text-gray-500">Product URL:</span>{' '}
+                                <a href={part.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all">
+                                  {part.url.length > 50 ? part.url.substring(0, 50) + '...' : part.url}
+                                  <i className="fas fa-external-link-alt text-xs ml-1"></i>
+                                </a>
+                              </div>
+                            )}
+                            {part.supplier && (
+                              <div><span className="font-medium text-gray-500">Seller:</span> {part.supplier}</div>
+                            )}
+                            {part.purchaseOrderNumber && (
+                              <div><span className="font-medium text-gray-500">PO/Order #:</span> {part.purchaseOrderNumber}</div>
+                            )}
+                            {part.vin && (
+                              <div><span className="font-medium text-gray-500">Source VIN:</span> <span className="font-mono">{part.vin}</span></div>
+                            )}
+                            {part.stockNumber && (
+                              <div><span className="font-medium text-gray-500">Stock #:</span> {part.stockNumber}</div>
+                            )}
+                            {part.warranty && (
+                              <div><span className="font-medium text-gray-500">Warranty:</span> <span className="text-green-700">{part.warranty}</span></div>
+                            )}
+                            {part.coreCharge > 0 && (
+                              <div><span className="font-medium text-gray-500">Core Charge:</span> {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}</div>
+                            )}
+                            {part.notes && (
+                              <div className="col-span-2 md:col-span-3"><span className="font-medium text-gray-500">Notes:</span> {part.notes}</div>
+                            )}
+                            {!part.url && !part.supplier && !part.vin && !part.stockNumber && !part.warranty && !part.notes && !(part.coreCharge > 0) && (
+                              <div className="text-gray-400 italic">No additional details</div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
                 {isQuote && (
                   <tfoot className="bg-gray-50">
                     <tr>
-                      <td colSpan="4" className="px-4 py-2 text-right text-sm font-medium text-gray-700">Parts Total:</td>
+                      <td colSpan="5" className="px-4 py-2 text-right text-sm font-medium text-gray-700">Parts Total:</td>
                       <td className="px-4 py-2 text-right text-sm font-bold">{formatCurrency(partsCost)}</td>
                       <td></td>
                     </tr>
@@ -1674,7 +2011,7 @@ const DocumentDetail = () => {
       {/* Part Modal (Add/Edit) */}
       {partModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-4">{editingPart ? 'Edit Part' : 'Add Part'}</h3>
             <div className="space-y-4">
               <div>
@@ -1682,28 +2019,191 @@ const DocumentDetail = () => {
                 <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                   value={newPart.name} onChange={(e) => setNewPart({ ...newPart, name: e.target.value })} required />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
-                <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newPart.partNumber} onChange={(e) => setNewPart({ ...newPart, partNumber: e.target.value })} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Part Number</label>
+                  <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.partNumber} onChange={(e) => setNewPart({ ...newPart, partNumber: e.target.value })} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">Category</label>
+                    {isAdminOrManagement(currentUser) && (
+                      <button type="button" onClick={() => setManagingCategories(!managingCategories)}
+                        className="text-xs text-gray-400 hover:text-gray-600" title="Manage categories">
+                        <i className={`fas fa-${managingCategories ? 'times' : 'cog'}`}></i>
+                      </button>
+                    )}
+                  </div>
+                  {managingCategories ? (
+                    <div className="border border-gray-300 rounded-md p-2 space-y-1 max-h-40 overflow-y-auto">
+                      {categoryList.map(cat => (
+                        <div key={cat} className="flex items-center justify-between py-1 px-2 hover:bg-gray-50 rounded">
+                          <span className="text-sm text-gray-700">{cat}</span>
+                          <button type="button" onClick={() => handleRemoveCategory(cat)}
+                            className="text-red-400 hover:text-red-600 ml-2" title={`Remove ${cat}`}>
+                            <i className="fas fa-minus-circle text-sm"></i>
+                          </button>
+                        </div>
+                      ))}
+                      {categoryList.length === 0 && <p className="text-xs text-gray-400 text-center py-1">No categories</p>}
+                      <button type="button" onClick={() => { setManagingCategories(false); setAddingNewCategory(true); setNewCategoryName(''); }}
+                        className="w-full text-xs text-green-600 hover:text-green-800 py-1 border-t border-gray-200 mt-1">
+                        <i className="fas fa-plus mr-1"></i>Add Category
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={isOtherCategory ? 'Other' : (addingNewCategory ? '__add_new__' : newPart.category)}
+                        onChange={(e) => handleCategoryChange(e.target.value)}>
+                        <option value="">None</option>
+                        {categoryList.map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                        <option value="Other">Other</option>
+                        {isAdminOrManagement(currentUser) && (
+                          <option value="__add_new__">+ Add Category</option>
+                        )}
+                      </select>
+                      {isOtherCategory && (
+                        <input type="text" placeholder="Enter custom category"
+                          className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                          value={newPart.category} onChange={(e) => setNewPart({ ...newPart, category: e.target.value })} />
+                      )}
+                      {addingNewCategory && (
+                        <div className="mt-2 flex gap-1 items-center">
+                          <input type="text" placeholder="New category name"
+                            className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-sm"
+                            value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveNewCategory(); } }} />
+                          <button type="button" onClick={handleSaveNewCategory}
+                            className="p-1.5 bg-green-600 text-white rounded-md hover:bg-green-700" title="Save">
+                            <i className="fas fa-check text-xs"></i>
+                          </button>
+                          <button type="button" onClick={() => { setAddingNewCategory(false); setNewPart({ ...newPart, category: '' }); }}
+                            className="p-1.5 border border-gray-300 text-gray-500 rounded-md hover:bg-gray-50" title="Cancel">
+                            <i className="fas fa-times text-xs"></i>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vendor / Purchase Location</label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 mb-2"
-                  value={isOtherVendor ? 'Other' : newPart.vendor} onChange={(e) => handleVendorChange(e.target.value)}>
-                  <option value="">Select a vendor...</option>
-                  {predefinedVendors.map(vendor => (<option key={vendor} value={vendor}>{vendor}</option>))}
-                </select>
-                {isOtherVendor && (
-                  <input type="text" placeholder="Enter custom vendor name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    value={newPart.vendor} onChange={(e) => setNewPart({ ...newPart, vendor: e.target.value })} />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Vendor / Purchase Location</label>
+                  {isAdminOrManagement(currentUser) && (
+                    <button type="button" onClick={() => setManagingVendors(!managingVendors)}
+                      className="text-xs text-gray-400 hover:text-gray-600" title="Manage vendors">
+                      <i className={`fas fa-${managingVendors ? 'times' : 'cog'}`}></i>
+                    </button>
+                  )}
+                </div>
+                {managingVendors ? (
+                  <div className="border border-gray-300 rounded-md p-2 space-y-1 max-h-48 overflow-y-auto">
+                    {vendorList.map(vendor => (
+                      <div key={vendor} className="flex items-center justify-between py-1 px-2 hover:bg-gray-50 rounded">
+                        <span className="text-sm text-gray-700">{vendor}</span>
+                        <button type="button" onClick={() => handleRemoveVendor(vendor)}
+                          className="text-red-400 hover:text-red-600 ml-2" title={`Remove ${vendor}`}>
+                          <i className="fas fa-minus-circle text-sm"></i>
+                        </button>
+                      </div>
+                    ))}
+                    {vendorList.length === 0 && <p className="text-xs text-gray-400 text-center py-1">No vendors</p>}
+                    <button type="button" onClick={() => { setManagingVendors(false); setAddingNewVendor(true); setNewVendorName(''); setNewVendorHostname(''); }}
+                      className="w-full text-xs text-green-600 hover:text-green-800 py-1 border-t border-gray-200 mt-1">
+                      <i className="fas fa-plus mr-1"></i>Add Vendor
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 mb-2"
+                      value={isOtherVendor ? 'Other' : (addingNewVendor ? '__add_new__' : newPart.vendor)}
+                      onChange={(e) => handleVendorChange(e.target.value)}>
+                      <option value="">Select a vendor...</option>
+                      {vendorList.map(vendor => (<option key={vendor} value={vendor}>{vendor}</option>))}
+                      <option value="Other">Other</option>
+                      {isAdminOrManagement(currentUser) && (
+                        <option value="__add_new__">+ Add Vendor</option>
+                      )}
+                    </select>
+                    {detectedHostname && !newPart.vendor && !addingNewVendor && (
+                      <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between text-sm">
+                        <span className="text-blue-800">
+                          <i className="fas fa-globe mr-1"></i>
+                          Detected: <strong>{detectedHostname.hostname}</strong>
+                        </span>
+                        <div className="flex gap-1 ml-2">
+                          {isAdminOrManagement(currentUser) && (
+                            <button type="button" onClick={() => {
+                              setAddingNewVendor(true);
+                              setNewVendorName(detectedHostname.suggestedName);
+                              setNewVendorHostname(detectedHostname.hostname);
+                              setDetectedHostname(null);
+                            }} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">
+                              Add as Vendor
+                            </button>
+                          )}
+                          <button type="button" onClick={() => {
+                            setNewPart(prev => ({ ...prev, vendor: detectedHostname.suggestedName }));
+                            setIsOtherVendor(true);
+                            setDetectedHostname(null);
+                          }} className="px-2 py-1 border border-blue-300 text-blue-700 rounded text-xs hover:bg-blue-100">
+                            Use Once
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {isOtherVendor && (
+                      <input type="text" placeholder="Enter custom vendor name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        value={newPart.vendor} onChange={(e) => setNewPart({ ...newPart, vendor: e.target.value })} />
+                    )}
+                    {addingNewVendor && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input type="text" placeholder="New vendor name"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            value={newVendorName} onChange={(e) => setNewVendorName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveNewVendor(); } }} />
+                        </div>
+                        <input type="text" placeholder="Website URL for auto-detect (optional, e.g. testcorp.com)"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-sm"
+                          value={newVendorHostname} onChange={(e) => setNewVendorHostname(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveNewVendor(); } }} />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={handleSaveNewVendor}
+                            className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">Save</button>
+                          <button type="button" onClick={() => { setAddingNewVendor(false); setNewVendorName(''); setNewVendorHostname(''); setNewPart({ ...newPart, vendor: '' }); }}
+                            className="px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-sm">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Product URL</label>
+                <input type="url" placeholder="https://..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.url} onChange={(e) => handleUrlChange(e.target.value)} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">PO / Order Number</label>
                 <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                   value={newPart.purchaseOrderNumber} onChange={(e) => setNewPart({ ...newPart, purchaseOrderNumber: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Source VIN <span className="text-xs text-gray-500">(used parts)</span></label>
+                  <input type="text" placeholder="VIN of source vehicle" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.vin} onChange={(e) => setNewPart({ ...newPart, vin: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Number <span className="text-xs text-gray-500">(used parts)</span></label>
+                  <input type="text" placeholder="Stock # of source vehicle" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.stockNumber} onChange={(e) => setNewPart({ ...newPart, stockNumber: e.target.value })} />
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -1716,7 +2216,8 @@ const DocumentDetail = () => {
                   <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newPart.cost} onChange={(e) => {
                       const cost = parseFloat(e.target.value) || 0;
-                      setNewPart({ ...newPart, cost, price: parseFloat((cost * 1.3).toFixed(2)) });
+                      const multiplier = 1 + markupPercentage / 100;
+                      setNewPart({ ...newPart, cost, price: parseFloat((cost * multiplier).toFixed(2)) });
                     }} />
                 </div>
                 <div>
@@ -1724,9 +2225,34 @@ const DocumentDetail = () => {
                   <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newPart.price} onChange={(e) => {
                       const price = parseFloat(e.target.value) || 0;
-                      setNewPart({ ...newPart, price, cost: parseFloat((price / 1.3).toFixed(2)) });
+                      const multiplier = 1 + markupPercentage / 100;
+                      setNewPart({ ...newPart, price, cost: parseFloat((price / multiplier).toFixed(2)) });
                     }} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Core Charge</label>
+                  <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.coreCharge} onChange={(e) => setNewPart({ ...newPart, coreCharge: parseFloat(e.target.value) || 0 })} />
+                </div>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center">
+                    <input type="checkbox" className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      checked={newPart.coreChargeInvoiceable} onChange={(e) => setNewPart({ ...newPart, coreChargeInvoiceable: e.target.checked })} />
+                    <span className="ml-2 text-sm text-gray-700">Show on invoice</span>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Part Warranty <span className="text-xs text-gray-500">(customer-facing)</span></label>
+                <input type="text" placeholder="e.g., 2 year / 24,000 mile" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.warranty} onChange={(e) => setNewPart({ ...newPart, warranty: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes <span className="text-xs text-gray-500">(not shown on invoice)</span></label>
+                <textarea rows="2" placeholder="Internal notes about this part..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.notes} onChange={(e) => setNewPart({ ...newPart, notes: e.target.value })} />
               </div>
               {!isQuote && (
                 <div className="flex space-x-4">
@@ -1744,7 +2270,7 @@ const DocumentDetail = () => {
               )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-              <Button variant="light" onClick={() => { setPartModalOpen(false); setEditingPart(null); }}>Cancel</Button>
+              <Button variant="light" onClick={() => { setPartModalOpen(false); setEditingPart(null); setDetectedHostname(null); }}>Cancel</Button>
               <Button variant="primary" onClick={editingPart ? handleEditPart : handleAddPart} disabled={!newPart.name}>
                 {editingPart ? 'Update Part' : 'Add Part'}
               </Button>
@@ -1876,6 +2402,7 @@ const DocumentDetail = () => {
         onClose={() => setReceiptModalOpen(false)}
         entityId={id}
         onSuccess={handleReceiptImportSuccess}
+        markupPercentage={markupPercentage}
       />
 
       {/* WO-specific modals */}

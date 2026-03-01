@@ -182,12 +182,14 @@ ${receiptData}`
  * @param {Array} selectedParts - Raw parts chosen by the user
  * @param {Number} shippingTotal - Total shipping/tax from the receipt
  * @param {Boolean} isOrder - Whether parts are already ordered
+ * @param {Number} markupPercentage - Markup percentage (e.g. 30 for 30%)
  * @returns {Array} Finalized parts ready to add to a work order
  */
-exports.finalizeParts = (selectedParts, shippingTotal, isOrder) => {
+exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage = 30) => {
   const shippingPerItem = selectedParts.length > 0 ? shippingTotal / selectedParts.length : 0;
+  const multiplier = 1 + markupPercentage / 100;
 
-  console.log(`[Receipt Parser] Amortizing $${shippingPerItem.toFixed(2)} shipping per item across ${selectedParts.length} selected parts`);
+  console.log(`[Receipt Parser] Amortizing $${shippingPerItem.toFixed(2)} shipping per item across ${selectedParts.length} selected parts (markup: ${markupPercentage}%)`);
 
   return selectedParts.map(part => {
     const baseCost = parseFloat(part.price) || 0;
@@ -201,7 +203,7 @@ exports.finalizeParts = (selectedParts, shippingTotal, isOrder) => {
       purchaseOrderNumber: part.orderNumber || '',
       quantity: part.quantity || 1,
       cost: costWithShipping,
-      price: costWithShipping * 1.3,
+      price: parseFloat((costWithShipping * multiplier).toFixed(2)),
       ordered: isOrder,
       received: false
     };

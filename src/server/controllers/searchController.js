@@ -3,7 +3,8 @@ const Vehicle = require('../models/Vehicle');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { formatDate } = require('../config/timezone');
+const { formatDate, TIMEZONE } = require('../config/timezone');
+const { getDayBoundaries } = require('../utils/dateUtils');
 
 /**
  * Escape special regex characters to prevent ReDoS and NoSQL injection attacks
@@ -146,13 +147,12 @@ const globalSearch = catchAsync(async (req, res, next) => {
     // Advanced search: If query looks like a date, search by date
     const dateQuery = new Date(query);
     if (!isNaN(dateQuery.getTime()) && query.length > 5) {
-      const startOfDay = new Date(dateQuery.getFullYear(), dateQuery.getMonth(), dateQuery.getDate());
-      const endOfDay = new Date(dateQuery.getFullYear(), dateQuery.getMonth(), dateQuery.getDate() + 1);
+      const { startOfDay, endOfDay } = getDayBoundaries(query);
 
       const workOrdersByDate = await WorkOrder.find({
         createdAt: {
           $gte: startOfDay,
-          $lt: endOfDay
+          $lte: endOfDay
         }
       })
       .populate('customer', 'name phone')

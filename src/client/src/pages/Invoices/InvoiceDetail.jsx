@@ -75,7 +75,10 @@ const InvoiceDetail = () => {
         name: item.description,
         partNumber: item.partNumber || '',
         quantity: item.quantity,
-        price: item.unitPrice
+        price: item.unitPrice,
+        warranty: item.warranty || '',
+        coreCharge: item.coreCharge || 0,
+        coreChargeInvoiceable: item.coreChargeInvoiceable || false
       }));
       labor = items.filter(item => item.type === 'Labor').map(item => ({
         description: item.description,
@@ -97,8 +100,9 @@ const InvoiceDetail = () => {
       parts,
       labor,
       customerFacingNotes,
+      customerNotes: invoice?.notes,
       taxRate: invoice?.taxRate || 0,
-      terms: invoice?.paymentTerms
+      terms: invoice?.terms
     };
   };
 
@@ -172,6 +176,9 @@ const InvoiceDetail = () => {
           quantity: parseFloat(item.quantity) || 0,
           price: parseFloat(item.price || item.unitPrice) || 0,
           total: item.total || ((parseFloat(item.quantity) || 0) * (parseFloat(item.price || item.unitPrice) || 0)),
+          warranty: item.warranty || '',
+          coreCharge: item.coreCharge || 0,
+          coreChargeInvoiceable: item.coreChargeInvoiceable || false
         });
       }
     });

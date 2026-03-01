@@ -3,7 +3,7 @@ const Customer = require('../models/Customer');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { parseLocalDate } = require('../utils/dateUtils');
+const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
 const cacheService = require('../services/cacheService');
 
 // Get all vehicles
@@ -298,7 +298,7 @@ exports.addMileageRecord = catchAsync(async (req, res, next) => {
   // Add mileage record using the model method
   vehicle.addMileageRecord(
     mileage,
-    date ? parseLocalDate(date) : new Date(),
+    date ? parseLocalDate(date) : todayInTz(),
     notes || ''
   );
 

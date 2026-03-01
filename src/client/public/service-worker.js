@@ -30,20 +30,16 @@ const API_ENDPOINTS = [
 
 // Install event - Cache static assets
 self.addEventListener('install', event => {
-  console.log('Service Worker installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => {
-        console.log('Caching static assets');
         return cache.addAll(STATIC_ASSETS.filter(url => !url.startsWith('http')))
-          .catch(err => {
-            console.log('Error caching static assets:', err);
+          .catch(() => {
             // Cache essential files only if full cache fails
             return cache.addAll(['/', '/offline.html', '/manifest.json']);
           });
       })
       .then(() => {
-        console.log('Service Worker installed successfully');
         self.skipWaiting();
       })
   );
@@ -51,20 +47,17 @@ self.addEventListener('install', event => {
 
 // Activate event - Clean up old caches
 self.addEventListener('activate', event => {
-  console.log('Service Worker activating...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       const validCaches = [STATIC_CACHE, DYNAMIC_CACHE, API_CACHE];
       return Promise.all(
         cacheNames.map(cacheName => {
           if (!validCaches.includes(cacheName)) {
-            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      console.log('Service Worker activated');
       return self.clients.claim();
     })
   );

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthService from '../../services/authService';
+import SettingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
 
 const SettingsPage = () => {
@@ -26,6 +27,44 @@ const SettingsPage = () => {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
+
+  // Shop Settings State (admin/management only)
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management';
+  const [shopSettings, setShopSettings] = useState({ partMarkupPercentage: 30 });
+  const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
+  const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
+
+  useEffect(() => {
+    if (isAdmin) {
+      SettingsService.getSettings()
+        .then(res => setShopSettings(res.data.settings))
+        .catch(() => {});
+    }
+  }, [isAdmin]);
+
+  const handleUpdateShopSettings = async (e) => {
+    e.preventDefault();
+    setIsUpdatingShopSettings(true);
+    setShopSettingsMessage({ type: '', text: '' });
+    try {
+      const response = await SettingsService.updateSettings({
+        partMarkupPercentage: Number(shopSettings.partMarkupPercentage)
+      });
+      setShopSettings(response.data.settings);
+      setShopSettingsMessage({
+        type: 'success',
+        text: response.message || 'Shop settings updated successfully!'
+      });
+      setTimeout(() => setShopSettingsMessage({ type: '', text: '' }), 5000);
+    } catch (error) {
+      setShopSettingsMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'Failed to update shop settings'
+      });
+    } finally {
+      setIsUpdatingShopSettings(false);
+    }
+  };
 
   const handleBack = () => {
     navigate(-1);
@@ -318,6 +357,62 @@ const SettingsPage = () => {
             </p>
           )}
         </div>
+
+        {/* Shop Settings Section (Admin/Management only) */}
+        {isAdmin && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Shop Settings</h2>
+
+            {shopSettingsMessage.text && (
+              <div className={`mb-4 p-3 rounded ${
+                shopSettingsMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+              }`}>
+                {shopSettingsMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateShopSettings}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Part Markup Percentage
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={shopSettings.partMarkupPercentage}
+                      onChange={(e) => setShopSettings({ ...shopSettings, partMarkupPercentage: e.target.value })}
+                      className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-gray-600">%</span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Applied to part cost to calculate retail price. Currently: cost x {(1 + Number(shopSettings.partMarkupPercentage) / 100).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                  <p className="text-sm text-yellow-800">
+                    <i className="fas fa-exclamation-triangle mr-1"></i>
+                    Changing this will recalculate retail prices on all quotes and work orders that do not yet have a saved invoice.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={isUpdatingShopSettings}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                  >
+                    {isUpdatingShopSettings ? 'Saving...' : 'Save Shop Settings'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Account Information Section */}
         <div className="bg-white shadow rounded-lg p-6">

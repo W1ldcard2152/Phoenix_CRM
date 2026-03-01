@@ -59,7 +59,10 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       partNumber: item.partNumber || '',
       quantity: item.quantity,
       price: item.unitPrice,
-      total: item.total
+      total: item.total,
+      warranty: item.warranty || '',
+      coreCharge: item.coreCharge || 0,
+      coreChargeInvoiceable: item.coreChargeInvoiceable || false
     }));
     
     labor = items.filter(item => item.type === 'Labor').map(item => ({
@@ -146,13 +149,29 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
             </thead>
             <tbody>
               {parts.map((part, index) => (
-                <tr key={part._id || `part-${index}`}>
-                  <td className="border border-gray-300 p-2">{part.name || part.description}</td>
-                  <td className="border border-gray-300 p-2">{part.partNumber}</td>
-                  <td className="border border-gray-300 p-2 text-right">{part.quantity}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.price)}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.total)}</td>
-                </tr>
+                <React.Fragment key={part._id || `part-${index}`}>
+                  <tr>
+                    <td className="border border-gray-300 p-2">
+                      {part.name || part.description}
+                      {part.warranty && (
+                        <div className="text-xs text-gray-500 italic mt-0.5">Part Warranty: {part.warranty}</div>
+                      )}
+                    </td>
+                    <td className="border border-gray-300 p-2">{part.partNumber}</td>
+                    <td className="border border-gray-300 p-2 text-right">{part.quantity}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.price)}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.total)}</td>
+                  </tr>
+                  {part.coreChargeInvoiceable && part.coreCharge > 0 && (
+                    <tr>
+                      <td className="border border-gray-300 p-2 pl-6 text-xs text-gray-600" colSpan="3">
+                        Core Charge - {part.name || part.description}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right text-xs">{formatCurrency(part.coreCharge)}</td>
+                      <td className="border border-gray-300 p-2 text-right text-xs">{formatCurrency(part.coreCharge)}</td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

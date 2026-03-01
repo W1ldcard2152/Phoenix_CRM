@@ -134,17 +134,34 @@ const InvoiceGenerator = () => {
         }
       }
 
+      // Sort parts using the work order's saved sort config
+      const sortedParts = workOrder.parts ? [...workOrder.parts] : [];
+      if (workOrder.partsSortConfig && workOrder.partsSortConfig.length > 0) {
+        sortedParts.sort((a, b) => {
+          for (const config of workOrder.partsSortConfig) {
+            let comparison = 0;
+            switch (config.column) {
+              case 'name': comparison = (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()); break;
+              case 'price': comparison = (a.price || 0) - (b.price || 0); break;
+              case 'vendor': comparison = (a.vendor || '').toLowerCase().localeCompare((b.vendor || '').toLowerCase()); break;
+              case 'category': comparison = (a.category || '').toLowerCase().localeCompare((b.category || '').toLowerCase()); break;
+              default: break;
+            }
+            if (comparison !== 0) return config.direction === 'desc' ? -comparison : comparison;
+          }
+          return 0;
+        });
+      }
+
       setInvoiceData(prev => ({
         ...prev,
-        parts: workOrder.parts
-          ? workOrder.parts.map((p, index) => ({
+        parts: sortedParts.map((p, index) => ({
               ...p,
               _id: p._id || `part-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
               quantity: parseFloat(p.quantity) || 0,
               price: parseFloat(p.price) || 0,
               total: (parseFloat(p.quantity) || 0) * (parseFloat(p.price) || 0),
-            }))
-          : [],
+            })),
         labor: workOrder.labor
           ? workOrder.labor.map((l, index) => {
               const hrs = parseFloat(l.quantity) || parseFloat(l.hours) || 0;
@@ -330,7 +347,11 @@ const InvoiceGenerator = () => {
   };
 
   const calculateTotals = () => {
-    const partsTotal = invoiceData.parts.reduce((sum, part) => sum + (parseFloat(part.total) || 0), 0);
+    const partsTotal = invoiceData.parts.reduce((sum, part) => {
+      const lineTotal = parseFloat(part.total) || 0;
+      const core = (part.coreChargeInvoiceable && part.coreCharge) ? parseFloat(part.coreCharge) : 0;
+      return sum + lineTotal + core;
+    }, 0);
     const laborTotal = invoiceData.labor.reduce((sum, laborItem) => sum + (parseFloat(laborItem.total) || 0), 0);
     const subtotal = partsTotal + laborTotal;
     const taxAmount = subtotal * (parseFloat(invoiceData.taxRate) / 100);
@@ -354,7 +375,10 @@ const InvoiceGenerator = () => {
       name: p.name || p.description,
       partNumber: p.partNumber,
       quantity: p.quantity,
-      price: p.price
+      price: p.price,
+      warranty: p.warranty || '',
+      coreCharge: p.coreCharge || 0,
+      coreChargeInvoiceable: p.coreChargeInvoiceable || false
     })),
     labor: invoiceData.labor.map(l => ({
       description: l.description,
@@ -362,6 +386,7 @@ const InvoiceGenerator = () => {
       rate: l.rate
     })),
     customerFacingNotes,
+    customerNotes: invoiceData.customerNotes,
     taxRate: invoiceData.taxRate || 0,
     terms: invoiceData.terms
   });

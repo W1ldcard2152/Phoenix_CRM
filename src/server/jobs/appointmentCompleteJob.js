@@ -16,6 +16,9 @@ const TRANSITIONAL_WO_STATUSES = [
  * Finds today's appointments whose linked work orders are still in a
  * transitional status and moves them to 'Appointment Complete'.
  * Intended to run at close of business (6 PM ET) each day.
+ *
+ * Groups appointments by work order so that each WO is transitioned once
+ * and ALL of its appointments for that day are marked Completed.
  */
 const runAppointmentCompleteJob = async () => {
   const now = moment.tz(TIMEZONE);
@@ -37,40 +40,66 @@ const runAppointmentCompleteJob = async () => {
       return { transitioned: 0 };
     }
 
-    let transitionedCount = 0;
-
+    // Group appointments by work order ID so each WO is processed once
+    const appointmentsByWorkOrder = new Map();
     for (const appointment of appointments) {
-      const workOrder = await WorkOrder.findById(appointment.workOrder);
+      const woId = appointment.workOrder.toString();
+      if (!appointmentsByWorkOrder.has(woId)) {
+        appointmentsByWorkOrder.set(woId, []);
+      }
+      appointmentsByWorkOrder.get(woId).push(appointment);
+    }
+
+    let transitionedCount = 0;
+    let appointmentsCompletedCount = 0;
+
+    for (const [woId, woAppointments] of appointmentsByWorkOrder) {
+      const workOrder = await WorkOrder.findById(woId);
 
       if (!workOrder || !TRANSITIONAL_WO_STATUSES.includes(workOrder.status)) {
+        // Even if the WO isn't in a transitional status, still mark today's
+        // appointments as Completed so they don't linger in 'Scheduled'
+        for (const appointment of woAppointments) {
+          if (appointment.status !== 'Completed') {
+            appointment.status = 'Completed';
+            await appointment.save();
+            appointmentsCompletedCount++;
+          }
+        }
         continue;
       }
 
       const previousStatus = workOrder.status;
       workOrder.status = 'Appointment Complete';
       await workOrder.save();
-
-      // Also mark the appointment itself as Completed
-      if (appointment.status !== 'Completed') {
-        appointment.status = 'Completed';
-        await appointment.save();
-      }
-
       transitionedCount++;
+
       console.log(
         `[AppointmentCompleteJob] WO ${workOrder._id}: "${previousStatus}" -> "Appointment Complete" ` +
-        `(Appointment ${appointment._id})`
+        `(${woAppointments.length} appointment(s))`
       );
+
+      // Mark ALL of this work order's appointments for today as Completed
+      for (const appointment of woAppointments) {
+        if (appointment.status !== 'Completed') {
+          appointment.status = 'Completed';
+          await appointment.save();
+          appointmentsCompletedCount++;
+        }
+      }
     }
 
-    if (transitionedCount > 0) {
+    if (transitionedCount > 0 || appointmentsCompletedCount > 0) {
       cacheService.invalidateAllWorkOrders();
       cacheService.invalidateServiceWritersCorner();
       cacheService.invalidateAllAppointments();
     }
 
-    console.log(`[AppointmentCompleteJob] Done. Transitioned ${transitionedCount} work order(s).`);
-    return { transitioned: transitionedCount };
+    console.log(
+      `[AppointmentCompleteJob] Done. Transitioned ${transitionedCount} work order(s), ` +
+      `completed ${appointmentsCompletedCount} appointment(s).`
+    );
+    return { transitioned: transitionedCount, appointmentsCompleted: appointmentsCompletedCount };
   } catch (err) {
     console.error('[AppointmentCompleteJob] Error:', err);
     throw err;

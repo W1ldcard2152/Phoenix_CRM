@@ -227,7 +227,7 @@ export const clearExpiredCache = (maxAge = 24 * 60 * 60 * 1000) => {
     }
   });
   
-  console.log(`Cleared ${cleared} expired cache entries`);
+  if (cleared > 0) console.log(`Cleared ${cleared} expired cache entries`);
   return cleared;
 };
 
@@ -283,14 +283,12 @@ export const registerBackgroundSync = (tag = 'retry-failed-requests') => {
 export const initializePWA = () => {
   // Handle online/offline events
   window.addEventListener('online', () => {
-    console.log('App is back online');
     hideOfflineIndicator();
     showBackOnlineNotification();
     registerBackgroundSync();
   });
   
   window.addEventListener('offline', () => {
-    console.log('App is offline');
     showOfflineIndicator();
   });
   
@@ -302,13 +300,15 @@ export const initializePWA = () => {
   // Clear expired cache entries on startup
   clearExpiredCache();
   
-  // Log PWA status
-  console.log('PWA Status:', {
-    isPWA: isPWA(),
-    isOnline: isOnline(),
-    networkStatus: getNetworkStatus(),
-    cacheStats: getCacheStats()
-  });
+  // Log PWA status in development only
+  if (process.env.NODE_ENV === 'development') {
+    console.log('PWA Status:', {
+      isPWA: isPWA(),
+      isOnline: isOnline(),
+      networkStatus: getNetworkStatus(),
+      cacheStats: getCacheStats()
+    });
+  }
 };
 
 // Auto-initialize when imported

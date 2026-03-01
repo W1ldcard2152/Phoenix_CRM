@@ -5,7 +5,7 @@ import { formatCurrency } from '../../utils/formatters';
 
 const STEPS = { UPLOAD: 'upload', TYPE: 'type', REVIEW: 'review' };
 
-const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess }) => {
+const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30 }) => {
   const [step, setStep] = useState(STEPS.UPLOAD);
 
   // Upload state
@@ -205,14 +205,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess }) => {
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+ Ship</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price (30%)</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price ({markupPercentage}%)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {extractedParts.map((part, index) => {
                   const isSelected = selected.includes(index);
                   const costWithShip = part.price + (isSelected ? shippingPerItem : 0);
-                  const priceWithMarkup = costWithShip * 1.3;
+                  const priceWithMarkup = costWithShip * (1 + markupPercentage / 100);
 
                   return (
                     <tr
@@ -266,7 +266,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess }) => {
                 Total customer price: {formatCurrency(
                   selected.reduce((sum, i) => {
                     const cost = extractedParts[i].price + shippingPerItem;
-                    return sum + (cost * 1.3 * extractedParts[i].quantity);
+                    return sum + (cost * (1 + markupPercentage / 100) * extractedParts[i].quantity);
                   }, 0)
                 )}
               </span>

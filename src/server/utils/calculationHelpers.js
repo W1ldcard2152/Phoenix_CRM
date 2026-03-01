@@ -8,7 +8,9 @@
  */
 const calculatePartsCost = (parts = []) => {
   return parts.reduce((total, part) => {
-    return total + (part.price * part.quantity);
+    const partTotal = part.price * part.quantity;
+    const coreTotal = (part.coreChargeInvoiceable && part.coreCharge) ? part.coreCharge : 0;
+    return total + partTotal + coreTotal;
   }, 0);
 };
 

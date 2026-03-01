@@ -16,8 +16,6 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
       .then((registration) => {
-        console.log('SW registered: ', registration);
-        
         // Listen for updates
         registration.addEventListener('updatefound', () => {
           const installingWorker = registration.installing;
@@ -29,15 +27,11 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
             if (installingWorker.state === 'installed') {
               if (navigator.serviceWorker.controller) {
                 // New content is available; please refresh
-                console.log('New content is available; please refresh.');
                 
                 // Show update notification to user
                 if (window.confirm('A new version of Phoenix CRM is available. Reload to update?')) {
                   window.location.reload();
                 }
-              } else {
-                // Content is cached for the first time
-                console.log('Content is cached for the first time.');
               }
             }
           });
@@ -66,15 +60,13 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    console.log('PWA install prompt ready');
     
     // Show custom install button or notification
     // You can integrate this with your app's UI
   });
   
   // Handle successful PWA installation
-  window.addEventListener('appinstalled', (evt) => {
-    console.log('PWA was installed');
+  window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
   });
 }

@@ -57,6 +57,18 @@ const InvoiceItemSchema = new Schema({
   taxable: {
     type: Boolean,
     default: true
+  },
+  warranty: {
+    type: String,
+    trim: true
+  },
+  coreCharge: {
+    type: Number,
+    default: 0
+  },
+  coreChargeInvoiceable: {
+    type: Boolean,
+    default: false
   }
 });
 

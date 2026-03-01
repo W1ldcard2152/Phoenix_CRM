@@ -37,6 +37,7 @@ const registrationRoutes = require('./routes/registrationRoutes'); // Import reg
 const searchRoutes = require('./routes/searchRoutes'); // Import search routes
 const customerInteractionRoutes = require('./routes/customerInteractionRoutes'); // Import customer interaction routes
 const workOrderNotesRoutes = require('./routes/workOrderNotesRoutes'); // Import work order notes routes
+const settingsRoutes = require('./routes/settingsRoutes');
 
 // Initialize Express app
 const app = express();
@@ -156,6 +157,7 @@ app.use('/api/registration', registrationRoutes); // Use registration routes
 app.use('/api/search', searchRoutes); // Use search routes
 app.use('/api/interactions', customerInteractionRoutes); // Use customer interaction routes
 app.use('/api/workorder-notes', workOrderNotesRoutes); // Use work order notes routes
+app.use('/api/settings', settingsRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

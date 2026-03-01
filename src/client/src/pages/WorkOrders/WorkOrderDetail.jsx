@@ -16,7 +16,7 @@ import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 // technicianService import removed as it's no longer needed for a dropdown
 
@@ -1235,13 +1235,7 @@ const WorkOrderDetail = () => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-2">
                           <span className="text-xs text-gray-500">
-                            {new Date(note.createdAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {formatDateTime(note.createdAt)}
                           </span>
                           {note.createdBy?.name && (
                             <span className="text-xs text-gray-500">
@@ -1311,7 +1305,7 @@ const WorkOrderDetail = () => {
             <div>
               <p className="text-sm text-gray-500">Date</p>
               <p className="font-medium">
-                {new Date(workOrder.date).toLocaleDateString()}
+                {formatDate(workOrder.date)}
               </p>
             </div>
 
@@ -1390,17 +1384,9 @@ const WorkOrderDetail = () => {
                             {appointment.serviceType || 'Appointment'}
                           </div>
                           <div className="text-xs text-gray-600 mt-1">
-                            {new Date(appointment.startTime).toLocaleDateString('en-US', {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
+                            {formatDate(appointment.startTime, 'ddd, MMM D, YYYY')}
                             {' at '}
-                            {new Date(appointment.startTime).toLocaleTimeString('en-US', {
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })}
+                            {formatDateTime(appointment.startTime, 'h:mm A')}
                           </div>
                           {appointment.technician && (
                             <div className="text-xs text-gray-500 mt-1">
@@ -1549,13 +1535,7 @@ const WorkOrderDetail = () => {
                             )}
                           </span>
                           <span className="text-xs text-gray-500">
-                            {new Date(note.createdAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {formatDateTime(note.createdAt)}
                           </span>
                           {note.createdBy?.name && (
                             <span className="text-xs text-gray-500">
