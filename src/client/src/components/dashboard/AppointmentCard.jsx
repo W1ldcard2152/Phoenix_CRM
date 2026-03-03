@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
 import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { applyScheduleBlockVisibility } from '../../utils/permissions';
 
 /**
  * AppointmentCard component - Smart card for swimming lane calendar
@@ -22,12 +24,18 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   const popoverRef = useRef(null);
   const hideTimeoutRef = useRef(null);
   const isOverPopoverRef = useRef(false);
+  const { user } = useAuth();
+
+  // Apply role-based visibility for schedule blocks
+  const displayAppointment = appointment.isScheduleBlock
+    ? applyScheduleBlockVisibility(appointment, user)
+    : appointment;
 
   // Get color classes based on work order status if available, otherwise appointment status
   // This ensures all appointments for the same work order show the same color
   // Handle both populated workOrder (object) and unpopulated (string ID)
   const workOrderStatus = typeof appointment.workOrder === 'object' ? appointment.workOrder?.status : null;
-  const statusToUse = workOrderStatus || appointment.status;
+  const statusToUse = workOrderStatus || displayAppointment.status;
   const colorClasses = getAppointmentColorClasses(statusToUse);
 
   // Show popover immediately
@@ -143,6 +151,9 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
     }
   };
 
+  // Determine if this is a schedule block (recurring task) vs an appointment
+  const isScheduleBlock = appointment.isScheduleBlock;
+
   // Format vehicle info with appointment type
   const vehicleInfo = appointment.vehicle
     ? `${appointment.vehicle.year || ''} ${appointment.vehicle.make || ''} ${appointment.vehicle.model || ''}`.trim()
@@ -151,9 +162,11 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   // Add service type in parentheses if available
   // Ensure serviceType is a string to avoid rendering issues
   const serviceType = appointment.serviceType ? String(appointment.serviceType) : '';
-  const displayTitle = serviceType
-    ? `${vehicleInfo} (${serviceType})`
-    : vehicleInfo;
+  const displayTitle = isScheduleBlock
+    ? displayAppointment.title
+    : serviceType
+      ? `${vehicleInfo} (${serviceType})`
+      : vehicleInfo;
 
   // Check if popover should open upward or downward based on screen position
   // Also calculate absolute viewport coordinates for fixed positioning
@@ -252,86 +265,164 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
             e.preventDefault();
           }}
         >
-          {/* Customer Info */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Customer</div>
-            <div className="text-base font-semibold text-gray-900">
-              {appointment.customer?.firstName} {appointment.customer?.lastName}
-            </div>
-            {appointment.customer?.phone && (
-              <div className="text-sm text-gray-600">{appointment.customer.phone}</div>
-            )}
-          </div>
+          {isScheduleBlock && displayAppointment._isRedacted ? (
+            <>
+              {/* Redacted Schedule Block Popover (Service Writers / Other Technicians) */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Unavailable</div>
+                <div className="text-base text-gray-700">This technician is unavailable during this time</div>
+              </div>
 
-          {/* Vehicle Info */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Vehicle</div>
-            <div className="text-base text-gray-900">{vehicleInfo}</div>
-            {appointment.vehicle?.vin && (
-              <div className="text-xs text-gray-500">VIN: {appointment.vehicle.vin}</div>
-            )}
-          </div>
+              {/* Time Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
+                <div className="text-base text-gray-900">
+                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
+                </div>
+                <div className="text-sm text-gray-700">
+                  {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
+                </div>
+              </div>
 
-          {/* Service Info */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service</div>
-            <div className="text-base text-gray-900">{serviceType || 'Not specified'}</div>
-          </div>
+              {/* Technician Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
+                <div className="text-base text-gray-900">
+                  {appointment.technician?.name || 'Unassigned'}
+                </div>
+              </div>
+            </>
+          ) : isScheduleBlock ? (
+            <>
+              {/* Full Schedule Block Popover (Admin/Management) */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Task</div>
+                <div className="text-base font-semibold text-gray-900">{appointment.title}</div>
+              </div>
 
-          {/* Time Info */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
-            <div className="text-base text-gray-900">
-              {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
-            </div>
-            <div className="text-sm text-gray-700">
-              {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
-            </div>
-          </div>
+              {/* Category */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Category</div>
+                <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border} capitalize`}>
+                  {appointment.category}
+                </span>
+              </div>
 
-          {/* Technician Info */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
-            <div className="text-base text-gray-900">
-              {appointment.technician?.name || 'Unassigned'}
-            </div>
-          </div>
+              {/* Time Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
+                <div className="text-base text-gray-900">
+                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
+                </div>
+                <div className="text-sm text-gray-700">
+                  {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
+                </div>
+              </div>
 
-          {/* Status */}
-          <div className="mb-3">
-            <div className="text-xs font-bold text-gray-500 uppercase mb-1">Status</div>
-            <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border}`}>
-              {statusToUse}
-            </span>
-          </div>
+              {/* Technician Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
+                <div className="text-base text-gray-900">
+                  {appointment.technician?.name || 'Unassigned'}
+                </div>
+              </div>
 
-          {/* Notes */}
-          {appointment.notes && (
-            <div className="mb-3">
-              <div className="text-xs font-bold text-gray-500 uppercase mb-1">Notes</div>
-              <div className="text-sm text-gray-700">{appointment.notes}</div>
-            </div>
+              {/* Action Links */}
+              <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
+                <Link
+                  to={`/schedule-blocks/${appointment.scheduleBlockId}/edit`}
+                  className="flex-1 text-center bg-indigo-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Edit Task
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Appointment Popover */}
+              {/* Customer Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Customer</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {appointment.customer?.firstName} {appointment.customer?.lastName}
+                </div>
+                {appointment.customer?.phone && (
+                  <div className="text-sm text-gray-600">{appointment.customer.phone}</div>
+                )}
+              </div>
+
+              {/* Vehicle Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Vehicle</div>
+                <div className="text-base text-gray-900">{vehicleInfo}</div>
+                {appointment.vehicle?.vin && (
+                  <div className="text-xs text-gray-500">VIN: {appointment.vehicle.vin}</div>
+                )}
+              </div>
+
+              {/* Service Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service</div>
+                <div className="text-base text-gray-900">{serviceType || 'Not specified'}</div>
+              </div>
+
+              {/* Time Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
+                <div className="text-base text-gray-900">
+                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
+                </div>
+                <div className="text-sm text-gray-700">
+                  {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
+                </div>
+              </div>
+
+              {/* Technician Info */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
+                <div className="text-base text-gray-900">
+                  {appointment.technician?.name || 'Unassigned'}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Status</div>
+                <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border}`}>
+                  {statusToUse}
+                </span>
+              </div>
+
+              {/* Notes */}
+              {appointment.notes && (
+                <div className="mb-3">
+                  <div className="text-xs font-bold text-gray-500 uppercase mb-1">Notes</div>
+                  <div className="text-sm text-gray-700">{appointment.notes}</div>
+                </div>
+              )}
+
+              {/* Action Links */}
+              <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
+                <Link
+                  to={`/appointments/${appointment._id}`}
+                  className="flex-1 text-center bg-blue-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  View Appointment
+                </Link>
+                {appointment.workOrder && (
+                  <Link
+                    to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : (appointment.workOrder._id || appointment.workOrder)}`}
+                    className="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View Work Order
+                  </Link>
+                )}
+              </div>
+            </>
           )}
-
-          {/* Action Links */}
-          <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
-            <Link
-              to={`/appointments/${appointment._id}`}
-              className="flex-1 text-center bg-blue-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              View Appointment
-            </Link>
-            {appointment.workOrder && (
-              <Link
-                to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : (appointment.workOrder._id || appointment.workOrder)}`}
-                className="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors"
-                onClick={(e) => e.stopPropagation()}
-              >
-                View Work Order
-              </Link>
-            )}
-          </div>
         </div>,
         document.body
       )}

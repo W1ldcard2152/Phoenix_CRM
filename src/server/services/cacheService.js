@@ -195,6 +195,13 @@ const invalidateAllVehicles = () => {
   invalidateByPattern('vehicle');
 };
 
+/**
+ * Schedule Block caching helpers
+ */
+const invalidateAllScheduleBlocks = () => {
+  invalidateByPattern('scheduleblocks:');
+};
+
 module.exports = {
   // Appointment caching
   getAppointmentsByDateRange,
@@ -222,6 +229,9 @@ module.exports = {
   getVehicleById,
   setVehicleById,
   invalidateAllVehicles,
+
+  // Schedule Block caching
+  invalidateAllScheduleBlocks,
 
   // Generic caching
   get,

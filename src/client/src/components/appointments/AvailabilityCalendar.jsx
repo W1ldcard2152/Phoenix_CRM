@@ -2,8 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import moment from 'moment-timezone';
 import AppointmentService from '../../services/appointmentService';
+import ScheduleBlockService from '../../services/scheduleBlockService';
 import technicianService from '../../services/technicianService';
 import { TIMEZONE } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { applyScheduleBlockVisibility } from '../../utils/permissions';
 const SHOP_OPEN = 8; // 8 AM
 const SHOP_CLOSE = 18; // 6 PM
 const HOUR_HEIGHT = 20; // pixels per hour (compact)
@@ -56,22 +59,30 @@ const AppointmentBlock = ({ appt, top, height }) => {
     }, 150);
   };
 
+  const isScheduleBlock = appt.isScheduleBlock;
   const vehicleInfo = appt.vehicle
     ? `${appt.vehicle.year || ''} ${appt.vehicle.make || ''} ${appt.vehicle.model || ''}`.trim()
     : 'No vehicle';
+
+  // Use indigo for schedule blocks, grey for redacted blocks, blue for appointments
+  const blockColorClasses = isScheduleBlock
+    ? (appt._isRedacted
+        ? 'bg-gray-300 border-gray-400 text-gray-700 hover:bg-gray-400'
+        : 'bg-indigo-300 border-indigo-500 text-indigo-900 hover:bg-indigo-400')
+    : 'bg-blue-300 border-blue-500 text-blue-900 hover:bg-blue-400';
 
   return (
     <>
       <div
         ref={blockRef}
-        className="absolute left-0.5 right-0.5 bg-blue-300 border border-blue-500 rounded-sm px-0.5 overflow-hidden text-blue-900 cursor-default hover:bg-blue-400 transition-colors"
+        className={`absolute left-0.5 right-0.5 ${blockColorClasses} border rounded-sm px-0.5 overflow-hidden cursor-default transition-colors`}
         style={{ top, height: Math.max(height, 10) }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
         {height > 14 && (
           <div className="truncate text-xs leading-tight">
-            {start.format('h:mm')}-{end.format('h:mm')}
+            {isScheduleBlock ? appt.title : `${start.format('h:mm')}-${end.format('h:mm')}`}
           </div>
         )}
       </div>
@@ -91,33 +102,69 @@ const AppointmentBlock = ({ appt, top, height }) => {
           }}
           onMouseLeave={() => setShowPopover(false)}
         >
-          {/* Customer */}
-          <div className="mb-2">
-            <div className="text-gray-500 text-xs uppercase font-medium">Customer</div>
-            <div className="font-semibold text-gray-900">
-              {appt.customer?.name || `${appt.customer?.firstName || ''} ${appt.customer?.lastName || ''}`.trim() || 'Unknown'}
-            </div>
-          </div>
+          {isScheduleBlock && appt._isRedacted ? (
+            <>
+              {/* Redacted Schedule Block */}
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Unavailable</div>
+                <div className="text-gray-700">This technician is unavailable</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-gray-900">
+                  {start.format('h:mm A')} - {end.format('h:mm A')}
+                </div>
+              </div>
+            </>
+          ) : isScheduleBlock ? (
+            <>
+              {/* Full Schedule Block (Admin/Management) */}
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Task</div>
+                <div className="font-semibold text-gray-900">{appt.title}</div>
+              </div>
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Category</div>
+                <div className="text-gray-900 capitalize">{appt.category}</div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-gray-900">
+                  {start.format('h:mm A')} - {end.format('h:mm A')}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Customer */}
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Customer</div>
+                <div className="font-semibold text-gray-900">
+                  {appt.customer?.name || `${appt.customer?.firstName || ''} ${appt.customer?.lastName || ''}`.trim() || 'Unknown'}
+                </div>
+              </div>
 
-          {/* Vehicle */}
-          <div className="mb-2">
-            <div className="text-gray-500 text-xs uppercase font-medium">Vehicle</div>
-            <div className="text-gray-900">{vehicleInfo}</div>
-          </div>
+              {/* Vehicle */}
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Vehicle</div>
+                <div className="text-gray-900">{vehicleInfo}</div>
+              </div>
 
-          {/* Service */}
-          <div className="mb-2">
-            <div className="text-gray-500 text-xs uppercase font-medium">Service</div>
-            <div className="text-gray-900">{appt.serviceType || 'Not specified'}</div>
-          </div>
+              {/* Service */}
+              <div className="mb-2">
+                <div className="text-gray-500 text-xs uppercase font-medium">Service</div>
+                <div className="text-gray-900">{appt.serviceType || 'Not specified'}</div>
+              </div>
 
-          {/* Time */}
-          <div>
-            <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
-            <div className="text-gray-900">
-              {start.format('h:mm A')} - {end.format('h:mm A')}
-            </div>
-          </div>
+              {/* Time */}
+              <div>
+                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-gray-900">
+                  {start.format('h:mm A')} - {end.format('h:mm A')}
+                </div>
+              </div>
+            </>
+          )}
         </div>,
         document.body
       )}
@@ -136,6 +183,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
   const [currentDate, setCurrentDate] = useState(initialDate ? moment(initialDate) : moment());
   const [viewType, setViewType] = useState('weekly');
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   // Fetch technicians
   useEffect(() => {
@@ -170,8 +218,22 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
           endDate = currentDate.clone().endOf('week').format('YYYY-MM-DD');
         }
 
-        const response = await AppointmentService.getAppointmentsByDateRange(startDate, endDate);
-        setAppointments(response?.data?.appointments || []);
+        const [appointmentResponse, blockResponse] = await Promise.all([
+          AppointmentService.getAppointmentsByDateRange(startDate, endDate),
+          ScheduleBlockService.getExpanded(startDate, endDate).catch(err => {
+            console.error('Error fetching schedule blocks:', err);
+            return { data: { scheduleBlocks: [] } };
+          })
+        ]);
+        const fetchedAppointments = appointmentResponse?.data?.appointments || [];
+        const expandedBlocks = blockResponse?.data?.scheduleBlocks || [];
+
+        // Apply role-based visibility to schedule blocks
+        const visibleBlocks = expandedBlocks.map(block =>
+          applyScheduleBlockVisibility(block, user)
+        );
+
+        setAppointments([...fetchedAppointments, ...visibleBlocks]);
       } catch (err) {
         console.error('Error fetching appointments:', err);
       } finally {
@@ -298,7 +360,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
                     </span>
                   </div>
                   <span className="text-gray-400">
-                    {techAppointments.length} appt{techAppointments.length !== 1 ? 's' : ''}
+                    {techAppointments.length} event{techAppointments.length !== 1 ? 's' : ''}
                   </span>
                 </button>
 

@@ -84,7 +84,49 @@ export const permissions = {
     canEdit: (user) => isAdminOrManagement(user),
     canDelete: (user) => hasRole(user, 'admin'),
   },
+  scheduleBlocks: {
+    canView: (user) => isOfficeStaff(user),
+    canCreate: (user) => isOfficeStaff(user),
+    canEdit: (user) => isOfficeStaff(user),
+    canDelete: (user) => isAdminOrManagement(user),
+  },
   admin: {
     canAccess: (user) => isAdminOrManagement(user),
   },
+};
+
+/**
+ * Applies role-based visibility to a schedule block for calendar display.
+ * - Admin/Management: full details (indigo cards)
+ * - Service Writers: grey "Unavailable" (no title, category, or reason)
+ * - Technicians: own blocks shown in full, others' blocks shown as "Unavailable"
+ */
+export const applyScheduleBlockVisibility = (block, user) => {
+  if (!block || !block.isScheduleBlock) return block;
+
+  const role = user?.role;
+
+  // Admin/Management see everything
+  if (role === 'admin' || role === 'management') {
+    return block;
+  }
+
+  // Technicians: own blocks in full, others redacted
+  if (role === 'technician') {
+    const userTechId = (user?.technician?._id || user?.technician || '').toString();
+    const blockTechId = (block.technician?._id || block.technician || '').toString();
+
+    if (userTechId && blockTechId && userTechId === blockTechId) {
+      return block;
+    }
+  }
+
+  // Service writers + other technicians' blocks: redact
+  return {
+    ...block,
+    title: 'Unavailable',
+    category: null,
+    status: 'Unavailable',
+    _isRedacted: true,
+  };
 };

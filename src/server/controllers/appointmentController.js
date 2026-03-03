@@ -11,6 +11,7 @@ const twilioService = require('../services/twilioService');
 const emailService = require('../services/emailService');
 const cacheService = require('../services/cacheService');
 const { TIMEZONE } = require('../config/timezone');
+const ScheduleBlock = require('../models/ScheduleBlock');
 
 // Get all appointments
 exports.getAllAppointments = catchAsync(async (req, res, next) => {
@@ -581,13 +582,34 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
     technician,
     appointmentId
   );
-  
+
+  // Also check for schedule block conflicts
+  let scheduleBlockConflicts = [];
+  try {
+    const expandedBlocks = await ScheduleBlock.expandForDateRange(start, end, technician || null);
+    scheduleBlockConflicts = expandedBlocks.filter(block => {
+      const blockStart = new Date(block.startTime);
+      const blockEnd = new Date(block.endTime);
+      // Same overlap logic as appointment conflicts
+      return (
+        (blockStart <= start && blockEnd > start) ||
+        (blockStart < end && blockEnd >= end) ||
+        (blockStart >= start && blockEnd <= end)
+      );
+    });
+  } catch (err) {
+    console.error('Error checking schedule block conflicts:', err);
+  }
+
+  const totalConflicts = conflicts.length + scheduleBlockConflicts.length;
+
   res.status(200).json({
     status: 'success',
-    results: conflicts.length,
+    results: totalConflicts,
     data: {
-      hasConflicts: conflicts.length > 0,
-      conflicts
+      hasConflicts: totalConflicts > 0,
+      conflicts,
+      scheduleBlockConflicts
     }
   });
 });

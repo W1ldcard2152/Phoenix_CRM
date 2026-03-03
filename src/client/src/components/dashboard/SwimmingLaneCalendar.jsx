@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import moment from 'moment-timezone';
 import AppointmentService from '../../services/appointmentService';
+import ScheduleBlockService from '../../services/scheduleBlockService';
 import DailyView from './DailyView';
 import WeeklyView from './WeeklyView';
 import Card from '../common/Card';
 import { TIMEZONE } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { applyScheduleBlockVisibility, isAdminOrManagement } from '../../utils/permissions';
 
 /**
  * SwimmingLaneCalendar component - Main calendar with daily/weekly toggle
@@ -21,6 +24,7 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
   const [showWeekends, setShowWeekends] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { user } = useAuth();
 
   // Fetch appointments based on current view
   useEffect(() => {
@@ -43,18 +47,33 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
           endDate = currentDate.clone().endOf('week').format('YYYY-MM-DD');
         }
 
-        const response = await AppointmentService.getAppointmentsByDateRange(startDate, endDate);
+        // Fetch appointments and schedule blocks in parallel
+        const [appointmentResponse, blockResponse] = await Promise.all([
+          AppointmentService.getAppointmentsByDateRange(startDate, endDate),
+          ScheduleBlockService.getExpanded(startDate, endDate).catch(err => {
+            console.error('Error fetching schedule blocks:', err);
+            return { data: { scheduleBlocks: [] } };
+          })
+        ]);
 
-        if (response && response.data) {
-          const fetchedAppointments = response.data.appointments || [];
+        if (appointmentResponse && appointmentResponse.data) {
+          const fetchedAppointments = appointmentResponse.data.appointments || [];
+          const expandedBlocks = blockResponse?.data?.scheduleBlocks || [];
 
-          // Show all appointments regardless of work order status
-          setAppointments(fetchedAppointments);
+          // Apply role-based visibility to schedule blocks
+          const visibleBlocks = expandedBlocks.map(block =>
+            applyScheduleBlockVisibility(block, user)
+          );
+
+          // Merge appointments and schedule blocks into one array
+          const allEvents = [...fetchedAppointments, ...visibleBlocks];
+
+          setAppointments(allEvents);
 
           // Check if we need to show weekends (weekly view only)
           if (viewType === 'weekly') {
-            const hasWeekendAppointments = fetchedAppointments.some(appointment => {
-              const day = moment.utc(appointment.startTime).tz(TIMEZONE).day();
+            const hasWeekendAppointments = allEvents.some(event => {
+              const day = moment.utc(event.startTime).tz(TIMEZONE).day();
               return day === 0 || day === 6;
             });
             setShowWeekends(hasWeekendAppointments);
@@ -208,7 +227,7 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
       {!compact && (
         <div className="mt-6 pt-4 border-t border-gray-200">
           <div className="text-xs font-semibold text-gray-700 mb-2">Status Legend:</div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-blue-200 border border-blue-400 rounded"></div>
               <span>Service Writer Action</span>
@@ -225,6 +244,17 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
               <div className="w-4 h-4 bg-gray-300 border border-gray-400 rounded"></div>
               <span>On Hold/Cancelled</span>
             </div>
+            {isAdminOrManagement(user) ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-indigo-200 border border-indigo-400 rounded"></div>
+                <span>Task</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-gray-300 border border-gray-400 rounded"></div>
+                <span>Unavailable</span>
+              </div>
+            )}
           </div>
         </div>
       )}

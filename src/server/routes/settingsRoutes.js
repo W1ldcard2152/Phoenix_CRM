@@ -17,5 +17,7 @@ router.post('/vendors', authController.restrictTo('admin', 'management'), settin
 router.post('/vendors/remove', authController.restrictTo('admin', 'management'), settingsController.removeVendor);
 router.post('/categories', authController.restrictTo('admin', 'management'), settingsController.addCategory);
 router.post('/categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeCategory);
+router.post('/task-categories', authController.restrictTo('admin', 'management'), settingsController.addTaskCategory);
+router.post('/task-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeTaskCategory);
 
 module.exports = router;

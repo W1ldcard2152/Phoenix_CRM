@@ -114,6 +114,22 @@ export const getAppointmentColorClasses = (status) => {
       border: 'border-gray-700',
       text: 'text-white',
       hover: 'hover:bg-gray-600'
+    },
+
+    // INDIGO - Schedule Blocks (recurring tasks)
+    'Schedule Block': {
+      bg: 'bg-indigo-200',
+      border: 'border-indigo-400',
+      text: 'text-indigo-900',
+      hover: 'hover:bg-indigo-300'
+    },
+
+    // GREY - Unavailable (redacted schedule blocks for service writers/technicians)
+    'Unavailable': {
+      bg: 'bg-gray-300',
+      border: 'border-gray-400',
+      text: 'text-gray-700',
+      hover: 'hover:bg-gray-400'
     }
   };
 
@@ -146,7 +162,9 @@ export const getStatusBadgeColor = (status) => {
     'Quote - Archived': 'bg-gray-100 text-gray-600',
     'On Hold': 'bg-gray-200 text-gray-700',
     'Cancelled': 'bg-gray-400 text-gray-800',
-    'No-Show': 'bg-gray-400 text-gray-800'
+    'No-Show': 'bg-gray-400 text-gray-800',
+    'Schedule Block': 'bg-indigo-100 text-indigo-800',
+    'Unavailable': 'bg-gray-300 text-gray-700'
   };
 
   return badgeMap[status] || 'bg-gray-200 text-gray-700';

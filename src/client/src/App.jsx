@@ -44,6 +44,10 @@ import IntakePage from './pages/Intake/IntakePage';
 import PartsList from './pages/Parts/PartsList';
 import PartsForm from './pages/Parts/PartsForm';
 
+// Schedule Block Pages
+import ScheduleBlockList from './pages/ScheduleBlocks/ScheduleBlockList';
+import ScheduleBlockForm from './pages/ScheduleBlocks/ScheduleBlockForm';
+
 // Technician Portal Pages
 import TechnicianPortal from './pages/TechnicianPortal/TechnicianPortal';
 import TechnicianChecklist from './pages/TechnicianPortal/TechnicianChecklist';
@@ -131,6 +135,11 @@ const App = () => {
                       <Route path="/invoices/new/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceGenerator /></RoleRoute>} />
                       <Route path="/invoices/generate" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceGenerator /></RoleRoute>} />
                       <Route path="/invoices/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><InvoiceDetail /></RoleRoute>} />
+
+                      {/* Schedule Block Routes (office staff) */}
+                      <Route path="/schedule-blocks" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><ScheduleBlockList /></RoleRoute>} />
+                      <Route path="/schedule-blocks/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><ScheduleBlockForm /></RoleRoute>} />
+                      <Route path="/schedule-blocks/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><ScheduleBlockForm /></RoleRoute>} />
 
                       {/* Technician Routes */}
                       <Route path="/technicians" element={<TechniciansPage />} />

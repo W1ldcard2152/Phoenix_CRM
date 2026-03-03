@@ -1,19 +1,26 @@
 // src/client/src/pages/Appointments/AppointmentList.jsx
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import moment from 'moment-timezone';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import AppointmentService from '../../services/appointmentService';
 import WorkOrderService from '../../services/workOrderService';
-import technicianService from '../../services/technicianService'; // Import technician service
-import { formatDateTimeToET, getTodayForInput, formatDateForInput } from '../../utils/formatters';
+import ScheduleBlockService from '../../services/scheduleBlockService';
+import technicianService from '../../services/technicianService';
+import { formatDateTimeToET, getTodayForInput, formatDateForInput, TIMEZONE } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { applyScheduleBlockVisibility, isAdminOrManagement } from '../../utils/permissions';
 
 const AppointmentList = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [pendingWorkOrders, setPendingWorkOrders] = useState([]);
+  const [upcomingTasks, setUpcomingTasks] = useState([]);
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState({
@@ -69,7 +76,21 @@ const AppointmentList = () => {
         // Fetch work orders that need scheduling (includes all statuses that need scheduling)
         const needingSchedulingResponse = await WorkOrderService.getWorkOrdersNeedingScheduling();
         setPendingWorkOrders(needingSchedulingResponse.data.workOrders);
-        
+
+        // Fetch upcoming tasks (next 7 days)
+        const today = moment.tz(TIMEZONE).format('YYYY-MM-DD');
+        const weekFromNow = moment.tz(TIMEZONE).add(7, 'days').format('YYYY-MM-DD');
+        try {
+          const blockResponse = await ScheduleBlockService.getExpanded(today, weekFromNow);
+          const expandedBlocks = blockResponse?.data?.scheduleBlocks || [];
+          const visibleBlocks = expandedBlocks.map(block =>
+            applyScheduleBlockVisibility(block, user)
+          );
+          setUpcomingTasks(visibleBlocks);
+        } catch (err) {
+          console.error('Error fetching upcoming tasks:', err);
+        }
+
         setLoading(false);
       } catch (err) {
         console.error('Error fetching appointments:', err);
@@ -131,10 +152,15 @@ const AppointmentList = () => {
   return (
     <div className="container mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Appointments</h1>
-        <Button onClick={handleCreateAppointmentClick} variant="primary">
-          Schedule Appointment
-        </Button>
+        <h1 className="text-2xl font-bold text-gray-800">Calendar & Tasks</h1>
+        <div className="flex gap-3">
+          <Button onClick={handleCreateAppointmentClick} variant="primary">
+            Schedule Work Order
+          </Button>
+          <Button onClick={() => navigate('/schedule-blocks/new')} variant="secondary">
+            Schedule Task
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -222,6 +248,81 @@ const AppointmentList = () => {
                 >
                   View {pendingWorkOrders.length - 5} more work orders
                 </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Upcoming Tasks Section */}
+      {upcomingTasks.length > 0 && (
+        <Card title="Upcoming Tasks" className="mb-6"
+          headerActions={
+            <Button to="/schedule-blocks" variant="outline" size="sm">
+              Manage All Tasks
+            </Button>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Technician</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                  {isAdminOrManagement(user) && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                  )}
+                  {isAdminOrManagement(user) && (
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {(showAllTasks ? upcomingTasks : upcomingTasks.slice(0, 5)).map((task) => (
+                  <tr key={task._id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className={`font-medium ${task._isRedacted ? 'text-gray-500 italic' : 'text-gray-900'}`}>
+                        {task.title}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                      {task.technician?.name || 'Unassigned'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{formatDateTimeToET(task.startTime, 'MMM D, YYYY')}</div>
+                      <div className="text-xs text-gray-500">
+                        {formatDateTimeToET(task.startTime, 'h:mm A')} - {formatDateTimeToET(task.endTime, 'h:mm A')}
+                      </div>
+                    </td>
+                    {isAdminOrManagement(user) && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {task.category && (
+                          <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-indigo-100 text-indigo-800 capitalize">
+                            {task.category}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {isAdminOrManagement(user) && (
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <Button to={`/schedule-blocks/${task.scheduleBlockId}/edit`} variant="outline" size="sm">
+                          Edit
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {upcomingTasks.length > 5 && (
+              <div className="py-3 text-center">
+                <button
+                  onClick={() => setShowAllTasks(!showAllTasks)}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                >
+                  {showAllTasks ? 'Show less' : `View all ${upcomingTasks.length} upcoming tasks`}
+                </button>
               </div>
             )}
           </div>
@@ -400,9 +501,9 @@ const AppointmentList = () => {
       {appointmentActionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Schedule Appointment</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Schedule Work Order</h3>
             <p className="text-gray-700 mb-6">
-              How would you like to create this appointment?
+              How would you like to schedule this work order?
             </p>
             <div className="space-y-4">
               <Button

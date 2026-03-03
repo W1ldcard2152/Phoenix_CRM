@@ -15,6 +15,8 @@ import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService';
 import { TIMEZONE } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { isAdminOrManagement } from '../../utils/permissions';
 
 const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
@@ -48,6 +50,7 @@ const AppointmentForm = () => {
   const [conflictMessage, setConflictMessage] = useState('');
   const [workOrderContext, setWorkOrderContext] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
+  const { user } = useAuth();
 
 
   // Helper to format moment objects for form fields
@@ -268,7 +271,31 @@ const AppointmentForm = () => {
 
       const response = await AppointmentService.checkConflicts(conflictCheckData);
       setHasConflicts(response.data.hasConflicts);
-      setConflictMessage(response.data.hasConflicts ? (response.data.conflicts?.length > 0 ? `Found ${response.data.conflicts.length} scheduling conflict(s).` : 'Scheduling conflict detected.') : '');
+
+      if (response.data.hasConflicts) {
+        const parts = [];
+        if (response.data.conflicts?.length > 0) {
+          parts.push(`${response.data.conflicts.length} appointment conflict(s)`);
+        }
+        if (response.data.scheduleBlockConflicts?.length > 0) {
+          const blockConflicts = response.data.scheduleBlockConflicts;
+          if (isAdminOrManagement(user)) {
+            const blockNames = blockConflicts.map(b => b.title).join(', ');
+            parts.push(`task conflict(s): ${blockNames}`);
+          } else {
+            const unavailableTimes = blockConflicts.map(b => {
+              const start = moment.utc(b.startTime).tz(TIMEZONE).format('h:mm A');
+              const end = moment.utc(b.endTime).tz(TIMEZONE).format('h:mm A');
+              return `${start} to ${end}`;
+            }).join(', ');
+            parts.push(`This technician is unavailable from ${unavailableTimes}`);
+          }
+        }
+        setConflictMessage(parts.length > 0 ? `Found ${parts.join(' and ')}.` : 'Scheduling conflict detected.');
+      } else {
+        setConflictMessage('');
+      }
+
       return response.data.hasConflicts;
     } catch (err) {
       setError('Failed to check conflicts.');

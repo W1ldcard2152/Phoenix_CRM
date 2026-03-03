@@ -35,6 +35,12 @@ const SettingsSchema = new Schema(
         'Maintenance', 'Repair', 'Fluid', 'Software/License'
       ]
     },
+    taskCategories: {
+      type: [String],
+      default: [
+        'Training', 'Meeting', 'Break', 'Admin', 'Logistics'
+      ]
+    },
     vendorHostnames: {
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
@@ -64,6 +70,12 @@ SettingsSchema.statics.getSettings = async function () {
     if (!settings.customCategories || settings.customCategories.length === 0) {
       settings.customCategories = [
         'Maintenance', 'Repair', 'Fluid', 'Software/License'
+      ];
+      needsSave = true;
+    }
+    if (!settings.taskCategories || settings.taskCategories.length === 0) {
+      settings.taskCategories = [
+        'Training', 'Meeting', 'Break', 'Admin', 'Logistics'
       ];
       needsSave = true;
     }

@@ -24,6 +24,9 @@ exports.updateSettings = catchAsync(async (req, res) => {
   if (req.body.customCategories !== undefined) {
     settings.customCategories = req.body.customCategories;
   }
+  if (req.body.taskCategories !== undefined) {
+    settings.taskCategories = req.body.taskCategories;
+  }
 
   await settings.save();
 
@@ -138,6 +141,41 @@ exports.removeVendor = catchAsync(async (req, res) => {
   // Also remove any hostname mappings for this vendor
   settings.vendorHostnames = settings.vendorHostnames.filter(h => h.vendor !== vendor);
 
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.addTaskCategory = catchAsync(async (req, res) => {
+  const { category } = req.body;
+  if (!category || !category.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Category name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  const trimmed = category.trim();
+
+  const exists = settings.taskCategories.some(
+    c => c.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (exists) {
+    return res.status(400).json({ status: 'fail', message: 'This task category already exists' });
+  }
+
+  settings.taskCategories.push(trimmed);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.removeTaskCategory = catchAsync(async (req, res) => {
+  const { category } = req.body;
+  if (!category) {
+    return res.status(400).json({ status: 'fail', message: 'Category name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  settings.taskCategories = settings.taskCategories.filter(c => c !== category);
   await settings.save();
 
   res.status(200).json({ status: 'success', data: { settings } });
