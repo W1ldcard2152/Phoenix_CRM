@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Button from '../common/Button';
+import workOrderNotesService from '../../services/workOrderNotesService';
 
-const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => {
+const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNoteCreated }) => {
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState(false);
+
   if (!isOpen) return null;
 
   const isRepair = type === 'repair';
@@ -170,26 +174,34 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
     const hasValue = itemData?.completed || itemData?.value;
     const rawValue = itemData?.value || (itemData?.completed ? true : null);
     const displayValue = (typeof rawValue === 'string' && item.suffix) ? `${rawValue}${item.suffix}` : rawValue;
+    const hasNotes = itemData?.notes?.trim();
 
     return (
-      <div key={item.key} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-        <div className="flex items-center gap-2">
-          {hasValue ? (
-            <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
-          )}
-          <span className={`text-sm ${hasValue ? 'text-gray-900' : 'text-gray-500'}`}>
-            {item.label}
-          </span>
+      <div key={item.key} className="py-2 border-b border-gray-100 last:border-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {hasValue ? (
+              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            )}
+            <span className={`text-sm ${hasValue ? 'text-gray-900' : 'text-gray-500'}`}>
+              {item.label}
+            </span>
+          </div>
+          <div>
+            {getStatusBadge(displayValue)}
+          </div>
         </div>
-        <div>
-          {getStatusBadge(displayValue)}
-        </div>
+        {hasNotes && (
+          <div className="ml-7 mt-1">
+            <p className="text-xs text-gray-500 italic">{itemData.notes}</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -208,6 +220,65 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
       });
     });
     return { total, completed, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 };
+  };
+
+  const generateCustomerNote = async () => {
+    if (!workOrder?._id) return;
+
+    const lines = [];
+    const noteTitle = isRepair ? 'Repair Checklist Report' : 'Inspection Report';
+    lines.push(noteTitle);
+    lines.push('');
+
+    sections.forEach(section => {
+      const sectionItems = [];
+      section.items.forEach(item => {
+        const itemData = checklist?.[item.key];
+        if (!itemData?.completed && !itemData?.value) return;
+
+        let line = `- ${item.label}`;
+        const rawValue = itemData.value || (itemData.completed ? 'Done' : null);
+        if (rawValue && rawValue !== true && rawValue !== 'Done') {
+          const displayVal = (typeof rawValue === 'string' && item.suffix) ? `${rawValue}${item.suffix}` : rawValue;
+          line += `: ${displayVal}`;
+        } else if (rawValue === 'Done' || rawValue === true) {
+          line += ': Done';
+        }
+        if (itemData.notes?.trim()) {
+          line += ` — ${itemData.notes.trim()}`;
+        }
+        sectionItems.push(line);
+      });
+
+      if (sectionItems.length > 0) {
+        lines.push(section.title);
+        lines.push(...sectionItems);
+        lines.push('');
+      }
+    });
+
+    if (lines.length <= 2) return; // Only title + blank line = nothing to report
+
+    const content = lines.join('\n').trim();
+
+    try {
+      setGenerating(true);
+      await workOrderNotesService.createNote(workOrder._id, {
+        content,
+        isCustomerFacing: true,
+        noteType: 'customer-facing'
+      });
+      setGenerated(true);
+      if (onNoteCreated) await onNoteCreated();
+      setTimeout(() => {
+        setGenerated(false);
+        onClose();
+      }, 1500);
+    } catch (err) {
+      console.error('Error generating customer note:', err);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const stats = calculateStats();
@@ -284,7 +355,19 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder }) => 
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+            <div>
+              {hasData && stats.completed > 0 && (
+                <Button
+                  onClick={generateCustomerNote}
+                  disabled={generating || generated}
+                  variant="primary"
+                  size="sm"
+                >
+                  {generated ? 'Note Created!' : generating ? 'Generating...' : 'Generate Customer Note'}
+                </Button>
+              )}
+            </div>
             <Button onClick={onClose} variant="outline">
               Close
             </Button>

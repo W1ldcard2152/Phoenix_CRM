@@ -10,7 +10,7 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
       if (quoteData?._id) {
         try {
           const response = await workOrderNotesService.getCustomerFacingNotes(quoteData._id);
-          setCustomerFacingNotes(response.notes || []);
+          setCustomerFacingNotes(response.data?.notes || []);
         } catch (error) {
           // Silently handle errors - quotes may not have notes and that's fine
           setCustomerFacingNotes([]);

@@ -41,7 +41,7 @@ const InvoiceDetail = () => {
           if (invoiceData.workOrder?._id) {
             try {
               const notesResponse = await workOrderNotesService.getCustomerFacingNotes(invoiceData.workOrder._id);
-              setCustomerFacingNotes(notesResponse.notes || []);
+              setCustomerFacingNotes(notesResponse.data?.notes || []);
             } catch (noteErr) {
               console.error('Error fetching customer-facing notes:', noteErr);
               setCustomerFacingNotes([]);
@@ -97,6 +97,8 @@ const InvoiceDetail = () => {
       customer: invoice?.customer,
       vehicle: invoice?.vehicle,
       vehicleMileage: invoice?.workOrder?.vehicleMileage,
+      serviceRequested: invoice?.workOrder?.serviceRequested,
+      diagnosticNotes: invoice?.workOrder?.diagnosticNotes,
       parts,
       labor,
       customerFacingNotes,

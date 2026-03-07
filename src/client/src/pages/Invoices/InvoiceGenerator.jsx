@@ -85,7 +85,7 @@ const InvoiceGenerator = () => {
       // Fetch customer-facing notes for the work order
       try {
         const notesResponse = await workOrderNotesService.getCustomerFacingNotes(workOrderId);
-        setCustomerFacingNotes(notesResponse.notes || []);
+        setCustomerFacingNotes(notesResponse.data?.notes || []);
       } catch (noteErr) {
         console.error('Error fetching customer-facing notes:', noteErr);
         setCustomerFacingNotes([]);
@@ -371,6 +371,8 @@ const InvoiceGenerator = () => {
     customer: selectedCustomer,
     vehicle: selectedVehicle,
     vehicleMileage: selectedWorkOrder?.vehicleMileage,
+    serviceRequested: selectedWorkOrder?.serviceRequested,
+    diagnosticNotes: selectedWorkOrder?.diagnosticNotes,
     parts: invoiceData.parts.map(p => ({
       name: p.name || p.description,
       partNumber: p.partNumber,

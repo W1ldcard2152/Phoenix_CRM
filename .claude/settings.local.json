@@ -69,7 +69,9 @@
       "Bash(npm ls:*)",
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//c/Users/W1ldcard/AppData/Local/Temp/claude/c--Users-W1ldcard-Programming-Phoenix-CRM/tasks/**)",
+      "Bash(npx craco test --watchAll=false --verbose)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

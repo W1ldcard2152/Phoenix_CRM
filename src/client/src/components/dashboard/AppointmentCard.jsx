@@ -6,17 +6,21 @@ import { getAppointmentColorClasses } from '../../utils/appointmentColors';
 import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyScheduleBlockVisibility } from '../../utils/permissions';
+import useDragToReschedule from '../../hooks/useDragToReschedule';
 
 /**
  * AppointmentCard component - Smart card for swimming lane calendar
  * Shows only complete lines that fit, truncates intelligently
+ * Supports drag-to-reschedule when dragConfig and onReschedule are provided
  *
  * Props:
  * - appointment: The appointment object
  * - style: Positioning styles (passed from parent)
  * - viewType: 'daily' or 'weekly' (affects layout)
+ * - dragConfig: { axis, pixelsPerMinute, snapMinutes, maxMinutes, durationMinutes, originalPositionPx }
+ * - onReschedule: (appointmentId, deltaMinutes) => void
  */
-const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
+const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConfig = null, onReschedule = null }) => {
   const [showPopover, setShowPopover] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState('bottom');
   const [popoverCoords, setPopoverCoords] = useState({ top: 0, left: 0 });
@@ -38,8 +42,9 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   const statusToUse = workOrderStatus || displayAppointment.status;
   const colorClasses = getAppointmentColorClasses(statusToUse);
 
-  // Show popover immediately
+  // Show popover immediately (suppressed during drag)
   const handleCardEnter = () => {
+    if (isDragging) return;
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -154,6 +159,49 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   // Determine if this is a schedule block (recurring task) vs an appointment
   const isScheduleBlock = appointment.isScheduleBlock;
 
+  // Drag-to-reschedule logic — all appointments and non-redacted schedule blocks are draggable
+  const canDrag = !!dragConfig
+    && !!onReschedule
+    && !(isScheduleBlock && displayAppointment._isRedacted);
+
+  const { primaryOffset, secondaryOffset, isDragging, handleMouseDown } = useDragToReschedule({
+    enabled: canDrag,
+    primaryAxis: dragConfig?.axis || 'x',
+    pixelsPerMinute: dragConfig?.pixelsPerMinute || 2,
+    snapMinutes: dragConfig?.snapMinutes || 15,
+    maxMinutes: dragConfig?.maxMinutes || 600,
+    durationMinutes: dragConfig?.durationMinutes || 60,
+    originalPositionPx: dragConfig?.originalPositionPx || 0,
+    secondarySnapPx: dragConfig?.secondarySnapPx || 0,
+    onDragEnd: ({ deltaMinutes, secondarySnaps }) => {
+      if ((deltaMinutes !== 0 || secondarySnaps !== 0) && onReschedule) {
+        onReschedule(appointment._id, deltaMinutes, secondarySnaps || 0);
+      }
+    }
+  });
+
+  // Apply drag offsets to positioning
+  const dragStyle = { ...style };
+  if (isDragging) {
+    if (viewType === 'daily') {
+      if (primaryOffset !== 0) {
+        const currentLeft = parseFloat(style.left) || 0;
+        dragStyle.left = `${currentLeft + primaryOffset}px`;
+      }
+    } else {
+      // Weekly: primary = vertical (time), secondary = horizontal (days)
+      if (primaryOffset !== 0) {
+        const currentTop = parseFloat(style.top) || 0;
+        dragStyle.top = `${currentTop + primaryOffset}px`;
+      }
+      if (secondaryOffset !== 0) {
+        dragStyle.transform = `translateX(${secondaryOffset}px)`;
+      }
+    }
+    dragStyle.zIndex = 10000;
+    dragStyle.opacity = 0.85;
+  }
+
   // Format vehicle info with appointment type
   const vehicleInfo = appointment.vehicle
     ? `${appointment.vehicle.year || ''} ${appointment.vehicle.make || ''} ${appointment.vehicle.model || ''}`.trim()
@@ -207,14 +255,15 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily' }) => {
   return (
     <div
       ref={cardRef}
-      className="relative cursor-pointer"
-      style={{...style, zIndex: showPopover ? 100000 : style.zIndex || 10}}
+      className={`relative ${canDrag ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'}`}
+      style={{...dragStyle, zIndex: showPopover ? 100000 : dragStyle.zIndex || 10}}
       onMouseEnter={handleCardEnter}
       onMouseLeave={handleCardLeave}
+      onMouseDown={canDrag ? handleMouseDown : undefined}
     >
       {/* Appointment Card */}
       <div
-        className={`h-full rounded border-l-4 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1.5 transition-colors shadow-sm overflow-hidden`}
+        className={`h-full rounded border-l-4 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1.5 transition-colors ${isDragging ? 'ring-2 ring-blue-400 shadow-lg' : 'shadow-sm'} overflow-hidden`}
       >
         {/* Vehicle Info with Service Type - Always show first, bold */}
         {viewType === 'daily' ? (

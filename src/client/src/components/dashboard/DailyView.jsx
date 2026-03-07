@@ -12,7 +12,7 @@ import { TIMEZONE } from '../../utils/formatters';
  * - date: Moment object for the day to display
  * - appointments: All appointments for this day
  */
-const DailyView = ({ date, appointments }) => {
+const DailyView = ({ date, appointments, onAppointmentReschedule }) => {
   const ROW_HEIGHT = 80; // Height of each technician row
 
   /**
@@ -84,7 +84,8 @@ const DailyView = ({ date, appointments }) => {
           return {
             ...appointment,
             startTime: displayStart.toISOString(),
-            endTime: displayEnd.toISOString()
+            endTime: displayEnd.toISOString(),
+            _isMultiDayClipped: true
           };
         }
 
@@ -217,21 +218,35 @@ const DailyView = ({ date, appointments }) => {
                   ))}
 
                   {/* Appointments */}
-                  {positionedAppointments.map(({ appointment, laneIndex, leftPosition, width }, idx) => (
-                    <AppointmentCard
-                      key={`${appointment._id}-${idx}`}
-                      appointment={appointment}
-                      viewType="daily"
-                      style={{
-                        position: 'absolute',
-                        left: `${leftPosition}px`,
-                        top: `${laneIndex * 56 + 8}px`,
-                        width: `${Math.max(width, 80)}px`, // Minimum width for readability
-                        height: '48px',
-                        zIndex: 10
-                      }}
-                    />
-                  ))}
+                  {positionedAppointments.map(({ appointment, laneIndex, leftPosition, width }, idx) => {
+                    const totalShopMinutes = (SHOP_CLOSE_HOUR - SHOP_OPEN_HOUR) * 60;
+                    const apptDuration = getDurationMinutes(appointment.startTime, appointment.endTime);
+
+                    return (
+                      <AppointmentCard
+                        key={`${appointment._id}-${idx}`}
+                        appointment={appointment}
+                        viewType="daily"
+                        style={{
+                          position: 'absolute',
+                          left: `${leftPosition}px`,
+                          top: `${laneIndex * 56 + 8}px`,
+                          width: `${Math.max(width, 80)}px`,
+                          height: '48px',
+                          zIndex: 10
+                        }}
+                        dragConfig={appointment._isMultiDayClipped ? null : {
+                          axis: 'x',
+                          pixelsPerMinute: PIXELS_PER_MINUTE,
+                          snapMinutes: 15,
+                          maxMinutes: totalShopMinutes,
+                          durationMinutes: apptDuration,
+                          originalPositionPx: leftPosition
+                        }}
+                        onReschedule={onAppointmentReschedule}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );

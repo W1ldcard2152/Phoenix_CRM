@@ -2402,6 +2402,7 @@ const WorkOrderDetail = () => {
         checklist={workOrder?.inspectionChecklist}
         type="inspection"
         workOrder={workOrder}
+        onNoteCreated={fetchNotes}
       />
 
       {/* Repair Checklist Modal */}
@@ -2411,6 +2412,7 @@ const WorkOrderDetail = () => {
         checklist={workOrder?.repairChecklist}
         type="repair"
         workOrder={workOrder}
+        onNoteCreated={fetchNotes}
       />
 
       {/* File Viewer Modal */}

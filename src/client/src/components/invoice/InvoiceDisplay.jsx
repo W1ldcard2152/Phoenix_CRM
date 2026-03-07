@@ -11,7 +11,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       if (invoiceData?.workOrder?._id) {
         try {
           const response = await workOrderNotesService.getCustomerFacingNotes(invoiceData.workOrder._id);
-          setCustomerFacingNotes(response.notes || []);
+          setCustomerFacingNotes(response.data?.notes || []);
         } catch (error) {
           console.error('Error fetching customer-facing notes:', error);
           setCustomerFacingNotes([]);
@@ -132,6 +132,26 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           {workOrder?.vehicleMileage && <p><strong>Mileage: </strong>{workOrder.vehicleMileage}</p>}
         </div>
       </div>
+
+      {/* Service Requested */}
+      {workOrder?.serviceRequested && (
+        <div className="mb-4 text-sm">
+          <h3 className="font-semibold text-md mb-1 text-gray-700">Service Requested:</h3>
+          <div className="border border-gray-300 p-3 rounded-md bg-gray-50">
+            <p className="whitespace-pre-wrap">{workOrder.serviceRequested}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostic Notes */}
+      {workOrder?.diagnosticNotes && (
+        <div className="mb-4 text-sm">
+          <h3 className="font-semibold text-md mb-1 text-gray-700">Diagnostic Notes:</h3>
+          <div className="border border-gray-300 p-3 rounded-md">
+            <p className="whitespace-pre-wrap">{workOrder.diagnosticNotes}</p>
+          </div>
+        </div>
+      )}
 
       {/* Parts */}
       {parts && parts.length > 0 && (

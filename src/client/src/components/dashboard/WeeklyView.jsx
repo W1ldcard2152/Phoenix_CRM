@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import moment from 'moment-timezone';
 import AppointmentCard from './AppointmentCard';
 import { TIMEZONE } from '../../utils/formatters';
@@ -12,11 +12,26 @@ import { TIMEZONE } from '../../utils/formatters';
  * - appointments: All appointments for this week
  * - showWeekends: Boolean to show/hide weekend columns
  */
-const WeeklyView = ({ week, appointments, showWeekends }) => {
+const WeeklyView = ({ week, appointments, showWeekends, onAppointmentReschedule }) => {
   const SHOP_OPEN_HOUR = 8;
   const SHOP_CLOSE_HOUR = 18;
   const PIXELS_PER_HOUR = 60; // Height in pixels for each hour
   const PIXELS_PER_MINUTE = PIXELS_PER_HOUR / 60;
+
+  // Measure day column width for cross-day drag snapping
+  const dayColumnRef = useRef(null);
+  const [dayColumnWidth, setDayColumnWidth] = useState(200);
+
+  useEffect(() => {
+    const measure = () => {
+      if (dayColumnRef.current) {
+        setDayColumnWidth(dayColumnRef.current.getBoundingClientRect().width);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [showWeekends]);
 
   /**
    * Get array of days to display
@@ -113,7 +128,8 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
               blockStart,
               blockEnd,
               startMinutes,
-              durationMinutes
+              durationMinutes,
+              _isMultiDayClipped: isMultiDay
             };
           }
         }
@@ -322,11 +338,12 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
         <div className="flex-1">
           {/* Day Headers */}
           <div className="flex border-b-2 border-gray-300 bg-gray-50 h-16">
-            {days.map(day => {
+            {days.map((day, dayIdx) => {
               const isToday = day.format('YYYY-MM-DD') === today;
               return (
                 <div
                   key={day.format('YYYY-MM-DD')}
+                  ref={dayIdx === 0 ? dayColumnRef : undefined}
                   className={`flex-1 min-w-[200px] border-r border-gray-300 px-3 py-2 text-center ${
                     isToday ? 'bg-blue-100' : ''
                   }`}
@@ -376,6 +393,7 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
                       const height = appointment.durationMinutes * PIXELS_PER_MINUTE;
                       const laneWidth = 100 / appointment.totalLanes;
                       const leftPosition = appointment.laneIndex * laneWidth;
+                      const totalShopMinutes = (SHOP_CLOSE_HOUR - SHOP_OPEN_HOUR) * 60;
 
                       return (
                         <AppointmentCard
@@ -392,6 +410,16 @@ const WeeklyView = ({ week, appointments, showWeekends }) => {
                             paddingRight: '2px',
                             zIndex: 10
                           }}
+                          dragConfig={appointment._isMultiDayClipped ? null : {
+                            axis: 'y',
+                            pixelsPerMinute: PIXELS_PER_MINUTE,
+                            snapMinutes: 15,
+                            maxMinutes: totalShopMinutes,
+                            durationMinutes: appointment.durationMinutes,
+                            originalPositionPx: topPosition,
+                            secondarySnapPx: appointment.blockType === 'recurring' ? 0 : dayColumnWidth
+                          }}
+                          onReschedule={onAppointmentReschedule}
                         />
                       );
                     })}

@@ -119,11 +119,29 @@ export const printHtml = (htmlContent) => {
     </html>
   `);
   popupWin.document.close();
-  // Wait for content to render, then trigger print
-  setTimeout(() => {
-    popupWin.focus();
-    popupWin.print();
-  }, 250);
+  // Wait for images to load before triggering print
+  const images = popupWin.document.images;
+  if (images.length === 0) {
+    setTimeout(() => { popupWin.focus(); popupWin.print(); }, 250);
+  } else {
+    let loaded = 0;
+    const tryPrint = () => {
+      loaded++;
+      if (loaded >= images.length) {
+        setTimeout(() => { popupWin.focus(); popupWin.print(); }, 100);
+      }
+    };
+    for (const img of images) {
+      if (img.complete) {
+        tryPrint();
+      } else {
+        img.onload = tryPrint;
+        img.onerror = tryPrint;
+      }
+    }
+    // Fallback in case image events never fire
+    setTimeout(() => { popupWin.focus(); popupWin.print(); }, 2000);
+  }
 };
 
 /**

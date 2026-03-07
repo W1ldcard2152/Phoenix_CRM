@@ -56,7 +56,7 @@ const InvoiceList = () => {
     if (invoice.workOrder?._id) {
       try {
         const notesResponse = await workOrderNotesService.getCustomerFacingNotes(invoice.workOrder._id);
-        customerFacingNotes = notesResponse.notes || [];
+        customerFacingNotes = notesResponse.data?.notes || [];
       } catch (error) {
         console.error('Error fetching customer-facing notes:', error);
       }

@@ -91,6 +91,72 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
   }, [currentDate, viewType]);
 
   /**
+   * Handle appointment time reschedule from drag-and-drop.
+   * Optimistically updates local state, then persists to backend.
+   * Rolls back on API failure.
+   */
+  const handleAppointmentReschedule = async (eventId, deltaMinutes, dayDelta = 0) => {
+    const event = appointments.find(a => a._id === eventId);
+    if (!event) return;
+
+    // Calculate new times (day shift + time shift)
+    const newStart = moment.utc(event.startTime).add(dayDelta, 'days').add(deltaMinutes, 'minutes');
+    const newEnd = moment.utc(event.endTime).add(dayDelta, 'days').add(deltaMinutes, 'minutes');
+
+    // Optimistic update
+    const previousAppointments = [...appointments];
+    setAppointments(prev => prev.map(a =>
+      a._id === eventId
+        ? { ...a, startTime: newStart.toISOString(), endTime: newEnd.toISOString() }
+        : a
+    ));
+
+    try {
+      if (event.isScheduleBlock) {
+        // Schedule block: update via schedule block API
+        const newStartET = newStart.tz(TIMEZONE);
+        const newEndET = newEnd.tz(TIMEZONE);
+        const newTimeStart = newStartET.format('HH:mm');
+        const newTimeEnd = newEndET.format('HH:mm');
+
+        if (event.blockType === 'recurring') {
+          // Recurring: add a modify exception for this specific date
+          const originalDate = moment.utc(event.startTime).tz(TIMEZONE).format('YYYY-MM-DD');
+          await ScheduleBlockService.addException(event.scheduleBlockId, {
+            date: originalDate,
+            action: 'modify',
+            startTime: newTimeStart,
+            endTime: newTimeEnd
+          });
+        } else {
+          // One-time: update the block directly
+          const updateData = {
+            oneTimeStartTime: newTimeStart,
+            oneTimeEndTime: newTimeEnd
+          };
+          if (dayDelta !== 0) {
+            updateData.oneTimeDate = newStartET.format('YYYY-MM-DD');
+          }
+          await ScheduleBlockService.update(event.scheduleBlockId, updateData);
+        }
+      } else {
+        // Regular appointment
+        const newStartLocal = newStart.tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss');
+        const newEndLocal = newEnd.tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss');
+        await AppointmentService.updateAppointment(eventId, {
+          startTime: newStartLocal,
+          endTime: newEndLocal
+        });
+      }
+    } catch (err) {
+      console.error('Failed to reschedule:', err);
+      setAppointments(previousAppointments);
+      setError('Failed to reschedule. Changes have been reverted.');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  /**
    * Navigate to previous period (day or week)
    */
   const goToPrevious = () => {
@@ -216,9 +282,9 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
       {!loading && !error && (
         <>
           {viewType === 'daily' ? (
-            <DailyView date={currentDate} appointments={appointments} />
+            <DailyView date={currentDate} appointments={appointments} onAppointmentReschedule={handleAppointmentReschedule} />
           ) : (
-            <WeeklyView week={currentDate} appointments={appointments} showWeekends={showWeekends} />
+            <WeeklyView week={currentDate} appointments={appointments} showWeekends={showWeekends} onAppointmentReschedule={handleAppointmentReschedule} />
           )}
         </>
       )}
