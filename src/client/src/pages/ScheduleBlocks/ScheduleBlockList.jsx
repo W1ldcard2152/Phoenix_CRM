@@ -6,6 +6,7 @@ import ScheduleBlockService from '../../services/scheduleBlockService';
 import technicianService from '../../services/technicianService';
 import moment from 'moment-timezone';
 import { TIMEZONE } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -13,8 +14,8 @@ const ScheduleBlockList = () => {
   const [blocks, setBlocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filterActive, setFilterActive] = useState('true');
-  const [filterTechnician, setFilterTechnician] = useState('');
+  const [filterActive, setFilterActive] = usePersistedState('tasks:filterActive', 'true');
+  const [filterTechnician, setFilterTechnician] = usePersistedState('tasks:filterTechnician', '');
   const [technicians, setTechnicians] = useState([]);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 

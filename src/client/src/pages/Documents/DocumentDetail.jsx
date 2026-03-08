@@ -118,6 +118,7 @@ const DocumentDetail = () => {
   const [bulkOrderModalOpen, setBulkOrderModalOpen] = useState(false);
   const [bulkOrderData, setBulkOrderData] = useState({ vendor: '', orderNumber: '' });
   const [markupPercentage, setMarkupPercentage] = useState(30);
+  const [overridePrice, setOverridePrice] = useState(false);
   const [partsSortConfig, setPartsSortConfig] = useState([]);
   const [vendorList, setVendorList] = useState([]);
   const [categoryList, setCategoryList] = useState([]);
@@ -748,6 +749,7 @@ const DocumentDetail = () => {
   // ==================== Parts Handlers ====================
   const openAddPartModal = () => {
     setEditingPart(null);
+    setOverridePrice(false);
     setNewPart({ ...defaultPart });
     setPartModalOpen(true);
   };
@@ -759,6 +761,7 @@ const DocumentDetail = () => {
 
   const openEditPartModal = (part, index) => {
     setEditingPart({ ...part, index });
+    setOverridePrice(false);
     const vendor = part.vendor || '';
     const isCustomVendor = vendor && !vendorList.includes(vendor);
     const multiplier = 1 + markupPercentage / 100;
@@ -1086,6 +1089,7 @@ const DocumentDetail = () => {
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
+    { value: 'No-Show', label: 'No-Show' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
@@ -2216,8 +2220,12 @@ const DocumentDetail = () => {
                   <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newPart.cost} onChange={(e) => {
                       const cost = parseFloat(e.target.value) || 0;
-                      const multiplier = 1 + markupPercentage / 100;
-                      setNewPart({ ...newPart, cost, price: parseFloat((cost * multiplier).toFixed(2)) });
+                      if (overridePrice) {
+                        setNewPart({ ...newPart, cost });
+                      } else {
+                        const multiplier = 1 + markupPercentage / 100;
+                        setNewPart({ ...newPart, cost, price: parseFloat((cost * multiplier).toFixed(2)) });
+                      }
                     }} />
                 </div>
                 <div>
@@ -2225,10 +2233,19 @@ const DocumentDetail = () => {
                   <input type="number" min="0" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                     value={newPart.price} onChange={(e) => {
                       const price = parseFloat(e.target.value) || 0;
-                      const multiplier = 1 + markupPercentage / 100;
-                      setNewPart({ ...newPart, price, cost: parseFloat((price / multiplier).toFixed(2)) });
+                      if (overridePrice) {
+                        setNewPart({ ...newPart, price });
+                      } else {
+                        const multiplier = 1 + markupPercentage / 100;
+                        setNewPart({ ...newPart, price, cost: parseFloat((price / multiplier).toFixed(2)) });
+                      }
                     }} />
                 </div>
+              </div>
+              <div className="flex items-center">
+                <input type="checkbox" id="overridePrice" className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  checked={overridePrice} onChange={(e) => setOverridePrice(e.target.checked)} />
+                <label htmlFor="overridePrice" className="ml-2 block text-sm text-gray-700">Override price calculations</label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

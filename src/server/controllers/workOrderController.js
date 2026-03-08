@@ -417,7 +417,8 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
 
     // If all parts are received, auto-set status to "Parts Received"
-    const preReceivedStatuses = ['Parts Ordered', ...preOrderStatuses];
+    // Exclude 'Appointment Scheduled' — that status takes priority over parts tracking
+    const preReceivedStatuses = ['Parts Ordered', ...preOrderStatuses].filter(s => s !== 'Appointment Scheduled');
     const allPartsReceived = workOrderData.parts.every(part => part.received === true);
     if (allPartsReceived && preReceivedStatuses.includes(currentStatus)) {
       workOrderData.status = 'Parts Received';
@@ -943,10 +944,13 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
 
   // Service writer action statuses
   const swcStatuses = [
+    'Work Order Created',
     'Appointment Complete',
     'Inspection/Diag Complete',
     'Parts Received',
-    'Repair Complete - Awaiting Payment'
+    'Repair Complete - Awaiting Payment',
+    'On Hold',
+    'No-Show'
   ];
 
   // Get only today and future appointments (not past)

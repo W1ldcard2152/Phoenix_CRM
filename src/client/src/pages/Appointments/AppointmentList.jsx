@@ -13,6 +13,7 @@ import technicianService from '../../services/technicianService';
 import { formatDateTimeToET, getTodayForInput, formatDateForInput, TIMEZONE } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyScheduleBlockVisibility, isAdminOrManagement } from '../../utils/permissions';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const AppointmentList = () => {
   const navigate = useNavigate();
@@ -20,15 +21,15 @@ const AppointmentList = () => {
   const [appointments, setAppointments] = useState([]);
   const [pendingWorkOrders, setPendingWorkOrders] = useState([]);
   const [upcomingTasks, setUpcomingTasks] = useState([]);
-  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [showAllTasks, setShowAllTasks] = usePersistedState('appt-list:showAllTasks', false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState({
     startDate: getTodayForInput(),
     endDate: formatDateForInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
   });
-  const [statusFilter, setStatusFilter] = useState('');
-  const [technicianFilter, setTechnicianFilter] = useState('');
+  const [statusFilter, setStatusFilter] = usePersistedState('appt-list:statusFilter', '');
+  const [technicianFilter, setTechnicianFilter] = usePersistedState('appt-list:technicianFilter', '');
   const [technicianFilterOptions, setTechnicianFilterOptions] = useState([{ value: '', label: 'Loading Technicians...' }]);
   const [searchParams] = useSearchParams();
   const [appointmentActionModal, setAppointmentActionModal] = useState(false);

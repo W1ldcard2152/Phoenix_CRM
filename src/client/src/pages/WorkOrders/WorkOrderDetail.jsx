@@ -102,6 +102,7 @@ const WorkOrderDetail = () => {
     receiptImageUrl: ''
   });
   const [isOtherVendor, setIsOtherVendor] = useState(false);
+  const [overridePrice, setOverridePrice] = useState(false);
   const [bulkOrderModalOpen, setBulkOrderModalOpen] = useState(false);
   const [bulkOrderData, setBulkOrderData] = useState({
     vendor: '',
@@ -574,6 +575,7 @@ const WorkOrderDetail = () => {
 
   const openAddPartModal = () => {
     setEditingPart(null);
+    setOverridePrice(false);
     setNewPart({
       name: '',
       partNumber: '',
@@ -595,9 +597,10 @@ const WorkOrderDetail = () => {
 
   const openEditPartModal = (part, index) => {
     setEditingPart({ ...part, index });
+    setOverridePrice(false);
     const vendor = part.vendor || '';
     const isCustomVendor = vendor && !predefinedVendors.slice(0, -1).includes(vendor);
-    
+
     setNewPart({
       name: part.name || '',
       partNumber: part.partNumber || '',
@@ -955,6 +958,7 @@ const WorkOrderDetail = () => {
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
+    { value: 'No-Show', label: 'No-Show' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
@@ -2079,7 +2083,11 @@ const WorkOrderDetail = () => {
                     value={newPart.cost}
                     onChange={(e) => {
                       const cost = parseFloat(e.target.value) || 0;
-                      setNewPart({ ...newPart, cost, price: parseFloat((cost * 1.3).toFixed(2)) });
+                      if (overridePrice) {
+                        setNewPart({ ...newPart, cost });
+                      } else {
+                        setNewPart({ ...newPart, cost, price: parseFloat((cost * 1.3).toFixed(2)) });
+                      }
                     }}
                   />
                 </div>
@@ -2095,10 +2103,26 @@ const WorkOrderDetail = () => {
                     value={newPart.price}
                     onChange={(e) => {
                       const price = parseFloat(e.target.value) || 0;
-                      setNewPart({ ...newPart, price, cost: parseFloat((price / 1.3).toFixed(2)) });
+                      if (overridePrice) {
+                        setNewPart({ ...newPart, price });
+                      } else {
+                        setNewPart({ ...newPart, price, cost: parseFloat((price / 1.3).toFixed(2)) });
+                      }
                     }}
                   />
                 </div>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="overridePrice"
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  checked={overridePrice}
+                  onChange={(e) => setOverridePrice(e.target.checked)}
+                />
+                <label htmlFor="overridePrice" className="ml-2 block text-sm text-gray-700">
+                  Override price calculations
+                </label>
               </div>
               <div className="flex space-x-4">
                 <div className="flex items-center">

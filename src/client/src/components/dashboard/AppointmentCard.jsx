@@ -207,14 +207,16 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
     ? `${appointment.vehicle.year || ''} ${appointment.vehicle.make || ''} ${appointment.vehicle.model || ''}`.trim()
     : 'No vehicle';
 
-  // Add service type in parentheses if available
-  // Ensure serviceType is a string to avoid rendering issues
+  // Build display title: "ServiceType: Details" if details exist, else "Vehicle (ServiceType)"
   const serviceType = appointment.serviceType ? String(appointment.serviceType) : '';
+  const details = appointment.details ? String(appointment.details) : '';
   const displayTitle = isScheduleBlock
     ? displayAppointment.title
-    : serviceType
-      ? `${vehicleInfo} (${serviceType})`
-      : vehicleInfo;
+    : details
+      ? `${serviceType}: ${details}`
+      : serviceType
+        ? `${vehicleInfo} (${serviceType})`
+        : vehicleInfo;
 
   // Check if popover should open upward or downward based on screen position
   // Also calculate absolute viewport coordinates for fixed positioning
@@ -263,7 +265,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
     >
       {/* Appointment Card */}
       <div
-        className={`h-full rounded border-l-4 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1.5 transition-colors ${isDragging ? 'ring-2 ring-blue-400 shadow-lg' : 'shadow-sm'} overflow-hidden`}
+        className={`h-full rounded border-l-4 border ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1 transition-colors ${isDragging ? 'ring-2 ring-blue-400 shadow-lg' : 'shadow-sm'} overflow-hidden`}
+        style={{ marginTop: '1px', marginBottom: '1px' }}
       >
         {/* Vehicle Info with Service Type - Always show first, bold */}
         {viewType === 'daily' ? (
@@ -414,6 +417,9 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               <div className="mb-3">
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service</div>
                 <div className="text-base text-gray-900">{serviceType || 'Not specified'}</div>
+                {details && (
+                  <div className="text-sm text-gray-700 mt-0.5">{details}</div>
+                )}
               </div>
 
               {/* Time Info */}
@@ -470,6 +476,28 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
                   </Link>
                 )}
               </div>
+              {/* Edit/Reschedule button */}
+              {workOrderStatus === 'Appointment Complete' ? (
+                <div className="pt-2">
+                  <Link
+                    to={`/appointments/${appointment._id}/edit?reschedule=true`}
+                    className="block w-full text-center bg-yellow-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-yellow-600 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Reschedule Appointment
+                  </Link>
+                </div>
+              ) : (
+                <div className="pt-2">
+                  <Link
+                    to={`/appointments/${appointment._id}/edit`}
+                    className="block w-full text-center bg-gray-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-gray-600 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Edit Appointment
+                  </Link>
+                </div>
+              )}
             </>
           )}
         </div>,

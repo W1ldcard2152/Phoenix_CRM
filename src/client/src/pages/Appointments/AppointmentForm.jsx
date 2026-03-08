@@ -64,6 +64,7 @@ const AppointmentForm = () => {
     vehicle: '',
     serviceType: '',
     serviceTypeCustom: '', // For "Other" option
+    details: '',
     startDate: '', // Will be set in useEffect
     startTime: '', // Will be set in useEffect
     endDate: '',   // Will be set in useEffect
@@ -147,6 +148,7 @@ const AppointmentForm = () => {
             customer: '',
             vehicle: '',
             serviceType: '',
+            details: '',
             startDate: formatDateForField(nowET), // Use nowET defined in effect
             startTime: formatTimeForField(nowET), // Use nowET defined in effect
             endDate: formatDateForField(laterTimeET),   // Use laterTimeET defined in effect
@@ -168,17 +170,21 @@ const AppointmentForm = () => {
             await fetchVehiclesForCustomer(apptCustomerId); 
           }
 
+          // If reschedule=true, override status to 'Scheduled' so the user reschedules the appointment
+          const isReschedule = searchParams.get('reschedule') === 'true';
+
           currentInitialValues = {
             ...currentInitialValues, // Keep date/time defaults unless overwritten
             customer: apptCustomerId || '',
             vehicle: appt.vehicle?._id || appt.vehicle || '',
             serviceType: appt.serviceType || '',
-            startDate: formatDateForField(moment.utc(appt.startTime).tz(TIMEZONE)),
-            startTime: formatTimeForField(moment.utc(appt.startTime).tz(TIMEZONE)),
-            endDate: formatDateForField(moment.utc(appt.endTime).tz(TIMEZONE)),
-            endTime: formatTimeForField(moment.utc(appt.endTime).tz(TIMEZONE)),
+            details: appt.details || '',
+            startDate: formatDateForField(isReschedule ? nowET : moment.utc(appt.startTime).tz(TIMEZONE)),
+            startTime: formatTimeForField(isReschedule ? nowET : moment.utc(appt.startTime).tz(TIMEZONE)),
+            endDate: formatDateForField(isReschedule ? laterTimeET : moment.utc(appt.endTime).tz(TIMEZONE)),
+            endTime: formatTimeForField(isReschedule ? laterTimeET : moment.utc(appt.endTime).tz(TIMEZONE)),
             technician: appt.technician?._id || appt.technician || '',
-            status: appt.status || 'Scheduled',
+            status: isReschedule ? 'Scheduled' : (appt.status || 'Scheduled'),
             notes: appt.notes || '',
             workOrder: appt.workOrder?._id || appt.workOrder || '',
           };
@@ -484,7 +490,22 @@ const AppointmentForm = () => {
                     </div>
                   )}
                 </div>
-                
+                <div className="md:col-span-2">
+                  <Input
+                    label="Appointment Details"
+                    name="details"
+                    value={values.details}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="e.g. Prep for paint, Oil change, etc."
+                  />
+                  {values.serviceType && values.details && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Calendar title: <span className="font-medium">{values.serviceType === 'Other' ? (values.serviceTypeCustom || 'Other') : values.serviceType}: {values.details}</span>
+                    </p>
+                  )}
+                </div>
+
                 <div className="md:col-span-2">
                   <h3 className="font-medium text-gray-700 mb-2">Appointment Time</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

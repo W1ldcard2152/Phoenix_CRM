@@ -7,6 +7,7 @@ import SelectInput from '../../components/common/SelectInput';
 import partService from '../../services/partService';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const PartsList = () => {
   const { currentUser } = useAuth();
@@ -14,10 +15,10 @@ const PartsList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [vendorFilter, setVendorFilter] = useState('');
-  const [brandFilter, setBrandFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [categoryFilter, setCategoryFilter] = usePersistedState('parts:categoryFilter', '');
+  const [vendorFilter, setVendorFilter] = usePersistedState('parts:vendorFilter', '');
+  const [brandFilter, setBrandFilter] = usePersistedState('parts:brandFilter', '');
+  const [statusFilter, setStatusFilter] = usePersistedState('parts:statusFilter', 'active');
   const [isSearching, setIsSearching] = useState(false);
   
   // Filter options

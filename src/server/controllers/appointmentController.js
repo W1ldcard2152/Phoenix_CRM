@@ -167,15 +167,8 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
         workOrderToUpdate.assignedTechnician = newAppointment.technician;
         woNeedsSave = true;
       }
-      // Only set status to 'Appointment Scheduled' if the work order is in an
-      // early/idle state. Don't regress work orders that have already advanced
-      // past the appointment stage (e.g. Inspection, Parts Ordered, Repair, etc.)
-      const statusesEligibleForScheduledReset = [
-        'Work Order Created',
-        'Appointment Complete',
-        'On Hold'
-      ];
-      if (statusesEligibleForScheduledReset.includes(workOrderToUpdate.status)) {
+      // Always set WO to 'Appointment Scheduled' when an appointment is created for it
+      if (workOrderToUpdate.status !== 'Appointment Scheduled') {
         workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       }
@@ -308,16 +301,38 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     appointment.workOrder
   ) {
     const workOrder = await WorkOrder.findById(appointment.workOrder);
-    // Only update if work order exists and is in a more preliminary state
-    if (workOrder && (workOrder.status === 'Created' || workOrder.status === 'On Hold')) {
+    // Always set WO to 'Appointment Scheduled' when appointment is scheduled/confirmed
+    if (workOrder && workOrder.status !== 'Appointment Scheduled') {
       await WorkOrder.findByIdAndUpdate(
         appointment.workOrder,
         { status: 'Appointment Scheduled' },
-        { new: true, runValidators: true } // Added runValidators
+        { new: true, runValidators: true }
       );
     }
   }
-  
+
+  // If a completed/no-show appointment is rescheduled to a future time, reset statuses
+  const completedStatuses = ['Completed', 'No-Show'];
+  if (completedStatuses.includes(appointment.status) && req.body.startTime) {
+    const newStartTime = new Date(req.body.startTime);
+    const now = new Date();
+    if (newStartTime > now) {
+      // Reset appointment status to Scheduled (override whatever the form sent)
+      req.body.status = 'Scheduled';
+      // Reset work order status to Appointment Scheduled
+      if (appointment.workOrder) {
+        const workOrder = await WorkOrder.findById(appointment.workOrder);
+        if (workOrder && workOrder.status === 'Appointment Complete') {
+          await WorkOrder.findByIdAndUpdate(
+            appointment.workOrder,
+            { status: 'Appointment Scheduled' },
+            { new: true, runValidators: true }
+          );
+        }
+      }
+    }
+  }
+
   const updatedAppointment = await applyPopulation(
     Appointment.findByIdAndUpdate(req.params.id, req.body, {
       new: true,

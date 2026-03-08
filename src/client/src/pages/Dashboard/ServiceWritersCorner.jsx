@@ -7,27 +7,38 @@ import WorkOrderService from '../../services/workOrderService';
 import MediaService from '../../services/mediaService';
 import customerInteractionService from '../../services/customerInteractionService';
 import { formatDate } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const ServiceWritersCorner = () => {
   const navigate = useNavigate();
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = usePersistedState('swc:statusFilter', 'All');
   const [statusUpdating, setStatusUpdating] = useState(null);
   const [attachmentCounts, setAttachmentCounts] = useState({});
   const [interactionStats, setInteractionStats] = useState({});
 
   // Multi-tier sorting state
-  const [sortConfig, setSortConfig] = useState([{ column: 'status', direction: 'asc' }]);
+  const [sortConfig, setSortConfig] = usePersistedState('swc:sortConfig', [{ column: 'status', direction: 'asc' }]);
+
+  // Statuses excluded from the "All" tab (shown only in their own special tabs)
+  const excludedFromAll = ['On Hold', 'No-Show'];
 
   // Status filter categories for SWC
   const statusCategories = [
     { key: 'All', label: 'All', statuses: [] },
+    { key: 'Work Order Created', label: 'Created', statuses: ['Work Order Created'] },
     { key: 'Appointment Complete', label: 'Appointment Complete', statuses: ['Appointment Complete'] },
     { key: 'Inspection/Diag Complete', label: 'Inspection/Diag Complete', statuses: ['Inspection/Diag Complete'] },
     { key: 'Parts Received', label: 'Parts Received', statuses: ['Parts Received'] },
     { key: 'Awaiting Payment', label: 'Awaiting Payment', statuses: ['Repair Complete - Awaiting Payment'] }
+  ];
+
+  // Special tabs that are excluded from the "All" view
+  const specialCategories = [
+    { key: 'On Hold', label: 'On Hold', statuses: ['On Hold'], colorClass: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+    { key: 'No-Show', label: 'Missed Appt.', statuses: ['No-Show'], colorClass: 'bg-red-100 text-red-800 border-red-300' }
   ];
 
   // All status options for inline status change dropdown
@@ -43,16 +54,20 @@ const ServiceWritersCorner = () => {
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
+    { value: 'No-Show', label: 'No-Show' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
   // Status priority for sorting
   const getStatusPriority = (status) => {
     const priorities = {
+      'Work Order Created': 0,
       'Appointment Complete': 1,
       'Inspection/Diag Complete': 2,
       'Parts Received': 3,
-      'Repair Complete - Awaiting Payment': 4
+      'Repair Complete - Awaiting Payment': 4,
+      'On Hold': 5,
+      'No-Show': 6
     };
     return priorities[status] || 99;
   };
@@ -81,7 +96,9 @@ const ServiceWritersCorner = () => {
       case 'Repair In Progress':
         return 'bg-orange-200 text-orange-900';
       case 'On Hold':
-        return 'bg-gray-200 text-gray-700';
+        return 'bg-yellow-100 text-yellow-800';
+      case 'No-Show':
+        return 'bg-red-100 text-red-800';
       case 'Cancelled':
         return 'bg-gray-400 text-gray-800';
       default:
@@ -262,7 +279,7 @@ const ServiceWritersCorner = () => {
       await WorkOrderService.updateWorkOrder(workOrderId, { status: newStatus });
 
       // Update local state — if the new status is no longer a SWC status, remove it from the list
-      const swcStatuses = ['Appointment Complete', 'Inspection/Diag Complete', 'Parts Received', 'Repair Complete - Awaiting Payment'];
+      const swcStatuses = ['Work Order Created', 'Appointment Complete', 'Inspection/Diag Complete', 'Parts Received', 'Repair Complete - Awaiting Payment', 'On Hold', 'No-Show'];
       if (swcStatuses.includes(newStatus)) {
         setWorkOrders(prev => prev.map(wo =>
           wo._id === workOrderId ? { ...wo, status: newStatus } : wo
@@ -341,9 +358,12 @@ const ServiceWritersCorner = () => {
 
   // Filter and sort
   const getFilteredWorkOrders = () => {
-    if (statusFilter === 'All') return workOrders;
-    const selectedCategory = statusCategories.find(cat => cat.key === statusFilter);
-    if (!selectedCategory) return workOrders;
+    if (statusFilter === 'All') {
+      return workOrders.filter(wo => !excludedFromAll.includes(wo.status));
+    }
+    const allCategories = [...statusCategories, ...specialCategories];
+    const selectedCategory = allCategories.find(cat => cat.key === statusFilter);
+    if (!selectedCategory) return workOrders.filter(wo => !excludedFromAll.includes(wo.status));
     return workOrders.filter(wo => selectedCategory.statuses.includes(wo.status));
   };
 
@@ -355,12 +375,17 @@ const ServiceWritersCorner = () => {
     const counts = {};
     statusCategories.forEach(category => {
       if (category.key === 'All') {
-        counts[category.key] = workOrders.length;
+        counts[category.key] = workOrders.filter(wo => !excludedFromAll.includes(wo.status)).length;
       } else {
         counts[category.key] = workOrders.filter(wo =>
           category.statuses.includes(wo.status)
         ).length;
       }
+    });
+    specialCategories.forEach(category => {
+      counts[category.key] = workOrders.filter(wo =>
+        category.statuses.includes(wo.status)
+      ).length;
     });
     return counts;
   }, [workOrders]);
@@ -386,7 +411,7 @@ const ServiceWritersCorner = () => {
   }
 
   return (
-    <Card title={`Service Writer's Corner (${workOrders.length} ${workOrders.length === 1 ? 'item' : 'items'})`}>
+    <Card title={`Service Writer's Corner (${statusCounts['All'] || 0} ${(statusCounts['All'] || 0) === 1 ? 'item' : 'items'})`}>
       <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <p className="text-blue-800 text-sm">
           <strong>Action Required:</strong> These work orders need your attention to move forward in the workflow.
@@ -410,6 +435,20 @@ const ServiceWritersCorner = () => {
                 statusFilter === category.key
                   ? 'bg-primary-100 text-primary-800 border-2 border-primary-200'
                   : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+              }`}
+            >
+              {category.label} ({statusCounts[category.key] || 0})
+            </button>
+          ))}
+          <div className="w-px bg-gray-300 mx-1 self-stretch" />
+          {specialCategories.map((category) => (
+            <button
+              key={category.key}
+              onClick={() => setStatusFilter(category.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                statusFilter === category.key
+                  ? `${category.colorClass} border-2`
+                  : `${category.colorClass} border-2 border-transparent opacity-70 hover:opacity-100`
               }`}
             >
               {category.label} ({statusCounts[category.key] || 0})
@@ -565,7 +604,7 @@ const ServiceWritersCorner = () => {
                           Edit
                         </Button>
                         <div className="w-40">
-                          {(workOrder.status === 'Appointment Complete' || workOrder.status === 'Parts Received') ? (
+                          {(workOrder.status === 'Work Order Created' || workOrder.status === 'Appointment Complete' || workOrder.status === 'Parts Received' || workOrder.status === 'No-Show') ? (
                             <Button
                               onClick={() => navigate(`/appointments/new?workOrder=${workOrder._id}&vehicle=${workOrder.vehicle?._id}`)}
                               variant="primary"
@@ -689,7 +728,7 @@ const ServiceWritersCorner = () => {
                     >
                       Edit
                     </Button>
-                    {(workOrder.status === 'Appointment Complete' || workOrder.status === 'Parts Received') && (
+                    {(workOrder.status === 'Work Order Created' || workOrder.status === 'Appointment Complete' || workOrder.status === 'Parts Received' || workOrder.status === 'No-Show') && (
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();

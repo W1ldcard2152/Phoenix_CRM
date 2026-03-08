@@ -316,6 +316,7 @@ const WorkOrderSchema = new Schema(
         'Repair Complete - Awaiting Payment',
         'Repair Complete - Invoiced',
         'On Hold',
+        'No-Show',
         'Cancelled',
         'Quote - Archived'
       ],

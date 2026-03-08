@@ -18,6 +18,10 @@ const AppointmentSchema = new Schema(
       required: true,
       trim: true
     },
+    details: {
+      type: String,
+      trim: true
+    },
     startTime: {
       type: Date,
       required: true

@@ -6,6 +6,7 @@ import Input from '../../components/common/Input';
 import WorkOrderService from '../../services/workOrderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const TechnicianPortal = () => {
   const navigate = useNavigate();
@@ -14,9 +15,9 @@ const TechnicianPortal = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [sortBy, setSortBy] = useState('date'); // 'date', 'priority', 'status', 'vehicle'
-  const [sortDirection, setSortDirection] = useState('desc'); // 'asc', 'desc'
+  const [statusFilter, setStatusFilter] = usePersistedState('tech-portal:statusFilter', 'All');
+  const [sortBy, setSortBy] = usePersistedState('tech-portal:sortBy', 'date');
+  const [sortDirection, setSortDirection] = usePersistedState('tech-portal:sortDirection', 'desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   // Statuses relevant to technician work

@@ -11,22 +11,23 @@ import customerInteractionService from '../../services/customerInteractionServic
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import { formatDate } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const WorkOrderList = () => {
   const { currentUser } = useAuth();
   const [workOrders, setWorkOrders] = useState([]); // Active work orders only
   const [invoicedWorkOrders, setInvoicedWorkOrders] = useState([]); // Separate state for invoiced
-  const [onHoldCancelledWorkOrders, setOnHoldCancelledWorkOrders] = useState([]); // Separate state for on hold/cancelled
+  const [cancelledWorkOrders, setCancelledWorkOrders] = useState([]); // Separate state for cancelled
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = usePersistedState('wo-list:statusFilter', 'All');
   const [isSearching, setIsSearching] = useState(false);
-  const [showInvoicedTable, setShowInvoicedTable] = useState(false);
-  const [showOnHoldCancelledTable, setShowOnHoldCancelledTable] = useState(false);
+  const [showInvoicedTable, setShowInvoicedTable] = usePersistedState('wo-list:showInvoiced', false);
+  const [showCancelledTable, setShowCancelledTable] = usePersistedState('wo-list:showCancelled', false);
   const [invoicedLoading, setInvoicedLoading] = useState(false); // Loading state for invoiced section
   const [invoicesByWorkOrder, setInvoicesByWorkOrder] = useState({}); // Map of workOrderId → invoice
-  const [onHoldCancelledLoading, setOnHoldCancelledLoading] = useState(false); // Loading state for on hold/cancelled section
+  const [cancelledLoading, setCancelledLoading] = useState(false); // Loading state for cancelled section
   const [statusUpdating, setStatusUpdating] = useState(null);
   const [attachmentCounts, setAttachmentCounts] = useState({});
   const [interactionStats, setInteractionStats] = useState({});
@@ -35,7 +36,7 @@ const WorkOrderList = () => {
 
   // Multi-tier sorting state - array of sort configs [{column, direction}, ...]
   // Default to sorting by date descending
-  const [sortConfig, setSortConfig] = useState([{ column: 'date', direction: 'desc' }]);
+  const [sortConfig, setSortConfig] = usePersistedState('wo-list:sortConfig', [{ column: 'date', direction: 'desc' }]);
 
   // Get filter parameters from URL
   const customerParam = searchParams.get('customer');
@@ -178,8 +179,8 @@ const WorkOrderList = () => {
         if (customerParam) filters.customer = customerParam;
         if (vehicleParam) filters.vehicle = vehicleParam;
         // Exclude statuses that have their own sections at the database level
-        filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,On Hold,Cancelled';
-        
+        filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,Cancelled';
+
         const response = await WorkOrderService.getAllWorkOrders(filters);
         setWorkOrders(response.data.workOrders);
 
@@ -188,7 +189,7 @@ const WorkOrderList = () => {
 
         // Fetch interaction stats for each work order
         await fetchInteractionStats(response.data.workOrders);
-        
+
         setLoading(false);
       } catch (err) {
         console.error('Error fetching work orders:', err);
@@ -211,7 +212,7 @@ const WorkOrderList = () => {
           if (customerParam) filters.customer = customerParam;
           if (vehicleParam) filters.vehicle = vehicleParam;
           // Exclude statuses that have their own sections at the database level
-          filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,On Hold,Cancelled';
+          filters.excludeStatuses = 'Quote,Quote - Archived,Repair Complete - Invoiced,Cancelled';
           
           const response = await WorkOrderService.getAllWorkOrders(filters);
           setWorkOrders(response.data.workOrders);
@@ -273,31 +274,21 @@ const WorkOrderList = () => {
     }
   };
 
-  // Fetch on hold/cancelled work orders when section is toggled
-  const fetchOnHoldCancelledWorkOrders = async () => {
+  // Fetch cancelled work orders when section is toggled
+  const fetchCancelledWorkOrders = async () => {
     try {
-      setOnHoldCancelledLoading(true);
-      
-      // Need to fetch both statuses - make two separate calls since API doesn't support multiple status filters
+      setCancelledLoading(true);
       const filters = { customer: customerParam, vehicle: vehicleParam };
-      const [onHoldResponse, cancelledResponse] = await Promise.all([
-        WorkOrderService.getAllWorkOrders({ ...filters, status: 'On Hold' }),
-        WorkOrderService.getAllWorkOrders({ ...filters, status: 'Cancelled' })
-      ]);
-      
-      const combinedOrders = [
-        ...(onHoldResponse.data.workOrders || []),
-        ...(cancelledResponse.data.workOrders || [])
-      ];
-      
-      setOnHoldCancelledWorkOrders(combinedOrders);
-      
-      // Fetch attachment counts for on hold/cancelled work orders
-      await fetchAttachmentCounts(combinedOrders);
-      setOnHoldCancelledLoading(false);
+      const response = await WorkOrderService.getAllWorkOrders({ ...filters, status: 'Cancelled' });
+
+      setCancelledWorkOrders(response.data.workOrders || []);
+
+      // Fetch attachment counts for cancelled work orders
+      await fetchAttachmentCounts(response.data.workOrders || []);
+      setCancelledLoading(false);
     } catch (err) {
-      console.error('Error fetching on hold/cancelled work orders:', err);
-      setOnHoldCancelledLoading(false);
+      console.error('Error fetching cancelled work orders:', err);
+      setCancelledLoading(false);
     }
   };
 
@@ -311,13 +302,13 @@ const WorkOrderList = () => {
     }
   };
 
-  // Toggle on hold/cancelled table and fetch data if needed  
-  const toggleOnHoldCancelledTable = async () => {
-    const newShowState = !showOnHoldCancelledTable;
-    setShowOnHoldCancelledTable(newShowState);
-    
-    if (newShowState && onHoldCancelledWorkOrders.length === 0) {
-      await fetchOnHoldCancelledWorkOrders();
+  // Toggle cancelled table and fetch data if needed
+  const toggleCancelledTable = async () => {
+    const newShowState = !showCancelledTable;
+    setShowCancelledTable(newShowState);
+
+    if (newShowState && cancelledWorkOrders.length === 0) {
+      await fetchCancelledWorkOrders();
     }
   };
 
@@ -471,6 +462,7 @@ const WorkOrderList = () => {
     { value: 'Repair Complete - Awaiting Payment', label: 'Repair Complete - Awaiting Payment' },
     { value: 'Repair Complete - Invoiced', label: 'Repair Complete - Invoiced' },
     { value: 'On Hold', label: 'On Hold' },
+    { value: 'No-Show', label: 'No-Show' },
     { value: 'Cancelled', label: 'Cancelled' }
   ];
 
@@ -488,10 +480,14 @@ const WorkOrderList = () => {
       'Repair Complete - Awaiting Payment': 9,
       'Repair Complete - Invoiced': 10,
       'On Hold': 11,
-      'Cancelled': 12
+      'No-Show': 12,
+      'Cancelled': 13
     };
     return priorities[status] || 99;
   };
+
+  // Statuses excluded from the "All" tab (shown only in their own special tabs)
+  const excludedFromAll = ['On Hold', 'No-Show'];
 
   // Status filter categories - aligned with color coding
   const statusCategories = [
@@ -502,24 +498,21 @@ const WorkOrderList = () => {
     { key: 'Waiting/Scheduled', label: 'Waiting/Scheduled', statuses: ['Work Order Created', 'Appointment Scheduled', 'Parts Ordered'] }
   ];
 
-  // Filter work orders based on selected category, excluding statuses that have their own sections
+  // Special tabs that are excluded from the "All" view
+  const specialCategories = [
+    { key: 'On Hold', label: 'On Hold', statuses: ['On Hold'], colorClass: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+    { key: 'No-Show', label: 'No-Show', statuses: ['No-Show'], colorClass: 'bg-red-100 text-red-800 border-red-300' }
+  ];
+
+  // Filter work orders based on selected category
   const getFilteredWorkOrders = () => {
-    // Always exclude these statuses from the main view since they have separate sections
-    const excludedStatuses = ['Repair Complete - Invoiced', 'On Hold', 'Cancelled'];
-    
     if (statusFilter === 'All') {
-      return workOrders.filter(wo => !excludedStatuses.includes(wo.status));
+      return workOrders.filter(wo => !excludedFromAll.includes(wo.status));
     }
-    
-    const selectedCategory = statusCategories.find(cat => cat.key === statusFilter);
-    if (!selectedCategory) {
-      return workOrders.filter(wo => !excludedStatuses.includes(wo.status));
-    }
-    
-    return workOrders.filter(wo => 
-      selectedCategory.statuses.includes(wo.status) && 
-      !excludedStatuses.includes(wo.status)
-    );
+    const allCategories = [...statusCategories, ...specialCategories];
+    const selectedCategory = allCategories.find(cat => cat.key === statusFilter);
+    if (!selectedCategory) return workOrders.filter(wo => !excludedFromAll.includes(wo.status));
+    return workOrders.filter(wo => selectedCategory.statuses.includes(wo.status));
   };
 
   // Format currency
@@ -559,9 +552,13 @@ const WorkOrderList = () => {
       case 'Repair In Progress':
         return 'bg-orange-200 text-orange-900';
 
-      // GREY SCALE - Customer/Stopped
+      // SPECIAL - On Hold / No-Show
       case 'On Hold':
-        return 'bg-gray-200 text-gray-700';
+        return 'bg-yellow-100 text-yellow-800';
+      case 'No-Show':
+        return 'bg-red-100 text-red-800';
+
+      // GREY SCALE - Cancelled
       case 'Cancelled':
         return 'bg-gray-400 text-gray-800';
 
@@ -617,32 +614,30 @@ const WorkOrderList = () => {
     return applySorting(invoicedWorkOrders);
   }, [invoicedWorkOrders, sortConfig]);
 
-  // Apply sorting to on hold/cancelled work orders
-  const sortedOnHoldCancelledWorkOrders = useMemo(() => {
-    return applySorting(onHoldCancelledWorkOrders);
-  }, [onHoldCancelledWorkOrders, sortConfig]);
+  // Apply sorting to cancelled work orders
+  const sortedCancelledWorkOrders = useMemo(() => {
+    return applySorting(cancelledWorkOrders);
+  }, [cancelledWorkOrders, sortConfig]);
 
   // Calculate status counts (memoized so they update when workOrders changes)
   const statusCounts = useMemo(() => {
-    // Exclude statuses that have their own separate sections
-    const excludedStatuses = ['Repair Complete - Invoiced', 'On Hold', 'Cancelled'];
-    const mainViewWorkOrders = workOrders.filter(wo => !excludedStatuses.includes(wo.status));
-    
     const counts = {};
     statusCategories.forEach(category => {
       if (category.key === 'All') {
-        counts[category.key] = mainViewWorkOrders.length;
+        counts[category.key] = workOrders.filter(wo => !excludedFromAll.includes(wo.status)).length;
       } else {
-        counts[category.key] = mainViewWorkOrders.filter(wo => 
+        counts[category.key] = workOrders.filter(wo =>
           category.statuses.includes(wo.status)
         ).length;
       }
     });
+    specialCategories.forEach(category => {
+      counts[category.key] = workOrders.filter(wo =>
+        category.statuses.includes(wo.status)
+      ).length;
+    });
     return counts;
   }, [workOrders]);
-  
-  // invoicedWorkOrders and onHoldCancelledWorkOrders are now separate state variables
-  // that are fetched on-demand when their sections are toggled
 
   return (
     <div className="container mx-auto">
@@ -673,6 +668,20 @@ const WorkOrderList = () => {
                   statusFilter === category.key
                     ? 'bg-primary-100 text-primary-800 border-2 border-primary-200'
                     : 'bg-gray-100 text-gray-700 border-2 border-transparent hover:bg-gray-200'
+                }`}
+              >
+                {category.label} ({statusCounts[category.key] || 0})
+              </button>
+            ))}
+            <div className="w-px bg-gray-300 mx-1 self-stretch" />
+            {specialCategories.map((category) => (
+              <button
+                key={category.key}
+                onClick={() => setStatusFilter(category.key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === category.key
+                    ? `${category.colorClass} border-2`
+                    : `${category.colorClass} border-2 border-transparent opacity-70 hover:opacity-100`
                 }`}
               >
                 {category.label} ({statusCounts[category.key] || 0})
@@ -1195,34 +1204,34 @@ const WorkOrderList = () => {
           )}
         </Card>
 
-      {/* Collapsible Table for On Hold & Cancelled Work Orders */}
+      {/* Collapsible Table for Cancelled Work Orders */}
       <Card className="mt-6">
-          <div 
+          <div
             className="flex justify-between items-center p-4 cursor-pointer hover:bg-gray-50"
-            onClick={toggleOnHoldCancelledTable}
+            onClick={toggleCancelledTable}
           >
             <h2 className="text-xl font-semibold text-gray-700">
-              On Hold & Cancelled Work Orders{showOnHoldCancelledTable ? ` (${onHoldCancelledWorkOrders.length})` : ''}
+              Cancelled Work Orders{showCancelledTable ? ` (${cancelledWorkOrders.length})` : ''}
             </h2>
             <span className="text-sm font-medium text-primary-600">
-              {showOnHoldCancelledTable ? 'Collapse' : 'Expand'}
-              {showOnHoldCancelledTable ? 
+              {showCancelledTable ? 'Collapse' : 'Expand'}
+              {showCancelledTable ?
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg> :
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 inline ml-1" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
               }
             </span>
           </div>
-          {showOnHoldCancelledTable && (
-            onHoldCancelledLoading ? (
+          {showCancelledTable && (
+            cancelledLoading ? (
               <div className="flex justify-center items-center h-48 p-4">
                 <div className="flex items-center">
                   <i className="fas fa-spinner fa-spin mr-2"></i>
-                  <p>Loading on hold & cancelled work orders...</p>
+                  <p>Loading cancelled work orders...</p>
                 </div>
               </div>
-            ) : onHoldCancelledWorkOrders.length === 0 ? (
+            ) : cancelledWorkOrders.length === 0 ? (
               <div className="text-center py-6 text-gray-500 p-4">
-                <p>No on hold or cancelled work orders found.</p>
+                <p>No cancelled work orders found.</p>
               </div>
             ) : (
               <div className="overflow-x-auto p-4">
@@ -1278,7 +1287,7 @@ const WorkOrderList = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {sortedOnHoldCancelledWorkOrders.map((workOrder) => (
+                    {sortedCancelledWorkOrders.map((workOrder) => (
                       <tr key={workOrder._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{formatDate(workOrder.date)}</div>

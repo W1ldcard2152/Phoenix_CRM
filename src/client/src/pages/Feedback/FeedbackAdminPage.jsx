@@ -6,11 +6,12 @@ import Button from '../../components/common/Button';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import { formatDate } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const FeedbackAdminPage = () => {
   const [feedbackEntries, setFeedbackEntries] = useState([]);
   const [archivedFeedback, setArchivedFeedback] = useState([]);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = usePersistedState('feedback:showArchived', false);
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

@@ -178,7 +178,7 @@ const AppointmentDetail = () => {
     <div className="container mx-auto">
       <div className="mb-6 flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">
-          Appointment: {appointment.serviceType}
+          Appointment: {appointment.serviceType}{appointment.details ? `: ${appointment.details}` : ''}
         </h1>
         <div className="flex space-x-2">
           <Button
@@ -203,6 +203,12 @@ const AppointmentDetail = () => {
               <p className="text-sm text-gray-500">Service Type</p>
               <p className="font-medium">{appointment.serviceType}</p>
             </div>
+            {appointment.details && (
+              <div>
+                <p className="text-sm text-gray-500">Details</p>
+                <p className="font-medium">{appointment.details}</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-gray-500">Date & Time</p>
               <p className="font-medium">{formatDateTimeToET(appointment.startTime)}</p>

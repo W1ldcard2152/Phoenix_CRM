@@ -6,6 +6,7 @@ import Input from '../../components/common/Input';
 import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import QuoteService from '../../services/quoteService';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import usePersistedState from '../../hooks/usePersistedState';
 
 const QuoteList = () => {
   const navigate = useNavigate();
@@ -14,10 +15,10 @@ const QuoteList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortConfig, setSortConfig] = useState([{ key: 'date', direction: 'desc' }]);
+  const [sortConfig, setSortConfig] = usePersistedState('quotes:sortConfig', [{ key: 'date', direction: 'desc' }]);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [converting, setConverting] = useState(null);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = usePersistedState('quotes:showArchived', false);
 
   const customerParam = searchParams.get('customer');
   const vehicleParam = searchParams.get('vehicle');
