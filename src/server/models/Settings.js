@@ -41,9 +41,19 @@ const SettingsSchema = new Schema(
         'Training', 'Meeting', 'Break', 'Admin', 'Logistics'
       ]
     },
+    inventoryCategories: {
+      type: [String],
+      default: [
+        'Fluids', 'PPE', 'Consumables', 'Filters', 'Hardware'
+      ]
+    },
     vendorHostnames: {
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
+    },
+    showServiceAdvisorOnInvoice: {
+      type: Boolean,
+      default: false
     }
   },
   {
@@ -77,6 +87,10 @@ SettingsSchema.statics.getSettings = async function () {
       settings.taskCategories = [
         'Training', 'Meeting', 'Break', 'Admin', 'Logistics'
       ];
+      needsSave = true;
+    }
+    if (!settings.inventoryCategories || settings.inventoryCategories.length === 0) {
+      settings.inventoryCategories = ['Fluids', 'PPE', 'Consumables', 'Filters', 'Hardware'];
       needsSave = true;
     }
     if (!settings.vendorHostnames || settings.vendorHostnames.length === 0) {

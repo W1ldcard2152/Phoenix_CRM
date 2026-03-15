@@ -5,6 +5,7 @@ import Input from '../../components/common/Input';
 import SelectInput from '../../components/common/SelectInput';
 import Modal from '../../components/common/Modal';
 import API from '../../services/api';
+import settingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
 
 const roleOptions = [
@@ -39,17 +40,24 @@ const AdminPage = () => {
   const [editRole, setEditRole] = useState('');
   const [editStatus, setEditStatus] = useState('');
   const [editTechnician, setEditTechnician] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+
+  // Settings state
+  const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [usersRes, techsRes] = await Promise.all([
+      const [usersRes, techsRes, settingsRes] = await Promise.all([
         API.get('/admin/users'),
-        API.get('/technicians')
+        API.get('/technicians'),
+        settingsService.getSettings()
       ]);
       setUsers(usersRes.data.data.users);
       setTechnicians(techsRes.data.data.technicians || techsRes.data.data || []);
+      setShowServiceAdvisorOnInvoice(settingsRes.data?.settings?.showServiceAdvisorOnInvoice || false);
       setError(null);
     } catch (err) {
       setError('Failed to load users. Make sure you have admin privileges.');
@@ -92,6 +100,7 @@ const AdminPage = () => {
     setEditRole(user.role);
     setEditStatus(user.status || 'active');
     setEditTechnician(user.technician?._id || user.technician || '');
+    setEditDisplayName(user.displayName || '');
   };
 
   const handleEditSave = async () => {
@@ -100,7 +109,8 @@ const AdminPage = () => {
       await API.patch(`/admin/users/${editUser._id}`, {
         role: editRole,
         status: editStatus,
-        technician: editTechnician || null
+        technician: editTechnician || null,
+        displayName: editDisplayName || null
       });
       setEditUser(null);
       fetchData();
@@ -130,6 +140,19 @@ const AdminPage = () => {
       fetchData();
     } catch (err) {
       console.error('Error reactivating user:', err);
+    }
+  };
+
+  const handleToggleServiceAdvisor = async () => {
+    setSettingsLoading(true);
+    try {
+      const newValue = !showServiceAdvisorOnInvoice;
+      await settingsService.updateSettings({ showServiceAdvisorOnInvoice: newValue });
+      setShowServiceAdvisorOnInvoice(newValue);
+    } catch (err) {
+      console.error('Error updating settings:', err);
+    } finally {
+      setSettingsLoading(false);
     }
   };
 
@@ -192,6 +215,27 @@ const AdminPage = () => {
           {error}
         </div>
       )}
+
+      {/* Invoice Settings */}
+      <Card title="Invoice Settings">
+        <div className="p-4">
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showServiceAdvisorOnInvoice}
+              onChange={handleToggleServiceAdvisor}
+              disabled={settingsLoading}
+              className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700">
+              Show Service Advisor name on invoices
+            </span>
+          </label>
+          <p className="mt-1 ml-7 text-xs text-gray-500">
+            When enabled, the service writer who created the work order will appear on printed/downloaded invoices (first name or display name only).
+          </p>
+        </div>
+      </Card>
 
       {/* Invite User Form */}
       <Card title="Invite New User">
@@ -263,7 +307,12 @@ const AdminPage = () => {
                         </div>
                       )}
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {user.name}
+                          {user.displayName && (
+                            <span className="ml-1 text-xs text-gray-400">({user.displayName})</span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-500">{user.email}</div>
                       </div>
                     </div>
@@ -339,6 +388,18 @@ const AdminPage = () => {
           <div className="space-y-4">
             <div className="text-sm text-gray-500 mb-4">
               {editUser.email}
+            </div>
+            <div>
+              <Input
+                label="Display Name"
+                name="editDisplayName"
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="Nickname for customer-facing docs"
+              />
+              <p className="-mt-3 mb-4 text-xs text-gray-500">
+                Used on invoices and printed documents instead of full name. Leave blank to use first name.
+              </p>
             </div>
             <SelectInput
               label="Role"

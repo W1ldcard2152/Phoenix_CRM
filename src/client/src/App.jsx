@@ -12,6 +12,7 @@ import Sidebar from './components/layout/Sidebar';
 
 // Pages
 import Dashboard from './pages/Dashboard/Dashboard';
+import TechnicianDashboard from './pages/Dashboard/TechnicianDashboard';
 import CustomerList from './pages/Customers/CustomerList';
 import CustomerDetail from './pages/Customers/CustomerDetail';
 import CustomerForm from './pages/Customers/CustomerForm';
@@ -42,11 +43,13 @@ import IntakePage from './pages/Intake/IntakePage';
 
 // Parts Pages
 import PartsList from './pages/Parts/PartsList';
-import PartsForm from './pages/Parts/PartsForm';
 
 // Schedule Block Pages
 import ScheduleBlockList from './pages/ScheduleBlocks/ScheduleBlockList';
 import ScheduleBlockForm from './pages/ScheduleBlocks/ScheduleBlockForm';
+
+// Inventory Pages
+import InventoryList from './pages/Inventory/InventoryList';
 
 // Technician Portal Pages
 import TechnicianPortal from './pages/TechnicianPortal/TechnicianPortal';
@@ -76,6 +79,12 @@ const RoleRoute = ({ children, roles }) => {
   return children;
 };
 
+// Dashboard that renders based on user role
+const RoleBasedDashboard = () => {
+  const { user } = useAuth();
+  return user?.role === 'technician' ? <TechnicianDashboard /> : <Dashboard />;
+};
+
 const App = () => {
   return (
     <AuthProvider>
@@ -96,7 +105,7 @@ const App = () => {
                   <Navbar />
                   <main className="flex-1 overflow-y-auto p-2 sm:p-4">
                     <Routes>
-                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/" element={<RoleBasedDashboard />} />
                       <Route path="/intake" element={<IntakePage />} />
                       
                       {/* Customer Routes (office staff) */}
@@ -150,10 +159,11 @@ const App = () => {
                       {/* Feedback Admin Route (admin only) */}
                       <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
 
-                      {/* Parts Routes (list open to all, create/edit admin+management) */}
+                      {/* Parts Routes */}
                       <Route path="/parts" element={<PartsList />} />
-                      <Route path="/parts/new" element={<RoleRoute roles={['admin', 'management']}><PartsForm /></RoleRoute>} />
-                      <Route path="/parts/:id/edit" element={<RoleRoute roles={['admin', 'management']}><PartsForm /></RoleRoute>} />
+
+                      {/* Inventory Route */}
+                      <Route path="/inventory" element={<InventoryList />} />
 
                       {/* Technician Portal Routes */}
                       <Route path="/technician-portal" element={<TechnicianPortal />} />

@@ -39,6 +39,16 @@ const SettingsService = {
   removeTaskCategory: async (category) => {
     const response = await API.post('/settings/task-categories/remove', { category });
     return response.data;
+  },
+
+  addInventoryCategory: async (category) => {
+    const response = await API.post('/settings/inventory-categories', { category });
+    return response.data;
+  },
+
+  removeInventoryCategory: async (category) => {
+    const response = await API.post('/settings/inventory-categories/remove', { category });
+    return response.data;
   }
 };
 

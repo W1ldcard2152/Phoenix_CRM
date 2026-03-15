@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Technician = require('../models/Technician');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
@@ -8,7 +9,7 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
   const users = await User.find({})
     .setOptions({ includeInactive: true })
     .select('+active')
-    .populate('technician', 'name email specialization isActive')
+    .populate('technician', 'name displayName email specialization isActive')
     .sort({ createdAt: -1 });
 
   res.status(200).json({
@@ -48,23 +49,30 @@ exports.preAuthorizeUser = catchAsync(async (req, res, next) => {
   });
 });
 
-// Update user (role, status, technician link)
+// Update user (role, status, technician link, displayName)
 exports.updateUser = catchAsync(async (req, res, next) => {
-  const { role, status, technician, active } = req.body;
+  const { role, status, technician, active, displayName } = req.body;
 
   const updateData = {};
   if (role) updateData.role = role;
   if (status) updateData.status = status;
   if (technician !== undefined) updateData.technician = technician || null;
   if (active !== undefined) updateData.active = active;
+  if (displayName !== undefined) updateData.displayName = displayName || null;
 
   const user = await User.findByIdAndUpdate(req.params.id, updateData, {
     new: true,
     runValidators: true
-  }).populate('technician', 'name email specialization isActive');
+  }).populate('technician', 'name displayName email specialization isActive');
 
   if (!user) {
     return next(new AppError('No user found with that ID', 404));
+  }
+
+  // Sync displayName to linked Technician record
+  if (displayName !== undefined && user.technician) {
+    const techId = user.technician._id || user.technician;
+    await Technician.findByIdAndUpdate(techId, { displayName: displayName || null });
   }
 
   res.status(200).json({

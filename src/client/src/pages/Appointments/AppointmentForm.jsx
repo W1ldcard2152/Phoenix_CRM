@@ -335,10 +335,12 @@ const AppointmentForm = () => {
         await AppointmentService.createAppointment(formattedValues);
       }
       
-      // If appointment was created from a work order, redirect back to work orders
-      // (Server-side appointmentController handles the status update to "Appointment Scheduled")
+      // Redirect back to the originating page
+      const fromParam = searchParams.get('from');
       const workOrderParam = searchParams.get('workOrder');
-      if (workOrderParam) {
+      if (fromParam) {
+        navigate(fromParam);
+      } else if (workOrderParam) {
         navigate('/work-orders');
       } else {
         navigate('/appointments');
@@ -552,7 +554,7 @@ const AppointmentForm = () => {
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
-                <Button type="button" variant="light" onClick={() => navigate(id ? `/appointments/${id}` : '/appointments')}>Cancel</Button>
+                <Button type="button" variant="light" onClick={() => navigate(searchParams.get('from') || (id ? `/appointments/${id}` : '/appointments'))}>Cancel</Button>
                 <Button type="submit" variant="primary" disabled={isSubmitting || !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime)}>{isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}</Button>
               </div>
             </Form>

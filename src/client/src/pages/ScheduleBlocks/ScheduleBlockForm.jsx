@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
@@ -41,6 +41,8 @@ const TIME_OPTIONS = generateTimeOptions();
 const ScheduleBlockForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('from') || '/appointments';
   const { user } = useAuth();
   const isEditing = Boolean(id);
   const canManageCategories = isAdminOrManagement(user);
@@ -287,7 +289,7 @@ const ScheduleBlockForm = () => {
         await ScheduleBlockService.create(payload);
       }
 
-      navigate('/appointments');
+      navigate(returnTo);
     } catch (err) {
       console.error('Error saving schedule block:', err);
       setError(err.response?.data?.message || 'Failed to save schedule block.');
@@ -650,7 +652,7 @@ const ScheduleBlockForm = () => {
             <Button
               type="button"
               variant="light"
-              onClick={() => navigate('/appointments')}
+              onClick={() => navigate(returnTo)}
             >
               Cancel
             </Button>

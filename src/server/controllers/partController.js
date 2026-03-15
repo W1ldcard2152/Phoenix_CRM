@@ -124,6 +124,7 @@ const createPart = async (req, res) => {
       warranty: req.body.warranty || '',
       notes: req.body.notes || '',
       url: req.body.url || '',
+      quantityOnHand: req.body.quantityOnHand !== undefined ? parseInt(req.body.quantityOnHand) || 0 : 0,
       isActive: req.body.isActive !== undefined ? req.body.isActive : true
     };
 
@@ -179,6 +180,7 @@ const updatePart = async (req, res) => {
       warranty: req.body.warranty || '',
       notes: req.body.notes || '',
       url: req.body.url || '',
+      quantityOnHand: req.body.quantityOnHand !== undefined ? parseInt(req.body.quantityOnHand) || 0 : undefined,
       isActive: req.body.isActive !== undefined ? req.body.isActive : true,
       lastUpdated: new Date()
     };

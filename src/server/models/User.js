@@ -10,6 +10,10 @@ const UserSchema = new Schema(
       required: [true, 'Please provide your name'],
       trim: true
     },
+    displayName: {
+      type: String,
+      trim: true
+    },
     email: {
       type: String,
       required: [true, 'Please provide your email'],

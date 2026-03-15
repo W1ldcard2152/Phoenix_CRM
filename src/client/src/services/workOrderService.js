@@ -199,6 +199,17 @@ const WorkOrderService = {
       console.error('Error fetching technician work orders:', error);
       throw error;
     }
+  },
+
+  // Get technician dashboard data (today's schedule, active job, stats)
+  getTechnicianDashboard: async () => {
+    try {
+      const response = await API.get('/workorders/technician-dashboard');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching technician dashboard:', error);
+      throw error;
+    }
   }
 };
 

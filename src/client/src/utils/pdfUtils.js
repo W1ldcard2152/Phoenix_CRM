@@ -119,16 +119,28 @@ export const printHtml = (htmlContent) => {
     </html>
   `);
   popupWin.document.close();
+
+  let printed = false;
+  const doPrint = () => {
+    if (printed) return;
+    printed = true;
+    popupWin.focus();
+    popupWin.print();
+  };
+
+  // Close popup after print completes or is cancelled
+  popupWin.addEventListener('afterprint', () => { popupWin.close(); });
+
   // Wait for images to load before triggering print
   const images = popupWin.document.images;
   if (images.length === 0) {
-    setTimeout(() => { popupWin.focus(); popupWin.print(); }, 250);
+    setTimeout(doPrint, 250);
   } else {
     let loaded = 0;
     const tryPrint = () => {
       loaded++;
       if (loaded >= images.length) {
-        setTimeout(() => { popupWin.focus(); popupWin.print(); }, 100);
+        setTimeout(doPrint, 100);
       }
     };
     for (const img of images) {
@@ -140,7 +152,7 @@ export const printHtml = (htmlContent) => {
       }
     }
     // Fallback in case image events never fire
-    setTimeout(() => { popupWin.focus(); popupWin.print(); }, 2000);
+    setTimeout(doPrint, 2000);
   }
 };
 
@@ -163,7 +175,9 @@ export const generateDocumentHtml = (type, data) => {
     customerFacingNotes = [],
     customerNotes,
     taxRate = 0,
-    terms
+    terms,
+    technicianName,
+    serviceAdvisorName
   } = data;
 
   const partsTotal = parts.reduce((sum, p) => {
@@ -219,6 +233,8 @@ export const generateDocumentHtml = (type, data) => {
             <h2 style="margin: 0 0 4px 0; font-size: 28px; font-weight: bold; color: #1f2937;">${typeLabels[type] || 'DOCUMENT'}</h2>
             <p style="margin: 0; font-size: 13px; white-space: nowrap;"><span style="font-weight: 600;">${numberLabels[type] || 'Number:'} </span>${documentNumber || 'N/A'}</p>
             <p style="margin: 0; font-size: 13px;"><span style="font-weight: 600;">Date: </span>${documentDate ? formatDate(documentDate) : 'N/A'}</p>
+            ${technicianName ? `<p style="margin: 0; font-size: 13px;"><span style="font-weight: 600;">Technician: </span>${technicianName}</p>` : ''}
+            ${serviceAdvisorName ? `<p style="margin: 0; font-size: 13px;"><span style="font-weight: 600;">Service Advisor: </span>${serviceAdvisorName}</p>` : ''}
           </td>
         </tr>
       </table>
@@ -346,11 +362,12 @@ export const generateDocumentHtml = (type, data) => {
               const qty = item.quantity || item.hours || 0;
               const rate = item.rate || item.unitPrice || 0;
               const itemTotal = qty * rate;
+              const isHourly = item.billingType !== 'fixed';
               return `
               <tr>
                 <td style="border: 1px solid #d1d5db;">${item.description || ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${qty} hrs</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(rate)}/hr</td>
+                <td style="border: 1px solid #d1d5db; text-align: right;">${qty}${isHourly ? ' hrs' : ''}</td>
+                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(rate)}${isHourly ? '/hr' : '/ea'}</td>
                 <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(itemTotal)}</td>
               </tr>
             `;}).join('')}
@@ -393,14 +410,16 @@ export const generateDocumentHtml = (type, data) => {
       <div style="margin-bottom: 24px; font-size: 14px;">
         <p style="font-weight: 600; font-size: 16px; margin: 0 0 8px 0; color: #111827;">Work Order Notes:</p>
         <div style="border: 1px solid #d1d5db; background-color: #f9fafb;">
-          ${customerFacingNotes.map((note, index) => `
+          ${customerFacingNotes.map((note, index) => {
+            const authorName = note.createdBy?.displayName || (note.createdBy?.name || note.createdByName || '').split(' ')[0];
+            return `
             <div style="padding: 12px;${index > 0 ? ' border-top: 1px solid #e5e7eb;' : ''}">
               <p style="margin: 0 0 4px 0; font-size: 12px; color: #6b7280;">
-                ${note.createdAt ? formatDate(note.createdAt) : ''}
+                ${authorName ? `${authorName} — ` : ''}${note.createdAt ? formatDate(note.createdAt) : ''}
               </p>
               <p style="margin: 0; white-space: pre-wrap; color: #374151;">${note.content || note}</p>
             </div>
-          `).join('')}
+          `;}).join('')}
         </div>
       </div>
       ` : ''}

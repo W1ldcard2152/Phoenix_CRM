@@ -19,6 +19,7 @@ const passport = require('./config/passport');
 
 const AppError = require('./utils/appError');
 const errorHandler = require('./middleware/errorHandler');
+const convertDates = require('./middleware/convertDates');
 
 // Import routes
 const oauthRoutes = require('./routes/oauthRoutes');
@@ -39,6 +40,7 @@ const customerInteractionRoutes = require('./routes/customerInteractionRoutes');
 const workOrderNotesRoutes = require('./routes/workOrderNotesRoutes'); // Import work order notes routes
 const settingsRoutes = require('./routes/settingsRoutes');
 const scheduleBlockRoutes = require('./routes/scheduleBlockRoutes');
+const inventoryRoutes = require('./routes/inventoryRoutes');
 
 // Initialize Express app
 const app = express();
@@ -126,6 +128,9 @@ app.use(cookieParser());
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
 
+// Convert local-timezone date strings in request bodies to UTC automatically
+app.use(convertDates);
+
 // Passport initialization (no sessions — using JWT)
 app.use(passport.initialize());
 
@@ -160,6 +165,7 @@ app.use('/api/interactions', customerInteractionRoutes); // Use customer interac
 app.use('/api/workorder-notes', workOrderNotesRoutes); // Use work order notes routes
 app.use('/api/settings', settingsRoutes);
 app.use('/api/schedule-blocks', scheduleBlockRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

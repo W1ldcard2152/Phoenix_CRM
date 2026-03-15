@@ -34,6 +34,9 @@ router.get('/active-by-statuses', workOrderController.getActiveWorkOrdersByStatu
 // Get work orders for Technician Portal (all authenticated)
 router.get('/technician-portal', workOrderController.getTechnicianWorkOrders);
 
+// Get technician dashboard data (all authenticated - handler validates technician link)
+router.get('/technician-dashboard', workOrderController.getTechnicianDashboard);
+
 // Get work orders by status (all authenticated)
 router.get('/status/:status', workOrderController.getWorkOrdersByStatus);
 

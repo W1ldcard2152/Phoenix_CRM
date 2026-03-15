@@ -56,6 +56,15 @@ src/
 - `restrictTo('admin', 'management')` for role-based access
 - Google OAuth via Passport.js
 
+### Timezone / Date Handling
+- All dates stored as UTC in MongoDB, converted at boundaries
+- `convertDates` middleware (`src/server/middleware/convertDates.js`) automatically converts `req.body` date strings to UTC before controllers run — **do not manually convert dates in controllers**
+- Naive datetime strings (e.g. `"2026-03-14T10:30:00"`, no Z/offset) on any field → converted to UTC Date
+- Named date-only fields (`effectiveFrom`, `oneTimeDate` → start-of-day; `effectiveUntil` → end-of-day) → converted to UTC Date
+- Frontend sends local-timezone strings; backend receives them already as UTC Date objects
+- For display: `moment.utc(date).tz(TIMEZONE)` (server: `src/server/config/timezone.js`, client: `src/client/src/utils/formatters.js`)
+- Date-only utilities available in `src/server/utils/dateUtils.js` (parseLocalDate, buildDateRangeQuery, etc.)
+
 ### Cost Calculations
 Use `src/server/utils/calculationHelpers.js` for all pricing:
 - Parts: price × quantity

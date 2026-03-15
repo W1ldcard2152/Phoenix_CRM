@@ -6,7 +6,7 @@ const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault, todayInTz, startOfTodayInTz } = require('../utils/dateUtils');
+const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault, todayInTz, startOfTodayInTz, getDayBoundaries } = require('../utils/dateUtils');
 const { applyPopulation } = require('../utils/populationHelpers');
 const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
 const { calculateWorkOrderTotal, getWorkOrderCostBreakdown } = require('../utils/calculationHelpers');
@@ -136,10 +136,11 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   const vehicle = await validateEntityExists(Vehicle, req.body.vehicle, 'Vehicle');
   const customer = await validateEntityExists(Customer, req.body.customer, 'Customer');
   validateVehicleOwnership(vehicle, customer);
-  
+
   // Handle services array if provided
   let workOrderData = { ...req.body };
-  
+  workOrderData.createdBy = req.user._id;
+
   if (!workOrderData.services || workOrderData.services.length === 0) {
     // If no services array but serviceRequested is provided, convert to services
     if (workOrderData.serviceRequested) {
@@ -1307,6 +1308,100 @@ exports.getTechnicianWorkOrders = catchAsync(async (req, res, next) => {
   res.status(200).json(responseData);
 });
 
+// Get technician dashboard data (work orders + today's schedule + stats)
+exports.getTechnicianDashboard = catchAsync(async (req, res, next) => {
+  const technicianId = req.user.technician;
+  if (!technicianId) {
+    return next(new AppError('No technician profile linked to this account', 400));
+  }
+
+  const cacheKey = `workorders:tech-dashboard:${technicianId}`;
+  const cached = cacheService.get(cacheKey);
+  if (cached) {
+    return res.status(200).json(cached);
+  }
+
+  const technicianStatuses = [
+    'Appointment Scheduled',
+    'Appointment Complete',
+    'Inspection In Progress',
+    'Inspection/Diag Complete',
+    'Repair In Progress',
+    'Repair Complete - Awaiting Payment'
+  ];
+
+  const workOrders = await applyPopulation(
+    WorkOrder.find({
+      assignedTechnician: technicianId,
+      status: { $in: technicianStatuses }
+    }).sort({ date: -1 }),
+    'workOrder',
+    'techDashboard'
+  );
+
+  // Extract today's appointments from populated work orders
+  const { startOfDay, endOfDay } = getDayBoundaries(new Date());
+  const todaysSchedule = [];
+
+  for (const wo of workOrders) {
+    const allAppointments = [
+      ...(wo.appointments || []),
+      ...(wo.appointmentId && wo.appointmentId.startTime ? [wo.appointmentId] : [])
+    ];
+    // Deduplicate by _id
+    const seen = new Set();
+    for (const appt of allAppointments) {
+      if (!appt || !appt.startTime || seen.has(String(appt._id))) continue;
+      seen.add(String(appt._id));
+      if (appt.startTime >= startOfDay && appt.startTime <= endOfDay &&
+          appt.status !== 'Cancelled' && appt.status !== 'No-Show') {
+        todaysSchedule.push({
+          appointmentId: appt._id,
+          workOrderId: wo._id,
+          startTime: appt.startTime,
+          endTime: appt.endTime,
+          status: appt.status,
+          serviceType: appt.serviceType,
+          vehicle: wo.vehicle,
+          customer: wo.customer,
+          workOrderStatus: wo.status,
+          priority: wo.priority,
+          services: wo.services
+        });
+      }
+    }
+  }
+
+  todaysSchedule.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+  const stats = {
+    total: workOrders.length,
+    inspecting: workOrders.filter(wo => wo.status === 'Inspection In Progress').length,
+    repairing: workOrders.filter(wo => wo.status === 'Repair In Progress').length,
+    todayCount: todaysSchedule.length,
+    awaitingAction: workOrders.filter(wo =>
+      ['Appointment Complete', 'Appointment Scheduled'].includes(wo.status)
+    ).length
+  };
+
+  const activeJob = workOrders.find(wo =>
+    wo.status === 'Inspection In Progress' || wo.status === 'Repair In Progress'
+  ) || null;
+
+  const responseData = {
+    status: 'success',
+    data: {
+      workOrders,
+      todaysSchedule,
+      stats,
+      activeJob: activeJob ? activeJob._id : null
+    }
+  };
+
+  cacheService.set(cacheKey, responseData, 120);
+  res.status(200).json(responseData);
+});
+
 // ==================== QUOTE ENDPOINTS ====================
 
 // Get all quotes
@@ -1349,6 +1444,7 @@ exports.createQuote = catchAsync(async (req, res, next) => {
   validateVehicleOwnership(vehicle, customer);
 
   let quoteData = { ...req.body };
+  quoteData.createdBy = req.user._id;
 
   // Handle services conversion
   if (!quoteData.services || quoteData.services.length === 0) {

@@ -78,15 +78,16 @@ exports.createScheduleBlock = catchAsync(async (req, res, next) => {
     if (!oneTimeStartTime || !oneTimeEndTime) {
       return next(new AppError('Start and end times are required for one-time blocks', 400));
     }
-    blockData.oneTimeDate = moment.tz(oneTimeDate, TIMEZONE).startOf('day').utc().toDate();
+    // oneTimeDate already converted to UTC start-of-day by convertDates middleware
+    blockData.oneTimeDate = oneTimeDate;
     blockData.oneTimeStartTime = oneTimeStartTime;
     blockData.oneTimeEndTime = oneTimeEndTime;
   } else {
-    // Recurring block fields
+    // Recurring block fields (effectiveFrom/effectiveUntil already converted by convertDates middleware)
     blockData.weeklySchedule = weeklySchedule;
-    blockData.effectiveFrom = moment.tz(effectiveFrom, TIMEZONE).startOf('day').utc().toDate();
+    blockData.effectiveFrom = effectiveFrom;
     if (effectiveUntil) {
-      blockData.effectiveUntil = moment.tz(effectiveUntil, TIMEZONE).endOf('day').utc().toDate();
+      blockData.effectiveUntil = effectiveUntil;
     }
   }
 
@@ -119,16 +120,7 @@ exports.updateScheduleBlock = catchAsync(async (req, res, next) => {
     }
   }
 
-  // Convert dates if provided
-  if (req.body.effectiveFrom) {
-    req.body.effectiveFrom = moment.tz(req.body.effectiveFrom, TIMEZONE).startOf('day').utc().toDate();
-  }
-  if (req.body.effectiveUntil) {
-    req.body.effectiveUntil = moment.tz(req.body.effectiveUntil, TIMEZONE).endOf('day').utc().toDate();
-  }
-  if (req.body.oneTimeDate) {
-    req.body.oneTimeDate = moment.tz(req.body.oneTimeDate, TIMEZONE).startOf('day').utc().toDate();
-  }
+  // Date fields (effectiveFrom, effectiveUntil, oneTimeDate) already converted by convertDates middleware
 
   const updated = await ScheduleBlock.findByIdAndUpdate(req.params.id, req.body, {
     new: true,

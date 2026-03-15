@@ -6,18 +6,20 @@ const populationConfigs = {
     standard: [
       { path: 'customer', select: 'name phone email' },
       { path: 'vehicle', select: 'year make model vin licensePlate' },
-      { path: 'assignedTechnician', select: 'name specialization' }
+      { path: 'assignedTechnician', select: 'name displayName specialization' },
+      { path: 'createdBy', select: 'name displayName' }
     ],
     detailed: [
       { path: 'customer', select: 'name phone email' },
       { path: 'vehicle', select: 'year make model vin licensePlate' },
-      { path: 'assignedTechnician', select: '_id name specialization' },
+      { path: 'assignedTechnician', select: '_id name displayName specialization' },
+      { path: 'createdBy', select: 'name displayName' },
       {
         path: 'appointmentId',
         select: '_id technician startTime endTime status serviceType',
         populate: {
           path: 'technician',
-          select: '_id name specialization'
+          select: '_id name displayName specialization'
         }
       },
       {
@@ -25,31 +27,47 @@ const populationConfigs = {
         select: '_id technician startTime endTime status serviceType',
         populate: {
           path: 'technician',
-          select: '_id name specialization'
+          select: '_id name displayName specialization'
         }
       }
     ],
     invoice: [
       { path: 'customer', select: 'name email phone address' },
       { path: 'vehicle', select: 'year make model vin' },
-      { path: 'assignedTechnician', select: 'name specialization' }
+      { path: 'assignedTechnician', select: 'name displayName specialization' },
+      { path: 'createdBy', select: 'name displayName' }
+    ],
+    techDashboard: [
+      { path: 'customer', select: 'name phone' },
+      { path: 'vehicle', select: 'year make model' },
+      { path: 'assignedTechnician', select: 'name displayName specialization' },
+      {
+        path: 'appointments',
+        select: 'startTime endTime status serviceType',
+        options: { sort: { startTime: -1 } }
+      },
+      {
+        path: 'appointmentId',
+        select: 'startTime endTime status serviceType'
+      }
     ]
   },
   appointment: {
     standard: [
       { path: 'customer', select: 'name phone email' },
       { path: 'vehicle', select: 'year make model' },
-      { path: 'technician', select: 'name specialization' },
+      { path: 'technician', select: 'name displayName specialization' },
       { path: 'workOrder', select: 'status' }
     ],
     detailed: [
       { path: 'customer', select: 'name phone email' },
       { path: 'vehicle', select: 'year make model vin' },
-      { path: 'technician', select: 'name specialization' },
+      { path: 'technician', select: 'name displayName specialization' },
       {
         path: 'workOrder',
         populate: [
-          { path: 'assignedTechnician', select: 'name specialization' },
+          { path: 'assignedTechnician', select: 'name displayName specialization' },
+          { path: 'createdBy', select: 'name displayName' },
           { path: 'customer', select: 'name' },
           { path: 'vehicle', select: 'year make model' }
         ]
@@ -58,21 +76,27 @@ const populationConfigs = {
     withCommunication: [
       { path: 'customer', select: 'name phone email communicationPreference' },
       { path: 'vehicle', select: 'year make model' },
-      { path: 'technician', select: 'name specialization' }
+      { path: 'technician', select: 'name displayName specialization' }
     ]
   },
   invoice: {
     standard: [
       { path: 'customer', select: 'name phone email' },
       { path: 'vehicle', select: 'year make model vin' },
-      { path: 'workOrder' }
+      {
+        path: 'workOrder',
+        populate: [
+          { path: 'assignedTechnician', select: 'name displayName' },
+          { path: 'createdBy', select: 'name displayName' }
+        ]
+      }
     ]
   },
   interaction: {
     standard: [
       { path: 'customer', select: 'name phone email' },
-      { path: 'createdBy', select: 'name' },
-      { path: 'completedBy', select: 'name' }
+      { path: 'createdBy', select: 'name displayName' },
+      { path: 'completedBy', select: 'name displayName' }
     ]
   },
   vehicle: {
@@ -82,7 +106,7 @@ const populationConfigs = {
   },
   workOrderNote: {
     standard: [
-      { path: 'createdBy', select: 'name email' }
+      { path: 'createdBy', select: 'name displayName email' }
     ]
   }
 };

@@ -8,7 +8,7 @@ import DocumentService from '../../services/documentService';
 import WorkOrderService from '../../services/workOrderService';
 import workOrderNotesService from '../../services/workOrderNotesService';
 import MediaService from '../../services/mediaService';
-import PartsSelector from '../../components/parts/PartsSelector';
+import partService from '../../services/partService';
 import SplitWorkOrderModal from '../../components/workorder/SplitWorkOrderModal';
 import OnHoldReasonModal from '../../components/workorder/OnHoldReasonModal';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
@@ -21,6 +21,7 @@ import invoiceService from '../../services/invoiceService';
 import SettingsService from '../../services/settingsService';
 import { formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
 
@@ -54,7 +55,6 @@ const DocumentDetail = () => {
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [partModalOpen, setPartModalOpen] = useState(false);
-  const [partsSelectorOpen, setPartsSelectorOpen] = useState(false);
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -132,6 +132,13 @@ const DocumentDetail = () => {
   const [managingCategories, setManagingCategories] = useState(false);
   const [vendorHostnameMap, setVendorHostnameMap] = useState(defaultVendorHostnames);
   const [detectedHostname, setDetectedHostname] = useState(null); // { hostname, suggestedName } when URL has unrecognized domain
+
+  // Unified part modal: search-first flow
+  const [partModalStep, setPartModalStep] = useState('search'); // 'search' | 'form'
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogResults, setCatalogResults] = useState([]);
+  const [catalogSearchLoading, setCatalogSearchLoading] = useState(false);
+  const [saveToCatalog, setSaveToCatalog] = useState(true);
 
   const [newLabor, setNewLabor] = useState({
     description: '', billingType: 'hourly', quantity: 1, rate: 75
@@ -751,13 +758,62 @@ const DocumentDetail = () => {
     setEditingPart(null);
     setOverridePrice(false);
     setNewPart({ ...defaultPart });
+    setPartModalStep('search');
+    setCatalogSearch('');
+    setCatalogResults([]);
+    setSaveToCatalog(true);
     setPartModalOpen(true);
   };
 
-  const handlePartFromInventory = (selectedPart) => {
-    setNewPart(selectedPart);
-    setPartModalOpen(true);
+  const handlePartFromCatalog = (part) => {
+    const multiplier = 1 + markupPercentage / 100;
+    setNewPart({
+      ...defaultPart,
+      name: part.name || '',
+      partNumber: part.partNumber || '',
+      price: part.price || 0,
+      cost: part.cost || (part.price ? parseFloat((part.price / multiplier).toFixed(2)) : 0),
+      vendor: part.vendor || '',
+      category: part.category || '',
+      warranty: part.warranty || '',
+      notes: part.notes || '',
+      url: part.url || '',
+      quantity: 1
+    });
+    const vendor = part.vendor || '';
+    setIsOtherVendor(vendor && !vendorList.includes(vendor));
+    const cat = part.category || '';
+    setIsOtherCategory(cat && !categoryList.includes(cat));
+    setSaveToCatalog(false); // Already in catalog
+    setPartModalStep('form');
   };
+
+  // Catalog search with debounce
+  useEffect(() => {
+    if (partModalStep !== 'search' || !catalogSearch.trim()) {
+      setCatalogResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setCatalogSearchLoading(true);
+        const response = await partService.getAllParts({
+          search: catalogSearch.trim(),
+          isActive: 'true',
+          limit: 20,
+          sortBy: 'name',
+          sortOrder: 'asc'
+        });
+        setCatalogResults(response.data.data.parts || []);
+      } catch (err) {
+        console.error('Catalog search error:', err);
+        setCatalogResults([]);
+      } finally {
+        setCatalogSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [catalogSearch, partModalStep]);
 
   const openEditPartModal = (part, index) => {
     setEditingPart({ ...part, index });
@@ -784,11 +840,33 @@ const DocumentDetail = () => {
     setManagingVendors(false);
     setManagingCategories(false);
     setDetectedHostname(null);
+    setPartModalStep('form'); // Skip search for edits
     setPartModalOpen(true);
   };
 
   const handleAddPart = async () => {
     try {
+      // Save to Parts Catalog if requested and part has enough info
+      if (saveToCatalog && newPart.name && newPart.partNumber) {
+        try {
+          await partService.createPart({
+            name: newPart.name,
+            partNumber: newPart.partNumber,
+            price: newPart.price || 0,
+            cost: newPart.cost || 0,
+            vendor: newPart.vendor || 'Unknown',
+            category: newPart.category || 'Other',
+            brand: newPart.vendor || 'Unknown', // Use vendor as brand fallback
+            warranty: newPart.warranty || '',
+            notes: newPart.notes || '',
+            url: newPart.url || ''
+          });
+        } catch (catalogErr) {
+          // Don't block WO part addition if catalog save fails (e.g. duplicate partNumber)
+          console.warn('Could not save to parts catalog:', catalogErr.response?.data?.message || catalogErr.message);
+        }
+      }
+
       const response = await DocumentService.addPart(id, newPart);
       let updatedWorkOrder = response.data.workOrder;
       updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
@@ -1052,7 +1130,9 @@ const DocumentDetail = () => {
     diagnosticNotes: workOrder.diagnosticNotes,
     parts: applyPartsSorting(workOrder.parts || []),
     labor: workOrder.labor || [],
-    customerFacingNotes: notes.filter(n => n.isCustomerFacing)
+    customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    technicianName: getCustomerFacingName(workOrder.assignedTechnician),
+    serviceAdvisorName: getCustomerFacingName(workOrder.createdBy)
   });
 
   const handlePrint = () => {
@@ -1714,11 +1794,8 @@ const DocumentDetail = () => {
                   <Button onClick={() => setReceiptModalOpen(true)} variant="success" size="sm">
                     <i className="fas fa-file-import mr-1"></i>Import Parts
                   </Button>
-                  <Button onClick={() => setPartsSelectorOpen(true)} variant="primary" size="sm">
-                    Select from Inventory
-                  </Button>
-                  <Button onClick={openAddPartModal} variant="outline" size="sm">
-                    Add Custom Part
+                  <Button onClick={openAddPartModal} variant="primary" size="sm">
+                    <i className="fas fa-plus mr-1"></i>Add Part
                   </Button>
                 </>
               )}
@@ -1943,7 +2020,7 @@ const DocumentDetail = () => {
                       <tr key={index}>
                         <td className="px-4 py-2"><div className="font-medium text-gray-900">{labor.description}</div></td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{qty}{isHourly ? ' hrs' : ''}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(labor.rate)}{isHourly ? '/hr' : ''}</td>
+                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(labor.rate)}{isHourly ? '/hr' : '/ea'}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(qty * labor.rate)}</td>
                         <td className="px-4 py-2 whitespace-nowrap text-right">
                           <div className="flex justify-end space-x-2">
@@ -2012,16 +2089,116 @@ const DocumentDetail = () => {
         </div>
       )}
 
-      {/* Part Modal (Add/Edit) */}
+      {/* Part Modal (Add/Edit) - Unified with catalog search */}
       {partModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">{editingPart ? 'Edit Part' : 'Add Part'}</h3>
-            <div className="space-y-4">
+
+            {/* Step 1: Search Parts Catalog (only for new parts, not edits) */}
+            {!editingPart && partModalStep === 'search' ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-gray-900">Add Part</h3>
+                  <button onClick={() => { setPartModalOpen(false); setDetectedHostname(null); }}
+                    className="text-gray-400 hover:text-gray-600">
+                    <i className="fas fa-times"></i>
+                  </button>
+                </div>
+
+                {/* Search bar */}
+                <div className="relative mb-4">
+                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input
+                    type="text"
+                    placeholder="Search parts catalog by name, part number, brand..."
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Search results */}
+                <div className="mb-4 max-h-[45vh] overflow-y-auto">
+                  {catalogSearchLoading ? (
+                    <div className="text-center py-6">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-500">Searching catalog...</p>
+                    </div>
+                  ) : catalogSearch.trim() && catalogResults.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 mb-2">{catalogResults.length} result{catalogResults.length !== 1 ? 's' : ''} found</p>
+                      {catalogResults.map((part) => (
+                        <div
+                          key={part._id}
+                          onClick={() => handlePartFromCatalog(part)}
+                          className="border border-gray-200 rounded-lg p-3 hover:border-primary-400 hover:bg-primary-50 cursor-pointer transition-all group"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium text-sm text-gray-900 group-hover:text-primary-700 truncate">{part.name}</span>
+                                {part.category && (
+                                  <span className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-600 flex-shrink-0">{part.category}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-gray-500">
+                                {part.partNumber && <span>#{part.partNumber}</span>}
+                                {part.vendor && <span>{part.vendor}</span>}
+                                {part.brand && <span>{part.brand}</span>}
+                                <span className="font-medium text-green-600">{formatCurrency(part.price)}</span>
+                              </div>
+                            </div>
+                            <i className="fas fa-plus text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2 mt-1"></i>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : catalogSearch.trim() && catalogResults.length === 0 ? (
+                    <div className="text-center py-6">
+                      <i className="fas fa-search text-gray-300 text-2xl mb-2"></i>
+                      <p className="text-sm text-gray-500">No parts found for "{catalogSearch}"</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <i className="fas fa-book text-gray-300 text-2xl mb-2"></i>
+                      <p className="text-sm text-gray-500">Search your parts catalog above</p>
+                      <p className="text-xs text-gray-400 mt-1">Or enter a new part manually below</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer: skip to manual entry */}
+                <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
+                  <Button variant="light" onClick={() => { setPartModalOpen(false); setDetectedHostname(null); }}>Cancel</Button>
+                  <Button variant="outline" onClick={() => { setPartModalStep('form'); setSaveToCatalog(true); }}>
+                    <i className="fas fa-edit mr-1"></i>Enter Part Manually
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Step 2: Part Form (also used for edits) */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    {!editingPart && (
+                      <button onClick={() => setPartModalStep('search')} className="text-gray-400 hover:text-gray-600 mr-1" title="Back to search">
+                        <i className="fas fa-arrow-left"></i>
+                      </button>
+                    )}
+                    <h3 className="text-lg font-bold text-gray-900">{editingPart ? 'Edit Part' : 'Add Part'}</h3>
+                  </div>
+                  <button onClick={() => { setPartModalOpen(false); setEditingPart(null); setDetectedHostname(null); }}
+                    className="text-gray-400 hover:text-gray-600">
+                    <i className="fas fa-times"></i>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Part Name</label>
                 <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newPart.name} onChange={(e) => setNewPart({ ...newPart, name: e.target.value })} required />
+                  value={newPart.name} onChange={(e) => setNewPart({ ...newPart, name: e.target.value })} required autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -2285,6 +2462,20 @@ const DocumentDetail = () => {
                   </div>
                 </div>
               )}
+
+              {/* Save to Parts Catalog option (only for new parts, not edits) */}
+              {!editingPart && saveToCatalog !== false && (
+                <div className="border-t border-gray-200 pt-3 mt-3">
+                  <label className="flex items-start cursor-pointer">
+                    <input type="checkbox" className="h-4 w-4 mt-0.5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      checked={saveToCatalog} onChange={(e) => setSaveToCatalog(e.target.checked)} />
+                    <div className="ml-2">
+                      <span className="text-sm text-gray-700">Save to Parts Catalog</span>
+                      <p className="text-xs text-gray-400">Makes this part searchable for future work orders</p>
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
               <Button variant="light" onClick={() => { setPartModalOpen(false); setEditingPart(null); setDetectedHostname(null); }}>Cancel</Button>
@@ -2292,6 +2483,8 @@ const DocumentDetail = () => {
                 {editingPart ? 'Update Part' : 'Add Part'}
               </Button>
             </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2369,10 +2562,6 @@ const DocumentDetail = () => {
         </div>
       )}
 
-      {/* Parts Selector Modal */}
-      {partsSelectorOpen && (
-        <PartsSelector onPartSelect={handlePartFromInventory} onClose={() => setPartsSelectorOpen(false)} />
-      )}
 
       {/* Bulk Order Number Modal (WO only) */}
       {!isQuote && bulkOrderModalOpen && (

@@ -18,6 +18,7 @@ import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
 // technicianService import removed as it's no longer needed for a dropdown
 
 const WorkOrderDetail = () => {
@@ -895,7 +896,9 @@ const WorkOrderDetail = () => {
     diagnosticNotes: workOrder.diagnosticNotes,
     parts: workOrder.parts || [],
     labor: workOrder.labor || [],
-    customerFacingNotes: notes.filter(n => n.isCustomerFacing)
+    customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    technicianName: getCustomerFacingName(workOrder.assignedTechnician),
+    serviceAdvisorName: getCustomerFacingName(workOrder.createdBy)
   });
 
   // Print handler
@@ -1888,7 +1891,7 @@ const WorkOrderDetail = () => {
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : ''}
+                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : '/ea'}
                           </div>
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap">

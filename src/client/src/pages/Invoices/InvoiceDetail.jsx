@@ -7,6 +7,8 @@ import Button from '../../components/common/Button';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
+import settingsService from '../../services/settingsService';
 
 const InvoiceDetail = () => {
   const { id } = useParams();
@@ -15,6 +17,7 @@ const InvoiceDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
   const printableRef = useRef(); // Keep for InvoiceDisplay component
 
   // Business settings from centralized config (for InvoiceDisplay component)
@@ -32,7 +35,11 @@ const InvoiceDetail = () => {
     const fetchInvoice = async () => {
       try {
         setLoading(true);
-        const response = await invoiceService.getInvoice(id);
+        const [response, appSettings] = await Promise.all([
+          invoiceService.getInvoice(id),
+          settingsService.getSettings()
+        ]);
+        setShowServiceAdvisorOnInvoice(appSettings.data?.settings?.showServiceAdvisorOnInvoice || false);
         if (response && response.data && response.data.invoice) {
           const invoiceData = response.data.invoice;
           setInvoice(invoiceData);
@@ -83,7 +90,8 @@ const InvoiceDetail = () => {
       labor = items.filter(item => item.type === 'Labor').map(item => ({
         description: item.description,
         hours: item.quantity,
-        rate: item.unitPrice
+        rate: item.unitPrice,
+        billingType: item.billingType || 'hourly'
       }));
     } else {
       parts = invoice?.parts || [];
@@ -104,7 +112,9 @@ const InvoiceDetail = () => {
       customerFacingNotes,
       customerNotes: invoice?.notes,
       taxRate: invoice?.taxRate || 0,
-      terms: invoice?.terms
+      terms: invoice?.terms,
+      technicianName: getCustomerFacingName(invoice?.workOrder?.assignedTechnician),
+      serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(invoice?.workOrder?.createdBy) : undefined
     };
   };
 

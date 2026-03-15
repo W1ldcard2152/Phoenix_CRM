@@ -748,7 +748,7 @@ const TechnicianWorkOrderDetail = () => {
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : ''}
+                            {formatCurrency(labor.rate)}{isHourly ? '/hr' : '/ea'}
                           </div>
                         </td>
                         <td className="px-4 py-2 whitespace-nowrap">

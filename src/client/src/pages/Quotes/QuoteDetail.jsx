@@ -12,6 +12,7 @@ import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
 
 const QuoteDetail = () => {
   const { id } = useParams();
@@ -344,7 +345,9 @@ const QuoteDetail = () => {
     serviceRequested: quote.serviceRequested,
     parts: quote.parts || [],
     labor: quote.labor || [],
-    customerFacingNotes: notes.filter(n => n.isCustomerFacing)
+    customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    technicianName: getCustomerFacingName(quote.assignedTechnician),
+    serviceAdvisorName: getCustomerFacingName(quote.createdBy)
   });
 
   // Print handler
@@ -932,7 +935,7 @@ const QuoteDetail = () => {
                       <>
                         <td className="px-4 py-2 text-sm font-medium text-gray-900">{labor.description}</td>
                         <td className="px-4 py-2 text-sm text-right">{labor.quantity || labor.hours}{labor.billingType !== 'fixed' ? ' hrs' : ''}</td>
-                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(labor.rate)}{labor.billingType !== 'fixed' ? '/hr' : ''}</td>
+                        <td className="px-4 py-2 text-sm text-right">{formatCurrency(labor.rate)}{labor.billingType !== 'fixed' ? '/hr' : '/ea'}</td>
                         <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency((labor.quantity || labor.hours) * labor.rate)}</td>
                         <td className="px-4 py-2 text-right">
                           <button

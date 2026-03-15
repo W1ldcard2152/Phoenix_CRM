@@ -92,14 +92,11 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     validateVehicleOwnership(vehicle, customer);
   }
   
-  // Check for scheduling conflicts
-  const newStartTime = moment.tz(req.body.startTime, TIMEZONE).utc().toDate();
-  const newEndTime = moment.tz(req.body.endTime, TIMEZONE).utc().toDate();
-
+  // Check for scheduling conflicts (startTime/endTime already converted to UTC by convertDates middleware)
   if (req.body.technician) {
     const conflicts = await Appointment.checkConflicts(
-      newStartTime,
-      newEndTime,
+      req.body.startTime,
+      req.body.endTime,
       req.body.technician
     );
     // if (conflicts.length > 0) {
@@ -111,12 +108,8 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
     // For now, backend will allow scheduling despite conflicts.
     // Optionally, we could add conflict info to the response here.
   }
-  
-  const appointmentData = { 
-    ...req.body,
-    startTime: newStartTime,
-    endTime: newEndTime
-  };
+
+  const appointmentData = { ...req.body };
 
   // If vehicle is null or empty string, ensure it's not passed to Mongoose as an empty string
   if (!req.body.vehicle || req.body.vehicle === '') {
@@ -167,8 +160,8 @@ exports.createAppointment = catchAsync(async (req, res, next) => {
         workOrderToUpdate.assignedTechnician = newAppointment.technician;
         woNeedsSave = true;
       }
-      // Always set WO to 'Appointment Scheduled' when an appointment is created for it
-      if (workOrderToUpdate.status !== 'Appointment Scheduled') {
+      // Set WO to 'Appointment Scheduled' unless it's already at a more advanced status
+      if (workOrderToUpdate.status !== 'Appointment Scheduled' && workOrderToUpdate.status !== 'Repair In Progress') {
         workOrderToUpdate.status = 'Appointment Scheduled';
         woNeedsSave = true;
       }
@@ -242,27 +235,22 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
   }
   
   // Check for scheduling conflicts if time or technician is changing
-  if ((req.body.startTime || req.body.endTime || req.body.technician) && 
-      appointment.status !== 'Cancelled' && 
+  // (startTime/endTime already converted to UTC by convertDates middleware)
+  if ((req.body.startTime || req.body.endTime || req.body.technician) &&
+      appointment.status !== 'Cancelled' &&
       appointment.status !== 'Completed') {
-    
-    const startTime = req.body.startTime
-      ? moment.tz(req.body.startTime, TIMEZONE).utc().toDate()
-      : appointment.startTime;
-      
-    const endTime = req.body.endTime
-      ? moment.tz(req.body.endTime, TIMEZONE).utc().toDate()
-      : appointment.endTime;
-      
+
+    const startTime = req.body.startTime || appointment.startTime;
+    const endTime = req.body.endTime || appointment.endTime;
     const technician = req.body.technician || appointment.technician;
-    
+
     const conflicts = await Appointment.checkConflicts(
       startTime,
       endTime,
       technician,
       req.params.id // Exclude this appointment from conflict check
     );
-    
+
     // if (conflicts.length > 0) {
     //   return next(
     //     new AppError('There is a scheduling conflict with another appointment', 400)
@@ -301,8 +289,8 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
     appointment.workOrder
   ) {
     const workOrder = await WorkOrder.findById(appointment.workOrder);
-    // Always set WO to 'Appointment Scheduled' when appointment is scheduled/confirmed
-    if (workOrder && workOrder.status !== 'Appointment Scheduled') {
+    // Set WO to 'Appointment Scheduled' unless it's already at a more advanced status
+    if (workOrder && workOrder.status !== 'Appointment Scheduled' && workOrder.status !== 'Repair In Progress') {
       await WorkOrder.findByIdAndUpdate(
         appointment.workOrder,
         { status: 'Appointment Scheduled' },
@@ -314,9 +302,8 @@ exports.updateAppointment = catchAsync(async (req, res, next) => {
   // If a completed/no-show appointment is rescheduled to a future time, reset statuses
   const completedStatuses = ['Completed', 'No-Show'];
   if (completedStatuses.includes(appointment.status) && req.body.startTime) {
-    const newStartTime = new Date(req.body.startTime);
     const now = new Date();
-    if (newStartTime > now) {
+    if (req.body.startTime > now) {
       // Reset appointment status to Scheduled (override whatever the form sent)
       req.body.status = 'Scheduled';
       // Reset work order status to Appointment Scheduled
@@ -579,9 +566,10 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
     );
   }
   
-  const start = moment.tz(startTime, TIMEZONE).utc().toDate();
-  const end = moment.tz(endTime, TIMEZONE).utc().toDate();
-  
+  // startTime/endTime already converted to UTC by convertDates middleware
+  const start = startTime;
+  const end = endTime;
+
   if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(
       new AppError('Please provide valid dates in ISO format', 400)

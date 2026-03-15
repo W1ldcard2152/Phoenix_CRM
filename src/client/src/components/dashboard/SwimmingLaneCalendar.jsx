@@ -148,6 +148,14 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
           endTime: newEndLocal
         });
       }
+
+      // If dragged to a weekend while in 5-day mode, expand to 7-day
+      if (!showWeekends && viewType === 'weekly') {
+        const newDay = newStart.tz(TIMEZONE).day();
+        if (newDay === 0 || newDay === 6) {
+          setShowWeekends(true);
+        }
+      }
     } catch (err) {
       console.error('Failed to reschedule:', err);
       setAppointments(previousAppointments);

@@ -147,7 +147,7 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
                   <tr key={laborItem._id || `labor-${index}`}>
                     <td className="border border-gray-300 p-2">{laborItem.description}</td>
                     <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : '/ea'}</td>
                     <td className="border border-gray-300 p-2 text-right">{formatCurrency(qty * (parseFloat(laborItem.rate) || 0))}</td>
                   </tr>
                 );

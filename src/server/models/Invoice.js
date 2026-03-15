@@ -54,6 +54,11 @@ const InvoiceItemSchema = new Schema({
     required: true,
     min: 0
   },
+  billingType: {
+    type: String,
+    enum: ['hourly', 'fixed'],
+    default: 'hourly'
+  },
   taxable: {
     type: Boolean,
     default: true

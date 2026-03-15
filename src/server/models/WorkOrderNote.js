@@ -54,12 +54,17 @@ WorkOrderNoteSchema.virtual('formattedCreatedAt').get(function() {
 // Ensure virtuals are included when converting to JSON
 WorkOrderNoteSchema.set('toJSON', { virtuals: true });
 
-// Pre-save hook to keep isCustomerFacing in sync with noteType for backward compatibility
+// Pre-save hook to keep isCustomerFacing and noteType in sync bidirectionally
 WorkOrderNoteSchema.pre('save', function(next) {
-  if (this.noteType === 'customer-facing') {
-    this.isCustomerFacing = true;
-  } else {
-    this.isCustomerFacing = false;
+  const noteTypeModified = this.isModified('noteType');
+  const isCustomerFacingModified = this.isModified('isCustomerFacing');
+
+  if (noteTypeModified) {
+    // noteType was explicitly set — sync isCustomerFacing from it
+    this.isCustomerFacing = this.noteType === 'customer-facing';
+  } else if (isCustomerFacingModified) {
+    // isCustomerFacing was explicitly set — sync noteType from it
+    this.noteType = this.isCustomerFacing ? 'customer-facing' : 'internal';
   }
   next();
 });

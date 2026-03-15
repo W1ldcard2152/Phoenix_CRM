@@ -88,6 +88,11 @@ const PartSchema = new Schema({
       message: 'Please enter a valid URL'
     }
   },
+  quantityOnHand: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   isActive: {
     type: Boolean,
     default: true

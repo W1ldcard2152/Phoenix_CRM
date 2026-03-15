@@ -70,7 +70,8 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       description: item.description,
       hours: item.quantity,
       rate: item.unitPrice,
-      total: item.total
+      total: item.total,
+      billingType: item.billingType || 'hourly'
     }));
   } else {
     // Legacy structure: use existing parts and labor arrays
@@ -220,7 +221,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
                   <tr key={laborItem._id || `labor-${index}`}>
                     <td className="border border-gray-300 p-2">{laborItem.description}</td>
                     <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : ''}</td>
+                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : '/ea'}</td>
                     <td className="border border-gray-300 p-2 text-right">{formatCurrency(total)}</td>
                   </tr>
                 );

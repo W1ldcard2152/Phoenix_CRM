@@ -20,18 +20,51 @@ const PartsList = () => {
   const [brandFilter, setBrandFilter] = usePersistedState('parts:brandFilter', '');
   const [statusFilter, setStatusFilter] = usePersistedState('parts:statusFilter', 'active');
   const [isSearching, setIsSearching] = useState(false);
-  
+
   // Filter options
   const [categories, setCategories] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [brands, setBrands] = useState([]);
-  
+
   const [searchParams] = useSearchParams();
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
     totalParts: 0
   });
+
+  // Modal state
+  const [showPartModal, setShowPartModal] = useState(false);
+  const [editingPart, setEditingPart] = useState(null);
+  const [formSaving, setFormSaving] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const defaultFormData = {
+    name: '', partNumber: '', category: '', brand: '', vendor: '',
+    cost: '', price: '', warranty: '', url: '', notes: '', quantityOnHand: 0
+  };
+  const [formData, setFormData] = useState({ ...defaultFormData });
+
+  const categoryOptions = [
+    { value: '', label: 'Select Category' },
+    { value: 'Engine', label: 'Engine' },
+    { value: 'Transmission', label: 'Transmission' },
+    { value: 'Brakes', label: 'Brakes' },
+    { value: 'Suspension', label: 'Suspension' },
+    { value: 'Electrical', label: 'Electrical' },
+    { value: 'Exhaust', label: 'Exhaust' },
+    { value: 'Cooling', label: 'Cooling' },
+    { value: 'Fuel System', label: 'Fuel System' },
+    { value: 'Air & Filters', label: 'Air & Filters' },
+    { value: 'Fluids & Chemicals', label: 'Fluids & Chemicals' },
+    { value: 'Belts & Hoses', label: 'Belts & Hoses' },
+    { value: 'Ignition', label: 'Ignition' },
+    { value: 'Body Parts', label: 'Body Parts' },
+    { value: 'Interior', label: 'Interior' },
+    { value: 'Tires & Wheels', label: 'Tires & Wheels' },
+    { value: 'Tools & Equipment', label: 'Tools & Equipment' },
+    { value: 'Other', label: 'Other' }
+  ];
 
   // Get filter parameters from URL
   const categoryParam = searchParams.get('category');
@@ -54,7 +87,7 @@ const PartsList = () => {
         partService.getVendors(),
         partService.getBrands()
       ]);
-      
+
       setCategories(categoriesRes.data.data.categories);
       setVendors(vendorsRes.data.data.vendors);
       setBrands(brandsRes.data.data.brands);
@@ -66,14 +99,14 @@ const PartsList = () => {
   const fetchParts = async (page = 1) => {
     try {
       setLoading(page === 1);
-      
+
       const params = {
         page,
         limit: 25,
         sortBy: 'name',
         sortOrder: 'asc'
       };
-      
+
       if (categoryFilter) params.category = categoryFilter;
       if (vendorFilter) params.vendor = vendorFilter;
       if (brandFilter) params.brand = brandFilter;
@@ -83,7 +116,7 @@ const PartsList = () => {
       const response = await partService.getAllParts(params);
       setParts(response.data.data.parts);
       setPagination(response.data.data.pagination);
-      
+
       setLoading(false);
     } catch (err) {
       console.error('Error fetching parts:', err);
@@ -147,7 +180,7 @@ const PartsList = () => {
   };
 
   // Filter options for dropdowns
-  const categoryOptions = [
+  const filterCategoryOptions = [
     { value: '', label: 'All Categories' },
     ...categories.map(cat => ({ value: cat, label: cat }))
   ];
@@ -168,13 +201,82 @@ const PartsList = () => {
     { value: 'all', label: 'All Parts' }
   ];
 
+  // Modal handlers
+  const openCreateModal = () => {
+    setEditingPart(null);
+    setFormData({ ...defaultFormData });
+    setFormError(null);
+    setShowPartModal(true);
+  };
+
+  const openEditModal = async (part) => {
+    setEditingPart(part);
+    setFormData({
+      name: part.name || '',
+      partNumber: part.partNumber || '',
+      category: part.category || '',
+      brand: part.brand || '',
+      vendor: part.vendor || '',
+      cost: part.cost?.toString() || '',
+      price: part.price?.toString() || '',
+      warranty: part.warranty || '',
+      url: part.url || '',
+      notes: part.notes || '',
+      quantityOnHand: part.quantityOnHand || 0
+    });
+    setFormError(null);
+    setShowPartModal(true);
+  };
+
+  const handleSavePart = async () => {
+    if (!formData.name.trim()) { setFormError('Part name is required'); return; }
+    if (!formData.partNumber.trim()) { setFormError('Part number is required'); return; }
+    if (!formData.category) { setFormError('Category is required'); return; }
+    if (!formData.vendor.trim()) { setFormError('Vendor is required'); return; }
+    if (!formData.brand.trim()) { setFormError('Brand is required'); return; }
+
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const partData = {
+        ...formData,
+        price: parseFloat(formData.price) || 0,
+        cost: parseFloat(formData.cost) || 0
+      };
+
+      if (editingPart) {
+        await partService.updatePart(editingPart._id, partData);
+      } else {
+        await partService.createPart(partData);
+      }
+
+      setShowPartModal(false);
+      fetchParts(pagination.currentPage);
+      fetchFilterOptions();
+    } catch (err) {
+      console.error('Error saving part:', err);
+      setFormError(err.response?.data?.message || 'Failed to save part.');
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (part) => {
+    try {
+      await partService.updatePart(part._id, { isActive: !part.isActive });
+      fetchParts(pagination.currentPage);
+    } catch (err) {
+      console.error('Error toggling part status:', err);
+    }
+  };
+
   return (
     <div className="container mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Parts Inventory</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Parts Catalog</h1>
         {permissions.parts.canCreate(currentUser) && (
-          <Button to="/parts/new" variant="primary">
-            Add New Part
+          <Button onClick={openCreateModal} variant="primary">
+            Add to Catalog
           </Button>
         )}
       </div>
@@ -213,7 +315,7 @@ const PartsList = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <SelectInput
               name="category"
-              options={categoryOptions}
+              options={filterCategoryOptions}
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             />
@@ -307,7 +409,7 @@ const PartsList = () => {
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 hover:underline"
                           >
-                            🔗 View Product
+                            View Product
                           </a>
                         </div>
                       )}
@@ -330,7 +432,7 @@ const PartsList = () => {
                         <div>Sell: {formatCurrency(part.price)}</div>
                         <div>Cost: {formatCurrency(part.cost)}</div>
                         <div className="text-xs text-green-600">
-                          +{formatCurrency(part.price - part.cost)} 
+                          +{formatCurrency(part.price - part.cost)}
                           {part.cost > 0 && ` (${(((part.price - part.cost) / part.cost) * 100).toFixed(1)}%)`}
                         </div>
                       </div>
@@ -340,16 +442,9 @@ const PartsList = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
-                        <Button
-                          to={`/parts/${part._id}`}
-                          variant="outline"
-                          size="sm"
-                        >
-                          View
-                        </Button>
                         {permissions.parts.canEdit(currentUser) && (
                           <Button
-                            to={`/parts/${part._id}/edit`}
+                            onClick={() => openEditModal(part)}
                             variant="outline"
                             size="sm"
                           >
@@ -392,6 +487,207 @@ const PartsList = () => {
           </div>
         )}
       </Card>
+
+      {/* ========== ADD/EDIT PART MODAL ========== */}
+      {showPartModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowPartModal(false)} />
+          <div className="relative bg-white w-full sm:max-w-lg sm:rounded-xl sm:mx-4 rounded-t-2xl max-h-[90vh] flex flex-col shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-800">
+                {editingPart ? 'Edit Catalog Part' : 'Add to Parts Catalog'}
+              </h2>
+              <button onClick={() => setShowPartModal(false)} className="text-gray-400 p-1">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              {formError && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {formError}
+                </div>
+              )}
+
+              {/* Name + Part Number */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., Oil Filter"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Part # *</label>
+                  <input
+                    type="text"
+                    value={formData.partNumber}
+                    onChange={(e) => setFormData(prev => ({ ...prev, partNumber: e.target.value }))}
+                    placeholder="OF-12345"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {categoryOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Vendor + Brand row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendor *</label>
+                  <input
+                    type="text"
+                    value={formData.vendor}
+                    onChange={(e) => setFormData(prev => ({ ...prev, vendor: e.target.value }))}
+                    placeholder="e.g., AutoZone"
+                    list="part-vendors-list"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <datalist id="part-vendors-list">
+                    {vendors.map(v => <option key={v} value={v} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand *</label>
+                  <input
+                    type="text"
+                    value={formData.brand}
+                    onChange={(e) => setFormData(prev => ({ ...prev, brand: e.target.value }))}
+                    placeholder="e.g., Bosch"
+                    list="part-brands-list"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <datalist id="part-brands-list">
+                    {brands.map(b => <option key={b} value={b} />)}
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Cost + Price row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cost *</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={formData.cost}
+                    onChange={(e) => setFormData(prev => ({ ...prev, cost: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Retail Price *</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={formData.price}
+                    onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+              </div>
+
+              {/* Profit preview */}
+              {formData.cost && formData.price && parseFloat(formData.cost) > 0 && parseFloat(formData.price) > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+                  Markup: {formatCurrency(parseFloat(formData.price) - parseFloat(formData.cost))}
+                  {' '}({(((parseFloat(formData.price) - parseFloat(formData.cost)) / parseFloat(formData.cost)) * 100).toFixed(1)}%)
+                </div>
+              )}
+
+              {/* Warranty */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Warranty</label>
+                <input
+                  type="text"
+                  value={formData.warranty}
+                  onChange={(e) => setFormData(prev => ({ ...prev, warranty: e.target.value }))}
+                  placeholder="e.g., 1 year / 12,000 miles"
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Product URL */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Product URL</label>
+                <input
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Quantity on Hand */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity on Hand</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.quantityOnHand}
+                  onChange={(e) => setFormData(prev => ({ ...prev, quantityOnHand: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Additional notes..."
+                  rows={2}
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Save/Cancel buttons */}
+            <div className="sticky bottom-0 bg-white px-4 py-3 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={() => setShowPartModal(false)}
+                className="flex-1 py-3 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 active:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePart}
+                disabled={formSaving || !formData.name.trim()}
+                className="flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-primary-600 active:bg-primary-700 disabled:opacity-50"
+              >
+                {formSaving ? 'Saving...' : editingPart ? 'Save Changes' : 'Add Part'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -133,7 +133,7 @@ const TechnicianChecklist = () => {
         { key: 'tieRodEnds', label: 'Tie rod ends', inputType: 'select', options: ['Good Condition', 'Play Detected', 'Replace ASAP'] },
         { key: 'axleShafts', label: 'Axle shafts', inputType: 'select', options: ['Good Condition', 'Boot Torn', 'Replace ASAP'] },
         { key: 'shocksStruts', label: 'Shock/strut (leaks, seepage)', inputType: 'select', options: ['Good Condition', 'Seeping', 'Leaking - Replace'] },
-        { key: 'wheelBearings', label: 'Wheel bearings', inputType: 'select', options: ['Good Condition', 'Noise Detected', 'Replace ASAP'] },
+        { key: 'wheelBearings', label: 'Wheel bearings', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] },
         { key: 'controlArmBushings', label: 'Control arm bushings', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] },
         { key: 'swayBarEndLinks', label: 'Stabilizer/sway bar end links', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] }
       ]
@@ -218,7 +218,7 @@ const TechnicianChecklist = () => {
         { key: 'tieRodEnds', label: 'Tie rod ends', inputType: 'select', options: ['Good Condition', 'Play Detected', 'Replace ASAP'] },
         { key: 'axleShafts', label: 'Axle shafts', inputType: 'select', options: ['Good Condition', 'Boot Torn', 'Replace ASAP'] },
         { key: 'shocksStruts', label: 'Shock/strut (leaks, seepage)', inputType: 'select', options: ['Good Condition', 'Seeping', 'Leaking - Replace'] },
-        { key: 'wheelBearings', label: 'Wheel bearings', inputType: 'select', options: ['Good Condition', 'Noise Detected', 'Replace ASAP'] },
+        { key: 'wheelBearings', label: 'Wheel bearings', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] },
         { key: 'controlArmBushings', label: 'Control arm bushings', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] },
         { key: 'swayBarEndLinks', label: 'Stabilizer/sway bar end links', inputType: 'select', options: ['Good Condition', 'Worn', 'Replace ASAP'] },
         { key: 'accessoryBelt', label: 'Accessory belt (check for cracks, fraying)', inputType: 'select', options: ['Good Condition', 'Replace Soon', 'Replace ASAP'] },
@@ -405,7 +405,7 @@ const TechnicianChecklist = () => {
     return (
       <div
         key={item.key}
-        className={`border rounded-xl p-4 mb-3 transition-all ${
+        className={`border rounded-lg px-3 py-2 mb-2 transition-all ${
           isCompleted
             ? isSyncedFromInspection
               ? 'border-yellow-300 bg-yellow-50'
@@ -413,8 +413,8 @@ const TechnicianChecklist = () => {
             : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-start gap-3">
-          {/* Large touch-friendly checkbox */}
+        <div className="flex items-start gap-2.5">
+          {/* Touch-friendly checkbox */}
           <button
             type="button"
             onClick={() => {
@@ -424,7 +424,7 @@ const TechnicianChecklist = () => {
                 handleChange(item.key, 'completed', !itemData.completed && !itemData.value);
               }
             }}
-            className={`flex-shrink-0 w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all ${
+            className={`flex-shrink-0 w-7 h-7 mt-0.5 rounded-md border-2 flex items-center justify-center transition-all ${
               isCompleted
                 ? isSyncedFromInspection
                   ? 'bg-yellow-500 border-yellow-500 text-white'
@@ -432,19 +432,19 @@ const TechnicianChecklist = () => {
                 : 'bg-white border-gray-300 text-transparent hover:border-gray-400'
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
             </svg>
           </button>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <label className="block text-base font-medium text-gray-900">
+            <div className="flex items-center gap-2 mb-1">
+              <label className="block text-sm font-medium text-gray-900">
                 {item.label}
               </label>
               {isSyncedFromInspection && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  From Inspection
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-800">
+                  Inspection
                 </span>
               )}
             </div>
@@ -455,7 +455,7 @@ const TechnicianChecklist = () => {
                 value={itemData.value || ''}
                 onChange={(e) => handleChange(item.key, 'value', e.target.value)}
                 placeholder={item.placeholder}
-                className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             )}
 
@@ -467,30 +467,34 @@ const TechnicianChecklist = () => {
                   value={itemData.value || ''}
                   onChange={(e) => handleChange(item.key, 'value', e.target.value)}
                   placeholder={item.placeholder}
-                  className="w-full sm:w-48 px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full sm:w-40 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
                 {item.suffix && (
-                  <span className="text-base font-medium text-gray-600 whitespace-nowrap">{item.suffix}</span>
+                  <span className="text-sm font-medium text-gray-600 whitespace-nowrap">{item.suffix}</span>
                 )}
               </div>
             )}
 
             {item.inputType === 'select' && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className={`grid gap-1.5 ${
+                item.options.length === 3 ? 'grid-cols-3' :
+                item.options.length === 2 ? 'grid-cols-2' :
+                `grid-cols-${Math.min(item.options.length, 4)}`
+              }`}>
                 {item.options.map(option => {
                   const isSelected = itemData.value === option;
                   const isRed = option.includes('ASAP') || option.includes('Significant') || option.includes('Leaking');
-                  const isYellow = option.includes('Soon') || option.includes('Minor') || option.includes('Low') || option.includes('Seeping') || option.includes('Play') || option.includes('Noise') || option.includes('Worn') || option.includes('Torn');
+                  const isYellow = option.includes('Soon') || option.includes('Minor') || option.includes('Low') || option.includes('Seeping') || option.includes('Play') || option.includes('Worn') || option.includes('Torn');
 
                   let baseClass = 'bg-green-100 text-green-800 border-green-300 active:bg-green-200';
-                  let selectedClass = 'bg-green-600 text-white border-green-600 shadow-md';
+                  let selectedClass = 'bg-green-600 text-white border-green-600 shadow-sm';
 
                   if (isRed) {
                     baseClass = 'bg-red-100 text-red-800 border-red-300 active:bg-red-200';
-                    selectedClass = 'bg-red-600 text-white border-red-600 shadow-md';
+                    selectedClass = 'bg-red-600 text-white border-red-600 shadow-sm';
                   } else if (isYellow) {
                     baseClass = 'bg-yellow-100 text-yellow-800 border-yellow-300 active:bg-yellow-200';
-                    selectedClass = 'bg-yellow-600 text-white border-yellow-600 shadow-md';
+                    selectedClass = 'bg-yellow-600 text-white border-yellow-600 shadow-sm';
                   }
 
                   return (
@@ -498,7 +502,7 @@ const TechnicianChecklist = () => {
                       key={option}
                       type="button"
                       onClick={() => handleChange(item.key, 'value', isSelected ? '' : option)}
-                      className={`px-4 py-3 text-sm font-semibold rounded-lg border-2 transition-all ${
+                      className={`px-2 py-1.5 text-xs font-semibold rounded-md border transition-all text-center ${
                         isSelected ? selectedClass : baseClass
                       }`}
                     >
@@ -514,41 +518,33 @@ const TechnicianChecklist = () => {
                 value={itemData.value || ''}
                 onChange={(e) => handleChange(item.key, 'value', e.target.value)}
                 placeholder={item.placeholder}
-                rows={3}
-                className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
               />
             )}
 
             {/* Notes input - available on all item types except textarea */}
             {item.inputType !== 'textarea' && (
-              <div className="mt-2">
+              <div className="mt-1">
                 {(itemData.notes || expandedNotes.has(item.key)) ? (
-                  <div>
-                    <div className="flex items-center gap-1 mb-1">
-                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                      </svg>
-                      <span className="text-xs text-gray-500 font-medium">Note</span>
-                    </div>
-                    <input
-                      type="text"
-                      value={itemData.notes || ''}
-                      onChange={(e) => handleChange(item.key, 'notes', e.target.value)}
-                      placeholder="Add a note..."
-                      autoFocus={expandedNotes.has(item.key) && !itemData.notes}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={itemData.notes || ''}
+                    onChange={(e) => handleChange(item.key, 'notes', e.target.value)}
+                    placeholder="Add a note..."
+                    autoFocus={expandedNotes.has(item.key) && !itemData.notes}
+                    className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50"
+                  />
                 ) : (
                   <button
                     type="button"
                     onClick={() => setExpandedNotes(prev => new Set([...prev, item.key]))}
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
+                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    Add note
+                    Note
                   </button>
                 )}
               </div>
@@ -594,111 +590,86 @@ const TechnicianChecklist = () => {
   const currentStats = activeChecklist === 'inspection' ? inspectionStats : repairStats;
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-24">
-      {/* Sticky Header */}
+    <div className="min-h-screen bg-gray-100 pb-16">
+      {/* Compact Sticky Header */}
       <div className="bg-white shadow-sm sticky top-0 z-20">
-        <div className="px-4 py-3">
-          {/* Back Button and Title */}
-          <div className="flex items-center gap-3 mb-3">
+        <div className="px-3 py-2">
+          {/* Top row: back, vehicle, saving indicator */}
+          <div className="flex items-center gap-2 mb-1.5">
             <button
               onClick={() => navigate('/technician-portal')}
-              className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 active:bg-gray-200"
+              className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 active:bg-gray-200"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold text-gray-900 truncate">
+              <span className="text-sm font-bold text-gray-900 truncate block">
                 {workOrder.vehicle
                   ? `${workOrder.vehicle.year} ${workOrder.vehicle.make} ${workOrder.vehicle.model}`
                   : 'Work Order'}
-              </h1>
-              <p className="text-sm text-gray-500 truncate">
-                {workOrder.services?.[0]?.description || workOrder.serviceRequested || 'No service'}
-              </p>
+              </span>
             </div>
             {saving && (
-              <div className="flex-shrink-0 flex items-center gap-1 text-sm text-primary-600">
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <div className="flex-shrink-0 flex items-center gap-1 text-xs text-primary-600">
+                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span>Saving</span>
               </div>
             )}
           </div>
 
-          {/* Checklist Type Toggle - Large Touch Targets */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Inspect / Repair toggle + inline progress */}
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setActiveChecklist('inspection')}
-              className={`py-3 px-4 rounded-xl font-semibold transition-all ${
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeChecklist === 'inspection'
-                  ? 'bg-yellow-500 text-white shadow-lg'
+                  ? 'bg-yellow-500 text-white shadow'
                   : 'bg-yellow-100 text-yellow-800 active:bg-yellow-200'
               }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <span>Inspect</span>
-              </div>
-              <div className="text-xs mt-1 opacity-80">
-                {inspectionStats.completed}/{inspectionStats.total}
-              </div>
+              Inspect {inspectionStats.completed}/{inspectionStats.total}
             </button>
 
             <button
               onClick={() => setActiveChecklist('repair')}
-              className={`py-3 px-4 rounded-xl font-semibold transition-all ${
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 activeChecklist === 'repair'
-                  ? 'bg-green-500 text-white shadow-lg'
+                  ? 'bg-green-500 text-white shadow'
                   : 'bg-green-100 text-green-800 active:bg-green-200'
               }`}
             >
-              <div className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Repair</span>
-              </div>
-              <div className="text-xs mt-1 opacity-80">
-                {repairStats.completed}/{repairStats.total}
-              </div>
+              Repair {repairStats.completed}/{repairStats.total}
             </button>
+
+            <span className="text-xs font-semibold text-gray-500 w-9 text-right">{currentStats.percentage}%</span>
           </div>
 
-          {/* Progress Bar */}
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-              <span>{activeChecklist === 'inspection' ? 'Inspection' : 'Repair'} Progress</span>
-              <span>{currentStats.percentage}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-500 ${
-                  activeChecklist === 'inspection' ? 'bg-yellow-500' : 'bg-green-500'
-                }`}
-                style={{ width: `${currentStats.percentage}%` }}
-              ></div>
-            </div>
+          {/* Thin progress bar */}
+          <div className="mt-1.5 w-full bg-gray-200 rounded-full h-1">
+            <div
+              className={`h-1 rounded-full transition-all duration-500 ${
+                activeChecklist === 'inspection' ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${currentStats.percentage}%` }}
+            ></div>
           </div>
         </div>
       </div>
 
       {/* Checklist Sections */}
-      <div className="p-4 space-y-4">
+      <div className="p-3 space-y-3">
         {currentSections.map((section, index) => (
-          <div key={index} className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className={`px-4 py-3 font-semibold text-gray-900 border-b border-gray-100 ${
+          <div key={index} className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className={`px-3 py-2 text-xs font-semibold text-gray-900 border-b border-gray-100 uppercase tracking-wide ${
               activeChecklist === 'inspection' ? 'bg-yellow-50' : 'bg-green-50'
             }`}>
               {section.title}
             </div>
-            <div className="p-3">
+            <div className="p-2">
               {section.items.map(item => renderChecklistItem(item, currentChecklist, currentHandler, activeChecklist === 'repair'))}
             </div>
           </div>
@@ -706,19 +677,19 @@ const TechnicianChecklist = () => {
       </div>
 
       {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-20">
-        <div className="flex gap-3 max-w-lg mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-3 py-2 z-20">
+        <div className="flex gap-2 max-w-lg mx-auto">
           <button
             onClick={() => navigate('/technician-portal')}
-            className="flex-1 py-3 px-4 rounded-xl font-semibold text-gray-700 bg-gray-100 active:bg-gray-200 transition-colors"
+            className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 active:bg-gray-200 transition-colors"
           >
             Save & Exit
           </button>
           <button
             onClick={() => navigate(`/work-orders/${id}`)}
-            className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-primary-600 active:bg-primary-700 transition-colors"
+            className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold text-white bg-primary-600 active:bg-primary-700 transition-colors"
           >
-            Save & View Work Order
+            Save & View WO
           </button>
         </div>
       </div>

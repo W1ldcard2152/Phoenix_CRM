@@ -7,11 +7,14 @@ import Button from '../../components/common/Button';
 import SelectInput from '../../components/common/SelectInput';
 import { parseLocalDate, formatDate } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
+import settingsService from '../../services/settingsService';
 
 const InvoiceList = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
   const navigate = useNavigate();
 
   const invoiceStatuses = [
@@ -27,7 +30,11 @@ const InvoiceList = () => {
     const fetchInvoices = async () => {
       try {
         setLoading(true);
-        const response = await invoiceService.getAllInvoices();
+        const [response, appSettings] = await Promise.all([
+          invoiceService.getAllInvoices(),
+          settingsService.getSettings()
+        ]);
+        setShowServiceAdvisorOnInvoice(appSettings.data?.settings?.showServiceAdvisorOnInvoice || false);
         if (response && response.data && Array.isArray(response.data.invoices)) {
           setInvoices(response.data.invoices);
         } else if (response && Array.isArray(response.invoices)) {
@@ -76,7 +83,8 @@ const InvoiceList = () => {
       labor = items.filter(item => item.type === 'Labor').map(item => ({
         description: item.description,
         hours: item.quantity,
-        rate: item.unitPrice
+        rate: item.unitPrice,
+        billingType: item.billingType || 'hourly'
       }));
     } else {
       parts = invoice.parts || [];
@@ -94,7 +102,9 @@ const InvoiceList = () => {
       labor,
       customerFacingNotes,
       taxRate: invoice.taxRate || 0,
-      terms: invoice.terms
+      terms: invoice.terms,
+      technicianName: getCustomerFacingName(invoice.workOrder?.assignedTechnician),
+      serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(invoice.workOrder?.createdBy) : undefined
     };
   };
 

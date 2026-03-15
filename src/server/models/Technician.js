@@ -6,6 +6,10 @@ const technicianSchema = new mongoose.Schema({
     required: [true, 'Technician name is required.'],
     trim: true,
   },
+  displayName: {
+    type: String,
+    trim: true,
+  },
   phone: {
     type: String,
     trim: true,

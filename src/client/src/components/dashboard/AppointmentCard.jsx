@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import moment from 'moment-timezone';
 import { getAppointmentColorClasses } from '../../utils/appointmentColors';
 import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
@@ -29,6 +29,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
   const hideTimeoutRef = useRef(null);
   const isOverPopoverRef = useRef(false);
   const { user } = useAuth();
+  const location = useLocation();
+  const fromQuery = location.pathname !== '/appointments' ? `from=${encodeURIComponent(location.pathname)}` : '';
 
   // Apply role-based visibility for schedule blocks
   const displayAppointment = appointment.isScheduleBlock
@@ -382,7 +384,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               {/* Action Links */}
               <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
                 <Link
-                  to={`/schedule-blocks/${appointment.scheduleBlockId}/edit`}
+                  to={`/schedule-blocks/${appointment.scheduleBlockId}/edit${fromQuery ? `?${fromQuery}` : ''}`}
                   className="flex-1 text-center bg-indigo-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -480,7 +482,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               {workOrderStatus === 'Appointment Complete' ? (
                 <div className="pt-2">
                   <Link
-                    to={`/appointments/${appointment._id}/edit?reschedule=true`}
+                    to={`/appointments/${appointment._id}/edit?reschedule=true${fromQuery ? `&${fromQuery}` : ''}`}
                     className="block w-full text-center bg-yellow-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-yellow-600 transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -490,7 +492,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               ) : (
                 <div className="pt-2">
                   <Link
-                    to={`/appointments/${appointment._id}/edit`}
+                    to={`/appointments/${appointment._id}/edit${fromQuery ? `?${fromQuery}` : ''}`}
                     className="block w-full text-center bg-gray-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-gray-600 transition-colors"
                     onClick={(e) => e.stopPropagation()}
                   >

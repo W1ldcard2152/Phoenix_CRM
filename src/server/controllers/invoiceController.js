@@ -31,7 +31,7 @@ exports.getAllInvoices = catchAsync(async (req, res, next) => {
   const invoices = await Invoice.find(query)
     .populate('customer', 'name phone email')
     .populate('vehicle', 'year make model vin')
-    .populate('workOrder')
+    .populate({ path: 'workOrder', populate: [{ path: 'assignedTechnician', select: 'name displayName' }, { path: 'createdBy', select: 'name displayName' }] })
     .sort({ invoiceDate: -1 });
   
   res.status(200).json({
@@ -48,7 +48,7 @@ exports.getInvoice = catchAsync(async (req, res, next) => {
   const invoice = await Invoice.findById(req.params.id)
     .populate('customer', 'name phone email address')
     .populate('vehicle', 'year make model vin licensePlate')
-    .populate('workOrder');
+    .populate({ path: 'workOrder', populate: [{ path: 'assignedTechnician', select: 'name displayName' }, { path: 'createdBy', select: 'name displayName' }] });
   
   if (!invoice) {
     return next(new AppError('No invoice found with that ID', 404));
@@ -338,7 +338,7 @@ exports.generatePDF = catchAsync(async (req, res, next) => {
   const invoice = await Invoice.findById(req.params.id)
     .populate('customer', 'name phone email address')
     .populate('vehicle', 'year make model vin')
-    .populate('workOrder');
+    .populate({ path: 'workOrder', populate: [{ path: 'assignedTechnician', select: 'name displayName' }, { path: 'createdBy', select: 'name displayName' }] });
   
   if (!invoice) {
     return next(new AppError('No invoice found with that ID', 404));

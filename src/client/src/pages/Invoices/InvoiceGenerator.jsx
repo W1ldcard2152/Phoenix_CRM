@@ -13,6 +13,8 @@ import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import { formatCurrency, getTodayForInput } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { getCustomerFacingName } from '../../utils/nameUtils';
+import settingsService from '../../services/settingsService';
 
 
 const InvoiceGenerator = () => {
@@ -46,6 +48,7 @@ const InvoiceGenerator = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('invoice'); // 'invoice' or 'preview'
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
+  const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
 
   // Business settings from centralized config (for InvoiceDisplay component)
   const settings = {
@@ -189,7 +192,11 @@ const InvoiceGenerator = () => {
         setLoading(true);
         setError(null);
 
-        const workOrdersRes = await WorkOrderService.getAllWorkOrders();
+        const [workOrdersRes, appSettings] = await Promise.all([
+          WorkOrderService.getAllWorkOrders(),
+          settingsService.getSettings()
+        ]);
+        setShowServiceAdvisorOnInvoice(appSettings.data?.settings?.showServiceAdvisorOnInvoice || false);
         const activeWorkOrders = workOrdersRes.data.workOrders.filter(
           (wo) => !['Cancelled', 'Completed - Paid', 'Invoice - Paid'].includes(wo.status)
         );
@@ -385,12 +392,15 @@ const InvoiceGenerator = () => {
     labor: invoiceData.labor.map(l => ({
       description: l.description,
       hours: l.hours,
-      rate: l.rate
+      rate: l.rate,
+      billingType: l.billingType || 'hourly'
     })),
     customerFacingNotes,
     customerNotes: invoiceData.customerNotes,
     taxRate: invoiceData.taxRate || 0,
-    terms: invoiceData.terms
+    terms: invoiceData.terms,
+    technicianName: getCustomerFacingName(selectedWorkOrder?.assignedTechnician),
+    serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(selectedWorkOrder?.createdBy) : undefined
   });
 
   const generatePDF = async () => {
