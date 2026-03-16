@@ -75,7 +75,7 @@ const InvoiceDetail = () => {
   const getDocumentData = () => {
     // Process items array (modern structure) or fallback to legacy parts/labor arrays
     const items = invoice?.items || [];
-    let parts, labor;
+    let parts, labor, servicePackages;
 
     if (items.length > 0) {
       parts = items.filter(item => item.type === 'Part').map(item => ({
@@ -93,9 +93,14 @@ const InvoiceDetail = () => {
         rate: item.unitPrice,
         billingType: item.billingType || 'hourly'
       }));
+      servicePackages = items.filter(item => item.type === 'Service').map(item => ({
+        name: item.description,
+        price: item.unitPrice
+      }));
     } else {
       parts = invoice?.parts || [];
       labor = invoice?.labor || [];
+      servicePackages = [];
     }
 
     return {
@@ -109,6 +114,7 @@ const InvoiceDetail = () => {
       diagnosticNotes: invoice?.workOrder?.diagnosticNotes,
       parts,
       labor,
+      servicePackages,
       customerFacingNotes,
       customerNotes: invoice?.notes,
       taxRate: invoice?.taxRate || 0,

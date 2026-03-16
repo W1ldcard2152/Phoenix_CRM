@@ -23,6 +23,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   const [mediaId, setMediaId] = useState(null);
   const [mediaS3Key, setMediaS3Key] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [catalogActions, setCatalogActions] = useState({});
   const [confirming, setConfirming] = useState(false);
 
   const resetAll = () => {
@@ -37,6 +38,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     setMediaId(null);
     setMediaS3Key(null);
     setSelected([]);
+    setCatalogActions({});
     setConfirming(false);
   };
 
@@ -106,6 +108,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
 
       const selectedPartData = selected.map(i => extractedParts[i]);
 
+      // Map catalog actions from original indices to selected-part indices
+      const mappedCatalogActions = {};
+      selected.forEach((origIndex, newIndex) => {
+        if (catalogActions[origIndex]) {
+          mappedCatalogActions[newIndex] = catalogActions[origIndex];
+        }
+      });
+
       const response = await API.post(
         `/workorders/${entityId}/confirm-receipt-parts`,
         {
@@ -113,7 +123,8 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           shippingTotal,
           isOrder,
           mediaId,
-          mediaS3Key
+          mediaS3Key,
+          catalogActions: mappedCatalogActions
         },
         { timeout: 30000 }
       );
@@ -186,6 +197,24 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
             <span className="text-gray-400">split across {selected.length} selected part{selected.length !== 1 ? 's' : ''}</span>
           </div>
 
+          {/* Bulk action for catalog/inventory */}
+          <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
+            <span>Add all selected to:</span>
+            <select
+              onChange={(e) => {
+                const action = e.target.value || null;
+                const newActions = {};
+                selected.forEach(i => { newActions[i] = action; });
+                setCatalogActions(newActions);
+              }}
+              className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">WO Only</option>
+              <option value="catalog">+ Parts Catalog</option>
+              <option value="inventory">+ Shop Inventory</option>
+            </select>
+          </div>
+
           {/* Parts table */}
           <div className="overflow-x-auto border rounded-md mt-3">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -206,6 +235,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+ Ship</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price ({markupPercentage}%)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Also Add To</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -250,6 +280,23 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                       </td>
                       <td className="px-3 py-2 text-right font-medium text-gray-900">
                         {isSelected ? formatCurrency(priceWithMarkup) : '—'}
+                      </td>
+                      <td className="px-3 py-2">
+                        {isSelected && (
+                          <select
+                            value={catalogActions[index] || ''}
+                            onChange={(e) => setCatalogActions(prev => ({
+                              ...prev,
+                              [index]: e.target.value || null
+                            }))}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          >
+                            <option value="">WO Only</option>
+                            <option value="catalog">+ Parts Catalog</option>
+                            <option value="inventory">+ Shop Inventory</option>
+                          </select>
+                        )}
                       </td>
                     </tr>
                   );

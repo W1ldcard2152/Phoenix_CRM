@@ -21,5 +21,7 @@ router.post('/task-categories', authController.restrictTo('admin', 'management')
 router.post('/task-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeTaskCategory);
 router.post('/inventory-categories', authController.restrictTo('admin', 'management'), settingsController.addInventoryCategory);
 router.post('/inventory-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeInventoryCategory);
+router.post('/package-tags', authController.restrictTo('admin', 'management'), settingsController.addPackageTag);
+router.post('/package-tags/remove', authController.restrictTo('admin', 'management'), settingsController.removePackageTag);
 
 module.exports = router;

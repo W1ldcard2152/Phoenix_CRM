@@ -50,6 +50,7 @@ import ScheduleBlockForm from './pages/ScheduleBlocks/ScheduleBlockForm';
 
 // Inventory Pages
 import InventoryList from './pages/Inventory/InventoryList';
+import ServicePackageList from './pages/ServicePackages/ServicePackageList';
 
 // Technician Portal Pages
 import TechnicianPortal from './pages/TechnicianPortal/TechnicianPortal';
@@ -164,6 +165,7 @@ const App = () => {
 
                       {/* Inventory Route */}
                       <Route path="/inventory" element={<InventoryList />} />
+                      <Route path="/service-packages" element={<ServicePackageList />} />
 
                       {/* Technician Portal Routes */}
                       <Route path="/technician-portal" element={<TechnicianPortal />} />

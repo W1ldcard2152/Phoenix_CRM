@@ -28,31 +28,43 @@ const calculateLaborCost = (labor = []) => {
 };
 
 /**
- * Calculate total work order cost (parts + labor)
+ * Calculate total cost of service packages
+ * @param {Array} servicePackages - Array of service package line objects with price
+ * @returns {Number} Total service packages cost
+ */
+const calculateServicePackagesCost = (servicePackages = []) => {
+  return servicePackages.reduce((total, pkg) => total + (pkg.price || 0), 0);
+};
+
+/**
+ * Calculate total work order cost (parts + labor + service packages)
  * @param {Array} parts - Array of part objects
  * @param {Array} labor - Array of labor objects
+ * @param {Array} servicePackages - Array of service package objects
  * @returns {Number} Total cost
  */
-const calculateWorkOrderTotal = (parts = [], labor = []) => {
-  return calculatePartsCost(parts) + calculateLaborCost(labor);
+const calculateWorkOrderTotal = (parts = [], labor = [], servicePackages = []) => {
+  return calculatePartsCost(parts) + calculateLaborCost(labor) + calculateServicePackagesCost(servicePackages);
 };
 
 /**
  * Calculate and return breakdown of work order costs
- * @param {Object} workOrder - Work order object with parts and labor
- * @returns {Object} Object with partsCost, laborCost, and total
+ * @param {Object} workOrder - Work order object with parts, labor, and servicePackages
+ * @returns {Object} Object with partsCost, laborCost, servicePackagesCost, and total
  */
 const getWorkOrderCostBreakdown = (workOrder) => {
   const partsCost = calculatePartsCost(workOrder.parts);
   const laborCost = calculateLaborCost(workOrder.labor);
-  const total = partsCost + laborCost;
+  const servicePackagesCost = calculateServicePackagesCost(workOrder.servicePackages);
+  const total = partsCost + laborCost + servicePackagesCost;
 
-  return { partsCost, laborCost, total };
+  return { partsCost, laborCost, servicePackagesCost, total };
 };
 
 module.exports = {
   calculatePartsCost,
   calculateLaborCost,
+  calculateServicePackagesCost,
   calculateWorkOrderTotal,
   getWorkOrderCostBreakdown
 };

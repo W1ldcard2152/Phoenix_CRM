@@ -4,7 +4,7 @@ const AppError = require('../utils/appError');
 
 // Get all active inventory items (excludes adjustment log for performance)
 exports.getAllItems = catchAsync(async (req, res, next) => {
-  const { category, search, active } = req.query;
+  const { category, search, active, packageTag } = req.query;
   const filter = {};
 
   if (active === 'false') {
@@ -17,13 +17,18 @@ exports.getAllItems = catchAsync(async (req, res, next) => {
     filter.category = category;
   }
 
+  if (packageTag) {
+    filter.packageTag = packageTag;
+  }
+
   if (search) {
     const searchRegex = new RegExp(search, 'i');
     filter.$or = [
       { name: searchRegex },
       { partNumber: searchRegex },
       { vendor: searchRegex },
-      { brand: searchRegex }
+      { brand: searchRegex },
+      { packageTag: searchRegex }
     ];
   }
 
@@ -56,11 +61,11 @@ exports.getItem = catchAsync(async (req, res, next) => {
 
 // Create a new inventory item
 exports.createItem = catchAsync(async (req, res, next) => {
-  const { name, partNumber, category, quantityOnHand, unit, reorderPoint,
-          price, cost, vendor, brand, warranty, url, notes } = req.body;
+  const { name, partNumber, category, quantityOnHand, unit, unitsPerPurchase,
+          purchaseUnit, reorderPoint, price, cost, vendor, brand, warranty, url, notes, packageTag } = req.body;
 
-  const itemData = { name, partNumber, category, unit, reorderPoint,
-    price, cost, vendor, brand, warranty, url, notes };
+  const itemData = { name, partNumber, category, unit, unitsPerPurchase,
+    purchaseUnit, reorderPoint, price, cost, vendor, brand, warranty, url, notes, packageTag };
   itemData.quantityOnHand = quantityOnHand || 0;
 
   if (itemData.quantityOnHand > 0) {
@@ -82,14 +87,17 @@ exports.createItem = catchAsync(async (req, res, next) => {
 
 // Update item metadata (not QOH - use adjustQuantity for that)
 exports.updateItem = catchAsync(async (req, res, next) => {
-  const { name, partNumber, category, unit, reorderPoint, price, cost,
-          vendor, brand, warranty, url, notes, isActive } = req.body;
+  const { name, partNumber, category, unit, unitsPerPurchase, purchaseUnit,
+          reorderPoint, price, cost, vendor, brand, warranty, url, notes, isActive, packageTag } = req.body;
   const updateData = {};
 
   if (name !== undefined) updateData.name = name;
   if (partNumber !== undefined) updateData.partNumber = partNumber;
   if (category !== undefined) updateData.category = category;
   if (unit !== undefined) updateData.unit = unit;
+  if (unitsPerPurchase !== undefined) updateData.unitsPerPurchase = unitsPerPurchase;
+  if (purchaseUnit !== undefined) updateData.purchaseUnit = purchaseUnit;
+  if (packageTag !== undefined) updateData.packageTag = packageTag;
   if (reorderPoint !== undefined) updateData.reorderPoint = reorderPoint;
   if (price !== undefined) updateData.price = price;
   if (cost !== undefined) updateData.cost = cost;

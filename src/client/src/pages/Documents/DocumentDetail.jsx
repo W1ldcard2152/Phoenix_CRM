@@ -16,8 +16,11 @@ import FileUpload from '../../components/common/FileUpload';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
+import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
+import ServicePackageModal from '../../components/workorder/ServicePackageModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import invoiceService from '../../services/invoiceService';
+import UrlExtractButton from '../../components/common/UrlExtractButton';
 import SettingsService from '../../services/settingsService';
 import { formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
@@ -92,6 +95,10 @@ const DocumentDetail = () => {
 
   // Receipt import state
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [inventoryModalOpen, setInventoryModalOpen] = useState(false);
+  const [inventoryModalLoading, setInventoryModalLoading] = useState(false);
+  const [serviceModalOpen, setServiceModalOpen] = useState(false);
+  const [serviceModalLoading, setServiceModalLoading] = useState(false);
 
   // Notes state (shared)
   const [notes, setNotes] = useState([]);
@@ -926,6 +933,92 @@ const DocumentDetail = () => {
     }
   };
 
+  // Add part from inventory
+  const handleAddFromInventory = async ({ inventoryItemId, quantity }) => {
+    setInventoryModalLoading(true);
+    try {
+      const response = await DocumentService.addPartFromInventory(id, { inventoryItemId, quantity });
+      setWorkOrder(response.data.workOrder);
+      setInventoryModalOpen(false);
+      if (response.lowStockWarning) {
+        const w = response.lowStockWarning;
+        alert(`Low stock warning: "${w.itemName}" now has ${w.currentQoh} ${w.unit} remaining (reorder point: ${w.reorderPoint})`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to add inventory item';
+      setError(msg);
+    } finally {
+      setInventoryModalLoading(false);
+    }
+  };
+
+  // Add service package
+  const handleAddServicePackage = async ({ servicePackageId, selections }) => {
+    setServiceModalLoading(true);
+    try {
+      const response = await DocumentService.addServicePackage(id, { servicePackageId, selections });
+      setWorkOrder(response.data.workOrder);
+      setServiceModalOpen(false);
+      if (response.lowStockWarnings?.length > 0) {
+        const warnings = response.lowStockWarnings.map(w =>
+          `"${w.itemName}": ${w.currentQoh} ${w.unit} remaining`
+        ).join('\n');
+        alert(`Low stock warnings:\n${warnings}`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to add service package';
+      setError(msg);
+    } finally {
+      setServiceModalLoading(false);
+    }
+  };
+
+  const handleCommitServicePackage = async (packageIndex) => {
+    if (!window.confirm('Commit this service package? This will deduct items from inventory.')) return;
+    try {
+      const response = await DocumentService.commitServicePackage(id, { packageIndex });
+      setWorkOrder(response.data.workOrder);
+      if (response.lowStockWarnings?.length > 0) {
+        const warnings = response.lowStockWarnings.map(w =>
+          `"${w.itemName}": ${w.currentQoh} ${w.unit} remaining`
+        ).join('\n');
+        alert(`Low stock warnings:\n${warnings}`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to commit service package';
+      setError(msg);
+    }
+  };
+
+  const handleRemoveServicePackage = async (packageIndex) => {
+    const pkg = workOrder.servicePackages?.[packageIndex];
+    if (!pkg) return;
+
+    if (pkg.committed) {
+      // Committed package — ask about returning to inventory
+      const returnToInventory = window.confirm(
+        'This service was already pulled from inventory.\n\nClick OK to return items to stock, or Cancel to remove without restocking.'
+      );
+      try {
+        const response = await DocumentService.removeServicePackage(id, { packageIndex, returnToInventory });
+        setWorkOrder(response.data.workOrder);
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to remove service package';
+        setError(msg);
+      }
+    } else {
+      // Uncommitted — just remove, no inventory impact
+      if (!window.confirm('Remove this service package?')) return;
+      try {
+        const response = await DocumentService.removeServicePackage(id, { packageIndex });
+        setWorkOrder(response.data.workOrder);
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to remove service package';
+        setError(msg);
+      }
+    }
+  };
+
   const handlePartStatusChange = async (partIndex, field, value) => {
     try {
       const updatedParts = [...workOrder.parts];
@@ -1241,7 +1334,8 @@ const DocumentDetail = () => {
     const qty = labor.quantity || labor.hours || 0;
     return total + (qty * labor.rate);
   }, 0);
-  const subtotal = partsCost + laborCost;
+  const servicePackagesCost = (workOrder.servicePackages || []).reduce((total, pkg) => total + (pkg.price || 0), 0);
+  const subtotal = partsCost + laborCost + servicePackagesCost;
   const taxRate = 0.08;
   const taxAmount = subtotal * taxRate;
   const totalWithTax = subtotal + taxAmount;
@@ -1482,6 +1576,12 @@ const DocumentDetail = () => {
               <span className="text-sm text-gray-600">Labor</span>
               <span className="font-medium">{formatCurrency(laborCost)}</span>
             </div>
+            {servicePackagesCost > 0 && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Services</span>
+                <span className="font-medium">{formatCurrency(servicePackagesCost)}</span>
+              </div>
+            )}
             <div className="border-t pt-2 flex justify-between items-center">
               <span className="text-sm text-gray-600">Subtotal</span>
               <span className="font-medium">{formatCurrency(subtotal)}</span>
@@ -1791,12 +1891,22 @@ const DocumentDetail = () => {
               )}
               {(isQuote || permissions.workOrders.canAddParts(currentUser)) && (
                 <>
-                  <Button onClick={() => setReceiptModalOpen(true)} variant="success" size="sm">
-                    <i className="fas fa-file-import mr-1"></i>Import Parts
+                  <Button onClick={() => setReceiptModalOpen(true)} variant="secondary" size="sm">
+                    <i className="fas fa-file-import mr-1"></i>Import
                   </Button>
+                  {!isQuote && (
+                    <Button onClick={() => setInventoryModalOpen(true)} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                      <i className="fas fa-boxes-stacked mr-1"></i>From Inventory
+                    </Button>
+                  )}
                   <Button onClick={openAddPartModal} variant="primary" size="sm">
                     <i className="fas fa-plus mr-1"></i>Add Part
                   </Button>
+                  {!isQuote && (
+                    <Button onClick={() => setServiceModalOpen(true)} size="sm" className="bg-purple-600 hover:bg-purple-700 text-white">
+                      <i className="fas fa-box-open mr-1"></i>Add Service
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -1848,6 +1958,9 @@ const DocumentDetail = () => {
                         <div className="font-medium text-gray-900 flex items-center">
                           <i className={`fas fa-chevron-${expandedPartIndex === part.originalIndex ? 'down' : 'right'} text-xs text-gray-400 mr-2`}></i>
                           {part.name}
+                          {part.serviceIncluded && (
+                            <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">incl.</span>
+                          )}
                         </div>
                         {part.partNumber && <div className="text-xs text-gray-500">PN: {part.partNumber}</div>}
                         {part.itemNumber && <div className="text-xs text-gray-500">SKU: {part.itemNumber}</div>}
@@ -2045,6 +2158,79 @@ const DocumentDetail = () => {
             </div>
           )}
         </Card>
+
+        {/* ===== SERVICES SECTION ===== */}
+        {(workOrder.servicePackages || []).length > 0 && (
+          <Card title={`Services (${workOrder.servicePackages.length})`}>
+            <div className="space-y-3">
+              {workOrder.servicePackages.map((pkg, pkgIndex) => (
+                <div
+                  key={pkgIndex}
+                  className={`border rounded-lg p-4 ${
+                    pkg.committed
+                      ? 'border-purple-200 bg-purple-50/30'
+                      : 'border-yellow-300 bg-yellow-50/30 border-dashed'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-gray-900">{pkg.name}</div>
+                      {pkg.committed ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+                          <i className="fas fa-check mr-0.5"></i>Pulled
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">
+                          Draft
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-purple-700">{formatCurrency(pkg.price)}</span>
+                      {!pkg.committed && (
+                        <button
+                          onClick={() => handleCommitServicePackage(pkgIndex)}
+                          className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700"
+                        >
+                          <i className="fas fa-arrow-down mr-1"></i>Pull from Inventory
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveServicePackage(pkgIndex)}
+                        className="text-red-400 hover:text-red-600 text-xs"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {pkg.includedItems && pkg.includedItems.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-xs font-medium text-gray-500 mb-1">
+                        {pkg.committed ? 'Included items (pulled from inventory):' : 'Included items (not yet pulled):'}
+                      </div>
+                      <div className="space-y-1">
+                        {pkg.includedItems.map((item, itemIdx) => (
+                          <div key={itemIdx} className="flex items-center justify-between text-sm text-gray-700">
+                            <span>
+                              {item.name}
+                              {item.partNumber && <span className="text-xs text-gray-400 ml-1">({item.partNumber})</span>}
+                            </span>
+                            <span className="text-gray-500">
+                              {item.quantity} {item.unit || ''}
+                              {showCost && item.cost > 0 && (
+                                <span className="ml-2 text-gray-400">@ {formatCurrency(item.cost)}</span>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* ===== FILE ATTACHMENTS - WO only ===== */}
         {!isQuote && (
@@ -2366,8 +2552,23 @@ const DocumentDetail = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product URL</label>
-                <input type="url" placeholder="https://..." className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newPart.url} onChange={(e) => handleUrlChange(e.target.value)} />
+                <div className="flex items-start">
+                  <input type="url" placeholder="https://..." className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    value={newPart.url} onChange={(e) => handleUrlChange(e.target.value)} />
+                  <UrlExtractButton
+                    url={newPart.url}
+                    onExtracted={(data) => setNewPart(prev => ({
+                      ...prev,
+                      name: prev.name || data.name || '',
+                      partNumber: prev.partNumber || data.partNumber || '',
+                      cost: prev.cost || (data.cost != null ? data.cost : data.price != null ? data.price : 0),
+                      price: prev.price || (data.price != null ? data.price : 0),
+                      vendor: prev.vendor || data.vendor || '',
+                      brand: prev.brand || data.brand || '',
+                      warranty: prev.warranty || data.warranty || ''
+                    }))}
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">PO / Order Number</label>
@@ -2609,6 +2810,20 @@ const DocumentDetail = () => {
         entityId={id}
         onSuccess={handleReceiptImportSuccess}
         markupPercentage={markupPercentage}
+      />
+
+      {/* Inventory & Service modals */}
+      <InventoryPickerModal
+        isOpen={inventoryModalOpen}
+        onClose={() => setInventoryModalOpen(false)}
+        onConfirm={handleAddFromInventory}
+        isLoading={inventoryModalLoading}
+      />
+      <ServicePackageModal
+        isOpen={serviceModalOpen}
+        onClose={() => setServiceModalOpen(false)}
+        onConfirm={handleAddServicePackage}
+        isLoading={serviceModalLoading}
       />
 
       {/* WO-specific modals */}

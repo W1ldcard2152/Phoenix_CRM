@@ -41,6 +41,8 @@ const workOrderNotesRoutes = require('./routes/workOrderNotesRoutes'); // Import
 const settingsRoutes = require('./routes/settingsRoutes');
 const scheduleBlockRoutes = require('./routes/scheduleBlockRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
+const servicePackageRoutes = require('./routes/servicePackageRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 
 // Initialize Express app
 const app = express();
@@ -166,6 +168,8 @@ app.use('/api/workorder-notes', workOrderNotesRoutes); // Use work order notes r
 app.use('/api/settings', settingsRoutes);
 app.use('/api/schedule-blocks', scheduleBlockRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/service-packages', servicePackageRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

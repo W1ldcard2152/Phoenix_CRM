@@ -89,6 +89,14 @@ const PartSchema = new Schema({
   stockNumber: { // Stock number of source vehicle (for used parts)
     type: String,
     trim: true
+  },
+  inventoryItemId: { // Link to inventory item this part was pulled from
+    type: Schema.Types.ObjectId,
+    ref: 'InventoryItem'
+  },
+  serviceIncluded: { // Part included in a service package ($0 price)
+    type: Boolean,
+    default: false
   }
 });
 
@@ -117,7 +125,28 @@ const LaborSchema = new Schema({
   hours: {
     type: Number,
     min: 0
+  },
+  servicePackageId: { // Link to service package this labor line came from
+    type: Schema.Types.ObjectId,
+    ref: 'ServicePackage'
   }
+});
+
+const ServicePackageItemSchema = new Schema({
+  inventoryItemId: { type: Schema.Types.ObjectId, ref: 'InventoryItem' },
+  name: { type: String, required: true, trim: true },
+  partNumber: { type: String, trim: true },
+  quantity: { type: Number, required: true, min: 0 },
+  cost: { type: Number, default: 0, min: 0 },
+  unit: { type: String, trim: true }
+});
+
+const ServicePackageLineSchema = new Schema({
+  servicePackageId: { type: Schema.Types.ObjectId, ref: 'ServicePackage' },
+  name: { type: String, required: true, trim: true },
+  price: { type: Number, required: true, min: 0 },
+  committed: { type: Boolean, default: false },
+  includedItems: [ServicePackageItemSchema]
 });
 
 const MediaSchema = new Schema({
@@ -356,6 +385,7 @@ const WorkOrderSchema = new Schema(
     },
     parts: [PartSchema],
     labor: [LaborSchema],
+    servicePackages: [ServicePackageLineSchema],
     media: [MediaSchema],
     partsSortConfig: [{
       column: { type: String },
@@ -427,9 +457,14 @@ WorkOrderSchema.virtual('laborCost').get(function() {
   }, 0);
 });
 
+// Virtual for service packages cost calculation
+WorkOrderSchema.virtual('servicePackagesCost').get(function() {
+  return (this.servicePackages || []).reduce((total, pkg) => total + pkg.price, 0);
+});
+
 // Virtual for total cost calculation
 WorkOrderSchema.virtual('totalCost').get(function() {
-  return this.partsCost + this.laborCost;
+  return this.partsCost + this.laborCost + this.servicePackagesCost;
 });
 
 // Pre-validate hook: migrate legacy data before validation runs

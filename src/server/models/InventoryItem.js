@@ -60,10 +60,25 @@ const InventoryItemSchema = new Schema({
     default: 'each',
     trim: true
   },
+  unitsPerPurchase: {
+    type: Number,
+    default: 1,
+    min: 1
+  },
+  purchaseUnit: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   reorderPoint: {
     type: Number,
     default: 1,
     min: 0
+  },
+  packageTag: {
+    type: String,
+    trim: true,
+    default: ''
   },
   notes: {
     type: String,

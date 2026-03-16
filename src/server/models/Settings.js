@@ -47,6 +47,12 @@ const SettingsSchema = new Schema(
         'Fluids', 'PPE', 'Consumables', 'Filters', 'Hardware'
       ]
     },
+    packageTags: {
+      type: [String],
+      default: [
+        'Motor Oil', 'Oil Filter', 'Transmission Fluid', 'Brake Fluid', 'Coolant', 'Power Steering Fluid'
+      ]
+    },
     vendorHostnames: {
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
@@ -91,6 +97,10 @@ SettingsSchema.statics.getSettings = async function () {
     }
     if (!settings.inventoryCategories || settings.inventoryCategories.length === 0) {
       settings.inventoryCategories = ['Fluids', 'PPE', 'Consumables', 'Filters', 'Hardware'];
+      needsSave = true;
+    }
+    if (!settings.packageTags || settings.packageTags.length === 0) {
+      settings.packageTags = ['Motor Oil', 'Oil Filter', 'Transmission Fluid', 'Brake Fluid', 'Coolant', 'Power Steering Fluid'];
       needsSave = true;
     }
     if (!settings.vendorHostnames || settings.vendorHostnames.length === 0) {

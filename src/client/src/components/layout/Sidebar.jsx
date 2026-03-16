@@ -77,6 +77,7 @@ const Sidebar = () => {
     { name: 'Calendar & Tasks', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Parts Catalog', path: '/parts', icon: 'fas fa-cogs', roles: null },
     { name: 'Shop Inventory', path: '/inventory', icon: 'fas fa-boxes-stacked', roles: null },
+    { name: 'Service Packages', path: '/service-packages', icon: 'fas fa-box-open', roles: ['admin', 'management'] },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];
 

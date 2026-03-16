@@ -30,7 +30,7 @@ const PaymentSchema = new Schema({
 const InvoiceItemSchema = new Schema({
   type: {
     type: String,
-    enum: ['Part', 'Labor'],
+    enum: ['Part', 'Labor', 'Service'],
     required: true
   },
   description: {

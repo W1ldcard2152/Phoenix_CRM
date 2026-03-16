@@ -5,7 +5,7 @@ const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
-const { calculatePartsCost, calculateLaborCost } = require('../utils/calculationHelpers');
+const { calculatePartsCost, calculateLaborCost, calculateServicePackagesCost } = require('../utils/calculationHelpers');
 const emailService = require('../services/emailService');
 
 // Get all invoices
@@ -84,6 +84,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     paymentTerms,
     parts,
     labor,
+    servicePackages,
     subtotal,
     taxRate,
     taxAmount,
@@ -133,7 +134,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     }
 
     // Calculate totalActual from the work order's parts and labor
-    workOrderToUpdate.totalActual = calculatePartsCost(workOrderToUpdate.parts) + calculateLaborCost(workOrderToUpdate.labor);
+    workOrderToUpdate.totalActual = calculatePartsCost(workOrderToUpdate.parts) + calculateLaborCost(workOrderToUpdate.labor) + calculateServicePackagesCost(workOrderToUpdate.servicePackages);
     workOrderToUpdate.status = 'Repair Complete - Invoiced';
     // Note: work order will be saved after invoice is created to include invoice reference
   }
@@ -163,7 +164,16 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
         taxable: true, // Could be configurable
         billingType: labor.billingType || 'hourly'
       };
-    })
+    }),
+    ...(servicePackages || []).map(pkg => ({
+      type: 'Service',
+      description: pkg.name,
+      quantity: 1,
+      unitPrice: pkg.price,
+      total: pkg.price,
+      taxable: true,
+      billingType: 'fixed'
+    }))
   ];
   
   // Calculate due date if not provided

@@ -16,13 +16,23 @@ const LoginSchema = Yup.object().shape({
     .required('Password is required')
 });
 
+const isInAppBrowser = () => {
+  const ua = navigator.userAgent || '';
+  // Detect common in-app browsers / WebViews that Google blocks
+  return /FBAN|FBAV|Instagram|Line\/|Twitter|Snapchat|WebView|wv\)|CriOS.*wv/i.test(ua)
+    || ((/iPhone|iPad|iPod/.test(ua)) && !(/Safari/.test(ua)));
+};
+
 const Login = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
   const oauthError = searchParams.get('error');
+  const inAppBrowser = isInAppBrowser();
   const [error, setError] = useState(
-    oauthError === 'not_authorized'
+    oauthError === 'disallowed_useragent'
+      ? 'Google sign-in is blocked in this browser. Please open this page in Safari or Chrome instead.'
+      : oauthError === 'not_authorized'
       ? 'Not authorized — contact your administrator to get access.'
       : null
   );
@@ -61,11 +71,27 @@ const Login = () => {
         )}
 
         <Card>
+          {inAppBrowser && (
+            <div className="mb-4 bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded-lg text-sm">
+              <p className="font-semibold">In-app browser detected</p>
+              <p className="mt-1">
+                Google sign-in doesn't work in this browser. Tap the menu (<span className="font-mono">...</span> or{' '}
+                <svg className="inline w-4 h-4 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                ) and choose <strong>Open in Safari</strong> or <strong>Open in Chrome</strong>.
+              </p>
+            </div>
+          )}
+
           {/* Google OAuth Sign-in */}
           <div className="mb-6">
             <button
               onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              disabled={inAppBrowser}
+              className={`w-full flex items-center justify-center gap-3 py-3 px-4 border border-gray-300 rounded-lg shadow-sm font-medium transition-colors ${
+                inAppBrowser
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
               type="button"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">

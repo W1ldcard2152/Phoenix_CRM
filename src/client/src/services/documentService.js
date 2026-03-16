@@ -29,6 +29,10 @@ const DocumentService = {
 
   // Parts/Labor
   addPart: async (id, partData) => WorkOrderService.addPart(id, partData),
+  addPartFromInventory: async (id, data) => WorkOrderService.addPartFromInventory(id, data),
+  addServicePackage: async (id, data) => WorkOrderService.addServicePackage(id, data),
+  commitServicePackage: async (id, data) => WorkOrderService.commitServicePackage(id, data),
+  removeServicePackage: async (id, data) => WorkOrderService.removeServicePackage(id, data),
   addLabor: async (id, laborData) => WorkOrderService.addLabor(id, laborData),
 
   // WO-specific operations

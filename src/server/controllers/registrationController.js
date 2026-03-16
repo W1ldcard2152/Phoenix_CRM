@@ -1,7 +1,7 @@
 const multer = require('multer');
-const fetch = require('node-fetch');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { getModel } = require('../services/aiService');
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -20,39 +20,23 @@ const upload = multer({
   },
 });
 
-// OpenAI configuration
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-if (!OPENAI_API_KEY) {
-  console.warn('⚠️  OPENAI_API_KEY not found in environment variables. Registration scanning will not work.');
+if (!process.env.GEMINI_API_KEY) {
+  console.warn('⚠️  GEMINI_API_KEY not found in environment variables. Registration scanning will not work.');
 }
 
 /**
- * Call OpenAI Vision API to analyze registration image
+ * Call Gemini Vision API to analyze registration image
  */
-const analyzeRegistrationWithOpenAI = async (imageBuffer) => {
-  if (!OPENAI_API_KEY) {
-    throw new AppError('OpenAI API key not configured', 500);
+const analyzeRegistrationWithGemini = async (imageBuffer) => {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new AppError('Gemini API key not configured', 500);
   }
 
   try {
     const base64Image = imageBuffer.toString('base64');
-    
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Please analyze this vehicle registration document and extract the following information in JSON format:
+    const model = getModel();
+
+    const prompt = `Please analyze this vehicle registration document and extract the following information in JSON format:
 
 {
   "vin": "Vehicle Identification Number (17 characters if found)",
@@ -62,73 +46,41 @@ const analyzeRegistrationWithOpenAI = async (imageBuffer) => {
 }
 
 Important instructions:
-- Only return valid JSON, no additional text or markdown
 - If you cannot find a field, omit it from the response or set it to null
 - VIN should be exactly 17 characters if found - be very careful with VIN recognition
 - License plate should be the actual plate number without state prefix
 - License plate state should be the 2-letter state abbreviation (e.g., 'NY', 'CA', 'TX')
 - Confidence should reflect how clearly you can read the information
-- Focus only on these essential fields - ignore make, model, year as they will be obtained from VIN decoding`
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 300
-      })
+- Focus only on these essential fields - ignore make, model, year as they will be obtained from VIN decoding`;
+
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
+        ]
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 300
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('OpenAI API error:', errorData);
-      
-      if (response.status === 429) {
-        throw new AppError('Rate limit exceeded. Please try again later.', 429);
-      } else if (response.status === 401) {
-        throw new AppError('OpenAI API authentication failed', 500);
-      } else {
-        throw new AppError('Failed to analyze image', 500);
-      }
-    }
-
-    const data = await response.json();
-    
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new AppError('Invalid response from OpenAI', 500);
-    }
-
-    let content = data.choices[0].message.content;
-    
-    // Clean up content - remove markdown code blocks if present
-    content = content.trim();
-    if (content.startsWith('```json')) {
-      content = content.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-    } else if (content.startsWith('```')) {
-      content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
-    }
-    
-    // Parse the JSON response
-    let extractedData;
-    try {
-      extractedData = JSON.parse(content);
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response as JSON:', content);
-      throw new AppError('Failed to parse extracted data', 500);
-    }
-
-    return extractedData;
+    const content = result.response.text();
+    return JSON.parse(content);
 
   } catch (error) {
     if (error instanceof AppError) {
       throw error;
     }
-    
-    console.error('OpenAI API call failed:', error);
+
+    console.error('Gemini API call failed:', error);
+
+    if (error.status === 429) {
+      throw new AppError('Rate limit exceeded. Please try again later.', 429);
+    }
+
     throw new AppError('Failed to analyze registration image', 500);
   }
 };
@@ -147,7 +99,7 @@ const validateExtractedData = (data) => {
   if (data.vin) {
     const vinStr = data.vin.toString().toUpperCase().trim();
     const vinRegex = /^[A-HJ-NPR-Z0-9]{17}$/;
-    
+
     if (vinRegex.test(vinStr)) {
       cleaned.vin = vinStr;
     } else if (vinStr.length === 17) {
@@ -183,7 +135,7 @@ const validateExtractedData = (data) => {
 
   // Check if we have minimum required data
   const hasRequiredData = cleaned.vin || cleaned.licensePlate;
-  
+
   return {
     isValid: hasRequiredData,
     data: cleaned,
@@ -225,18 +177,18 @@ const scanRegistration = catchAsync(async (req, res, next) => {
   }
 
   try {
-    console.log('Processing image with OpenAI...');
-    
-    // Analyze the image with OpenAI
-    const extractedData = await analyzeRegistrationWithOpenAI(req.file.buffer);
-    
-    console.log('OpenAI response:', extractedData);
-    
+    console.log('Processing image with Gemini...');
+
+    // Analyze the image with Gemini
+    const extractedData = await analyzeRegistrationWithGemini(req.file.buffer);
+
+    console.log('Gemini response:', extractedData);
+
     // Validate and clean the extracted data
     const validation = validateExtractedData(extractedData);
-    
+
     console.log('Validation result:', validation);
-    
+
     if (!validation.isValid) {
       return res.status(200).json({
         success: false,
@@ -260,11 +212,11 @@ const scanRegistration = catchAsync(async (req, res, next) => {
       fileSize: req.file?.size,
       fileMimetype: req.file?.mimetype
     });
-    
+
     if (error instanceof AppError) {
       return next(error);
     }
-    
+
     return next(new AppError('Failed to process registration image', 500));
   }
 });

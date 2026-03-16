@@ -46,6 +46,14 @@ router.patch('/:id/status', restrictToOwnWorkOrder('admin', 'management', 'servi
 // Add part to work order (office staff only)
 router.post('/:id/parts', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addPart);
 
+// Add part from inventory to work order (deducts inventory QOH)
+router.post('/:id/parts/from-inventory', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addPartFromInventory);
+
+// Service packages on work orders (draft → commit → remove)
+router.post('/:id/service-package', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addServicePackage);
+router.post('/:id/commit-service-package', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.commitServicePackage);
+router.post('/:id/remove-service-package', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.removeServicePackage);
+
 // Add labor to work order (office staff or own assigned WO)
 router.post('/:id/labor', restrictToOwnWorkOrder('admin', 'management', 'service-writer'), workOrderController.addLabor);
 

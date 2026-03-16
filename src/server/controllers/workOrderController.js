@@ -4,6 +4,9 @@ const Vehicle = require('../models/Vehicle');
 const Customer = require('../models/Customer');
 const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
+const InventoryItem = require('../models/InventoryItem');
+const ServicePackage = require('../models/ServicePackage');
+const Settings = require('../models/Settings');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault, todayInTz, startOfTodayInTz, getDayBoundaries } = require('../utils/dateUtils');
@@ -188,7 +191,8 @@ exports.createWorkOrder = catchAsync(async (req, res, next) => {
   if (!workOrderData.totalEstimate) {
     workOrderData.totalEstimate = calculateWorkOrderTotal(
       workOrderData.parts,
-      workOrderData.labor
+      workOrderData.labor,
+      workOrderData.servicePackages
     );
   }
 
@@ -279,7 +283,8 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
 
     const parts = workOrderData.parts || workOrder.parts;
     const labor = workOrderData.labor || workOrder.labor;
-    workOrderData.totalEstimate = calculateWorkOrderTotal(parts, labor);
+    const servicePackages = workOrderData.servicePackages || workOrder.servicePackages;
+    workOrderData.totalEstimate = calculateWorkOrderTotal(parts, labor, servicePackages);
   }
   
   
@@ -571,7 +576,7 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
 
   // If the status is "Invoiced", set the totalActual
   if (status === 'Repair Complete - Invoiced') {
-    workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
+    workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   }
 
   await workOrder.save({ validateBeforeSave: false });
@@ -624,7 +629,7 @@ exports.addPart = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
 
   workOrder.parts.push(req.body);
-  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   await workOrder.save();
 
   const populatedWorkOrderAfterAdd = await applyPopulation(
@@ -643,12 +648,322 @@ exports.addPart = catchAsync(async (req, res, next) => {
   });
 });
 
+// Add part from inventory to work order (deducts inventory QOH)
+exports.addPartFromInventory = catchAsync(async (req, res, next) => {
+  const { inventoryItemId, quantity } = req.body;
+  if (!inventoryItemId || !quantity || quantity < 1) {
+    return next(new AppError('inventoryItemId and quantity (>= 1) are required', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const item = await InventoryItem.findById(inventoryItemId);
+  if (!item || !item.isActive) {
+    return next(new AppError('Inventory item not found or inactive', 404));
+  }
+
+  if (item.quantityOnHand < quantity) {
+    return next(new AppError(`Insufficient stock: ${item.quantityOnHand} ${item.unit} available, ${quantity} requested`, 400));
+  }
+
+  const settings = await Settings.getSettings();
+  const markup = settings.partMarkupPercentage || 30;
+  const price = parseFloat((item.cost * (1 + markup / 100)).toFixed(2));
+
+  // Deduct inventory atomically
+  const previousQty = item.quantityOnHand;
+  const newQty = previousQty - quantity;
+  const updated = await InventoryItem.findOneAndUpdate(
+    { _id: inventoryItemId, quantityOnHand: { $gte: quantity } },
+    {
+      $set: { quantityOnHand: newQty },
+      $push: {
+        adjustmentLog: {
+          adjustedBy: req.user._id,
+          previousQty,
+          newQty,
+          reason: `Used on WO #${workOrder._id}`
+        }
+      }
+    },
+    { new: true }
+  );
+  if (!updated) {
+    return next(new AppError('Insufficient stock (concurrent update)', 409));
+  }
+
+  // Add part line to work order
+  workOrder.parts.push({
+    name: item.name,
+    partNumber: item.partNumber || '',
+    quantity,
+    price,
+    cost: item.cost,
+    vendor: item.vendor || '',
+    warranty: item.warranty || '',
+    url: item.url || '',
+    category: item.category || '',
+    inventoryItemId: item._id,
+    ordered: true,
+    received: true
+  });
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  const response = {
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  };
+
+  if (newQty <= updated.reorderPoint) {
+    response.lowStockWarning = {
+      itemName: updated.name,
+      currentQoh: newQty,
+      unit: updated.unit,
+      reorderPoint: updated.reorderPoint
+    };
+  }
+
+  res.status(200).json(response);
+});
+
+// Add service package to work order (labor line + $0 included parts + inventory deductions)
+// Add service package as draft (no inventory deduction yet)
+exports.addServicePackage = catchAsync(async (req, res, next) => {
+  const { servicePackageId, selections } = req.body;
+  if (!servicePackageId) {
+    return next(new AppError('servicePackageId is required', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const pkg = await ServicePackage.findById(servicePackageId);
+  if (!pkg || !pkg.isActive) {
+    return next(new AppError('Service package not found or inactive', 404));
+  }
+
+  // selections = [{ includedItemId, inventoryItemId }]
+  const selectionMap = {};
+  if (selections && Array.isArray(selections)) {
+    for (const sel of selections) {
+      selectionMap[sel.includedItemId] = sel.inventoryItemId;
+    }
+  }
+
+  // Validate selected items exist and match tags (but don't check QOH yet)
+  const packageIncludedItems = [];
+  for (const included of pkg.includedItems) {
+    const inventoryItemId = selectionMap[included._id.toString()];
+    if (inventoryItemId) {
+      const inv = await InventoryItem.findById(inventoryItemId);
+      if (!inv || !inv.isActive) {
+        return next(new AppError(`Inventory item for "${included.label}" is not found or inactive`, 400));
+      }
+      if (inv.packageTag !== included.packageTag) {
+        return next(new AppError(`Selected item "${inv.name}" does not match required tag "${included.packageTag}"`, 400));
+      }
+      packageIncludedItems.push({
+        inventoryItemId: inv._id,
+        name: inv.name,
+        partNumber: inv.partNumber || '',
+        quantity: included.quantity,
+        cost: inv.cost,
+        unit: inv.unit || ''
+      });
+    } else {
+      packageIncludedItems.push({
+        name: `${included.label} (${included.packageTag})`,
+        quantity: included.quantity,
+        cost: 0
+      });
+    }
+  }
+
+  // Add as uncommitted draft — no inventory deducted
+  workOrder.servicePackages.push({
+    servicePackageId: pkg._id,
+    name: pkg.name,
+    price: pkg.price,
+    committed: false,
+    includedItems: packageIncludedItems
+  });
+
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  });
+});
+
+// Commit a service package — deduct inventory
+exports.commitServicePackage = catchAsync(async (req, res, next) => {
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const { packageIndex } = req.body;
+
+  if (packageIndex === undefined || packageIndex < 0 || packageIndex >= (workOrder.servicePackages || []).length) {
+    return next(new AppError('Invalid package index', 400));
+  }
+
+  const pkg = workOrder.servicePackages[packageIndex];
+  if (pkg.committed) {
+    return next(new AppError('This service package is already committed', 400));
+  }
+
+  // Pre-validate all inventory items have sufficient QOH
+  for (const item of pkg.includedItems) {
+    if (item.inventoryItemId) {
+      const inv = await InventoryItem.findById(item.inventoryItemId);
+      if (!inv || !inv.isActive) {
+        return next(new AppError(`Inventory item "${item.name}" is not found or inactive`, 400));
+      }
+      if (inv.quantityOnHand < item.quantity) {
+        return next(new AppError(`Insufficient stock for "${item.name}": ${inv.quantityOnHand} ${inv.unit} available, ${item.quantity} needed`, 400));
+      }
+    }
+  }
+
+  // Deduct inventory
+  const lowStockWarnings = [];
+  for (const item of pkg.includedItems) {
+    if (item.inventoryItemId) {
+      const inv = await InventoryItem.findById(item.inventoryItemId);
+      const previousQty = inv.quantityOnHand;
+      const newQty = previousQty - item.quantity;
+
+      const updated = await InventoryItem.findOneAndUpdate(
+        { _id: inv._id, quantityOnHand: { $gte: item.quantity } },
+        {
+          $set: { quantityOnHand: newQty },
+          $push: {
+            adjustmentLog: {
+              adjustedBy: req.user._id,
+              previousQty,
+              newQty,
+              reason: `Service "${pkg.name}" on WO #${workOrder._id}`
+            }
+          }
+        },
+        { new: true }
+      );
+
+      if (!updated) {
+        return next(new AppError(`Failed to deduct inventory for "${item.name}" (concurrent update)`, 409));
+      }
+
+      if (newQty <= updated.reorderPoint) {
+        lowStockWarnings.push({
+          itemName: updated.name,
+          currentQoh: newQty,
+          unit: updated.unit,
+          reorderPoint: updated.reorderPoint
+        });
+      }
+    }
+  }
+
+  workOrder.servicePackages[packageIndex].committed = true;
+  workOrder.markModified('servicePackages');
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  const response = {
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  };
+
+  if (lowStockWarnings.length > 0) {
+    response.lowStockWarnings = lowStockWarnings;
+  }
+
+  res.status(200).json(response);
+});
+
+// Remove a service package from work order (does NOT return inventory)
+exports.removeServicePackage = catchAsync(async (req, res, next) => {
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const { packageIndex, returnToInventory } = req.body;
+
+  if (packageIndex === undefined || packageIndex < 0 || packageIndex >= (workOrder.servicePackages || []).length) {
+    return next(new AppError('Invalid package index', 400));
+  }
+
+  const removedPkg = workOrder.servicePackages[packageIndex];
+
+  // Return items to inventory if requested
+  if (returnToInventory && removedPkg.includedItems) {
+    for (const item of removedPkg.includedItems) {
+      if (item.inventoryItemId) {
+        const inv = await InventoryItem.findById(item.inventoryItemId);
+        if (inv) {
+          const previousQty = inv.quantityOnHand;
+          const newQty = previousQty + item.quantity;
+          await InventoryItem.findByIdAndUpdate(item.inventoryItemId, {
+            $set: { quantityOnHand: newQty },
+            $push: {
+              adjustmentLog: {
+                adjustedBy: req.user._id,
+                previousQty,
+                newQty,
+                reason: `Returned from removed service "${removedPkg.name}" on WO #${workOrder._id}`
+              }
+            }
+          });
+        }
+      }
+    }
+  }
+
+  workOrder.servicePackages.splice(packageIndex, 1);
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  });
+});
+
 // Add labor to work order
 exports.addLabor = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
 
   workOrder.labor.push(req.body);
-  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor);
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   await workOrder.save();
 
   const populatedWorkOrderAfterAddLabor = await applyPopulation(
@@ -894,7 +1209,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   });
 
   // Calculate totals for new work order
-  newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor);
+  newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor, newWorkOrder.servicePackages);
 
   // Remove moved items from original work order
   originalWorkOrder.parts = originalWorkOrder.parts.filter(part =>
@@ -905,7 +1220,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   );
 
   // Update totals for original work order
-  originalWorkOrder.totalEstimate = calculateWorkOrderTotal(originalWorkOrder.parts, originalWorkOrder.labor);
+  originalWorkOrder.totalEstimate = calculateWorkOrderTotal(originalWorkOrder.parts, originalWorkOrder.labor, originalWorkOrder.servicePackages);
 
   // Add note to original work order about the split
   if (!originalWorkOrder.diagnosticNotes) {
@@ -1121,7 +1436,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   const Media = require('../models/Media');
 
   const workOrderId = req.params.id;
-  const { selectedParts, shippingTotal, isOrder, mediaId, mediaS3Key } = req.body;
+  const { selectedParts, shippingTotal, isOrder, mediaId, mediaS3Key, catalogActions } = req.body;
 
   if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
     return next(new AppError('No parts selected', 400));
@@ -1133,7 +1448,6 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   }
 
   // Apply shipping amortization and markup to selected parts
-  const Settings = require('../models/Settings');
   const settings = await Settings.getSettings();
   const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder, settings.partMarkupPercentage);
 
@@ -1161,6 +1475,52 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   }
 
   await workOrder.save();
+
+  // Add parts to catalog/inventory if requested (best-effort)
+  if (catalogActions && typeof catalogActions === 'object') {
+    const Part = require('../models/Part');
+
+    for (const [indexStr, action] of Object.entries(catalogActions)) {
+      const part = partsWithReceipt[parseInt(indexStr)];
+      if (!part || !action) continue;
+
+      try {
+        if (action === 'catalog') {
+          const partNumber = part.itemNumber || `IMPORT-${Date.now()}-${indexStr}`;
+          await Part.findOneAndUpdate(
+            { partNumber },
+            {
+              name: part.name,
+              partNumber,
+              vendor: part.vendor || 'Unknown',
+              brand: part.vendor || 'Unknown',
+              category: 'Other',
+              cost: part.cost || 0,
+              price: part.price || 0,
+              warranty: '',
+              url: ''
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+        } else if (action === 'inventory') {
+          await InventoryItem.findOneAndUpdate(
+            { name: part.name, partNumber: part.itemNumber || '' },
+            {
+              name: part.name,
+              partNumber: part.itemNumber || '',
+              vendor: part.vendor || '',
+              cost: part.cost || 0,
+              price: part.price || 0,
+              quantityOnHand: part.quantity || 1
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          );
+        }
+      } catch (catalogErr) {
+        console.error(`[Receipt] Failed to add part "${part.name}" to ${action}:`, catalogErr.message);
+      }
+    }
+  }
 
   // Update media doc notes with final count
   if (mediaId) {
@@ -1472,7 +1832,7 @@ exports.createQuote = catchAsync(async (req, res, next) => {
 
   // Calculate total estimate
   if (!quoteData.totalEstimate) {
-    quoteData.totalEstimate = calculateWorkOrderTotal(quoteData.parts, quoteData.labor);
+    quoteData.totalEstimate = calculateWorkOrderTotal(quoteData.parts, quoteData.labor, quoteData.servicePackages);
   }
 
   // Store notes temporarily
@@ -1596,7 +1956,7 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       }))
     });
 
-    newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor);
+    newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor, newWorkOrder.servicePackages);
     await newWorkOrder.save();
 
     // Remove converted items from quote
@@ -1606,7 +1966,7 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
     quote.labor = quote.labor.filter(labor =>
       !laborToConvertIds.includes(labor._id.toString())
     );
-    quote.totalEstimate = calculateWorkOrderTotal(quote.parts, quote.labor);
+    quote.totalEstimate = calculateWorkOrderTotal(quote.parts, quote.labor, quote.servicePackages);
 
     // Archive quote if nothing remains
     if (quote.parts.length === 0 && quote.labor.length === 0) {
@@ -1700,7 +2060,7 @@ exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
     }))
   });
 
-  newQuote.totalEstimate = calculateWorkOrderTotal(newQuote.parts, newQuote.labor);
+  newQuote.totalEstimate = calculateWorkOrderTotal(newQuote.parts, newQuote.labor, newQuote.servicePackages);
   await newQuote.save();
 
   const populatedQuote = await applyPopulation(

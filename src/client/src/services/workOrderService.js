@@ -89,6 +89,50 @@ const WorkOrderService = {
     }
   },
 
+  // Add part from inventory to work order (deducts inventory QOH)
+  addPartFromInventory: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/parts/from-inventory`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error adding inventory part to work order ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Add service package to work order
+  addServicePackage: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/service-package`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error adding service package to work order ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Commit service package (deduct inventory)
+  commitServicePackage: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/commit-service-package`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error committing service package on work order ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Remove service package from work order
+  removeServicePackage: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/remove-service-package`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error removing service package from work order ${id}:`, error);
+      throw error;
+    }
+  },
+
   // Add labor to work order
   addLabor: async (id, laborData) => {
     try {

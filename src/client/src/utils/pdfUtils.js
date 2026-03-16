@@ -172,6 +172,7 @@ export const generateDocumentHtml = (type, data) => {
     diagnosticNotes,
     parts = [],
     labor = [],
+    servicePackages = [],
     customerFacingNotes = [],
     customerNotes,
     taxRate = 0,
@@ -186,7 +187,8 @@ export const generateDocumentHtml = (type, data) => {
     return sum + lineTotal + core;
   }, 0);
   const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.quantity || l.hours) || 0)), 0);
-  const subtotal = partsTotal + laborTotal;
+  const servicesTotal = servicePackages.reduce((sum, pkg) => sum + (parseFloat(pkg.price) || 0), 0);
+  const subtotal = partsTotal + laborTotal + servicesTotal;
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount;
 
@@ -371,6 +373,35 @@ export const generateDocumentHtml = (type, data) => {
                 <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(itemTotal)}</td>
               </tr>
             `;}).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+
+      ${servicePackages.length > 0 ? `
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Services:</p>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; font-size: 13px;">
+          <thead>
+            <tr style="background-color: #f3f4f6;">
+              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-weight: 600;">Description</th>
+              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; font-weight: 600; width: 100px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${servicePackages.map(pkg => `
+              <tr>
+                <td style="border: 1px solid #d1d5db; padding: 6px 8px;">
+                  ${pkg.name}
+                  ${(pkg.includedItems && pkg.includedItems.length > 0) ? `
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">
+                      Includes: ${pkg.includedItems.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right;">${formatCurrency(pkg.price)}</td>
+              </tr>
+            `).join('')}
           </tbody>
         </table>
       </div>

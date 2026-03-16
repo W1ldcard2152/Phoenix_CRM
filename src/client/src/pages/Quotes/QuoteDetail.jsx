@@ -345,6 +345,7 @@ const QuoteDetail = () => {
     serviceRequested: quote.serviceRequested,
     parts: quote.parts || [],
     labor: quote.labor || [],
+    servicePackages: quote.servicePackages || [],
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
     technicianName: getCustomerFacingName(quote.assignedTechnician),
     serviceAdvisorName: getCustomerFacingName(quote.createdBy)

@@ -49,6 +49,16 @@ const SettingsService = {
   removeInventoryCategory: async (category) => {
     const response = await API.post('/settings/inventory-categories/remove', { category });
     return response.data;
+  },
+
+  addPackageTag: async (tag) => {
+    const response = await API.post('/settings/package-tags', { tag });
+    return response.data;
+  },
+
+  removePackageTag: async (tag) => {
+    const response = await API.post('/settings/package-tags/remove', { tag });
+    return response.data;
   }
 };
 

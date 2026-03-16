@@ -8,6 +8,7 @@ import partService from '../../services/partService';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import usePersistedState from '../../hooks/usePersistedState';
+import UrlExtractButton from '../../components/common/UrlExtractButton';
 
 const PartsList = () => {
   const { currentUser } = useAuth();
@@ -635,13 +636,28 @@ const PartsList = () => {
               {/* Product URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Product URL</label>
-                <input
-                  type="url"
-                  value={formData.url}
-                  onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
-                  placeholder="https://..."
-                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+                <div className="flex items-start">
+                  <input
+                    type="url"
+                    value={formData.url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+                    placeholder="https://..."
+                    className="flex-1 px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <UrlExtractButton
+                    url={formData.url}
+                    onExtracted={(data) => setFormData(prev => ({
+                      ...prev,
+                      name: prev.name || data.name || '',
+                      partNumber: prev.partNumber || data.partNumber || '',
+                      price: prev.price || (data.price != null ? data.price.toString() : ''),
+                      cost: prev.cost || (data.cost != null ? data.cost.toString() : data.price != null ? data.price.toString() : ''),
+                      vendor: prev.vendor || data.vendor || '',
+                      brand: prev.brand || data.brand || '',
+                      warranty: prev.warranty || data.warranty || ''
+                    }))}
+                  />
+                </div>
               </div>
 
               {/* Quantity on Hand */}

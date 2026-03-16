@@ -40,7 +40,8 @@ const InvoiceGenerator = () => {
     terms: 'All services and repairs are guaranteed for 90 days or 3,000 miles, whichever comes first. Payment is due upon receipt unless other arrangements are made.',
     taxRate: 8.0,
     parts: [],
-    labor: []
+    labor: [],
+    servicePackages: []
   });
 
   // Page states
@@ -177,6 +178,12 @@ const InvoiceGenerator = () => {
               };
             })
           : [],
+        servicePackages: workOrder.servicePackages
+          ? workOrder.servicePackages.map((pkg, index) => ({
+              ...pkg,
+              _id: pkg._id || `service-${Date.now()}-${index}`,
+            }))
+          : [],
       }));
     } catch (err) {
       console.error(`Error loading work order ${workOrderId}:`, err);
@@ -239,7 +246,7 @@ const InvoiceGenerator = () => {
       setSelectedCustomer(null);
       setSelectedVehicle(null);
       setVehicles([]);
-      setInvoiceData(prev => ({ ...prev, parts: [], labor: [] }));
+      setInvoiceData(prev => ({ ...prev, parts: [], labor: [], servicePackages: [] }));
       return;
     }
     await loadWorkOrder(newWorkOrderId);
@@ -360,10 +367,11 @@ const InvoiceGenerator = () => {
       return sum + lineTotal + core;
     }, 0);
     const laborTotal = invoiceData.labor.reduce((sum, laborItem) => sum + (parseFloat(laborItem.total) || 0), 0);
-    const subtotal = partsTotal + laborTotal;
+    const servicesTotal = (invoiceData.servicePackages || []).reduce((sum, pkg) => sum + (pkg.price || 0), 0);
+    const subtotal = partsTotal + laborTotal + servicesTotal;
     const taxAmount = subtotal * (parseFloat(invoiceData.taxRate) / 100);
     const total = subtotal + taxAmount;
-    return { partsTotal, laborTotal, subtotal, taxAmount, total };
+    return { partsTotal, laborTotal, servicesTotal, subtotal, taxAmount, total };
   };
 
   const handleTaxRateChange = (e) => {
@@ -394,6 +402,11 @@ const InvoiceGenerator = () => {
       hours: l.hours,
       rate: l.rate,
       billingType: l.billingType || 'hourly'
+    })),
+    servicePackages: (invoiceData.servicePackages || []).map(pkg => ({
+      name: pkg.name,
+      price: pkg.price,
+      includedItems: pkg.includedItems || []
     })),
     customerFacingNotes,
     customerNotes: invoiceData.customerNotes,

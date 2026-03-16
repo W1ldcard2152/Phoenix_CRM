@@ -1,12 +1,15 @@
-const OpenAI = require('openai');
+const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 
-// Initialize xAI client (OpenAI SDK-compatible)
-const xai = new OpenAI({
-  baseURL: 'https://api.x.ai/v1',
-  apiKey: process.env.XAI_API_KEY
-});
+// Initialize Gemini client
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL = 'grok-4';
+const MODEL = 'gemini-2.5-flash';
+
+/**
+ * Get a Gemini model instance (shared with registrationController)
+ */
+const getModel = (modelName = MODEL) => genAI.getGenerativeModel({ model: modelName });
+exports.getModel = getModel;
 
 /**
  * Parse a receipt image or text and extract raw parts information.
@@ -20,7 +23,7 @@ const MODEL = 'grok-4';
  */
 exports.parseReceipt = async (receiptData, dataType = 'image', mimeType = 'image/png') => {
   try {
-    let messages;
+    const model = getModel();
 
     const extractionPrompt = `You are a receipt parser for an auto repair shop. Extract ALL parts/items from this receipt.
 
@@ -60,7 +63,7 @@ IGNORE these line items entirely (do NOT extract them):
 - Tax lines
 - Order totals / subtotals
 
-Return ONLY a JSON array with no additional text. Example format:
+Return a JSON array. Example format:
 [
   {
     "name": "Oxygen (O2) Sensor",
@@ -82,61 +85,43 @@ Return ONLY a JSON array with no additional text. Example format:
   }
 ]`;
 
+    // Build content parts
+    const parts = [{ text: extractionPrompt }];
+
     if (dataType === 'image') {
       // Support single buffer or array of buffers (multi-page PDF)
       const buffers = Array.isArray(receiptData) ? receiptData : [receiptData];
-
-      const imageContent = buffers.map(buf => ({
-        type: 'image_url',
-        image_url: {
-          url: `data:${mimeType};base64,${buf.toString('base64')}`
-        }
-      }));
-
-      messages = [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: extractionPrompt },
-            ...imageContent
-          ]
-        }
-      ];
+      for (const buf of buffers) {
+        parts.push({
+          inlineData: {
+            mimeType,
+            data: buf.toString('base64')
+          }
+        });
+      }
     } else {
       // Text input (from pasted text or PDF extraction)
-      messages = [
-        {
-          role: 'user',
-          content: `${extractionPrompt}
-
-Receipt text:
-${receiptData}`
-        }
-      ];
+      parts.push({ text: `\nReceipt text:\n${receiptData}` });
     }
 
-    const response = await xai.chat.completions.create({
-      model: MODEL,
-      messages: messages,
-      max_tokens: 4000,
-      temperature: 0.1
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 4000
+      }
     });
 
-    const content = response.choices[0].message.content.trim();
-
-    // Parse the JSON response
+    const content = result.response.text();
     let parsedParts;
     try {
-      // Remove markdown code blocks if present
-      const jsonMatch = content.match(/```(?:json)?\s*(\[[\s\S]*\])\s*```/);
-      const jsonString = jsonMatch ? jsonMatch[1] : content;
-      parsedParts = JSON.parse(jsonString);
+      parsedParts = JSON.parse(content);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', content);
+      console.error('Failed to parse Gemini response:', content);
       throw new Error('Failed to parse receipt data from AI response');
     }
 
-    // Validate the parsed data
     if (!Array.isArray(parsedParts)) {
       throw new Error('Invalid response format: expected an array of parts');
     }
@@ -149,14 +134,12 @@ ${receiptData}`
       !part.name || (!part.name.toLowerCase().includes('shipping') && !part.name.toLowerCase().includes('tax'))
     );
 
-    // Calculate total shipping/tax cost
     const shippingTotal = shippingItems.reduce((sum, item) => {
       return sum + ((parseFloat(item.price) || 0) * (item.quantity || 1));
     }, 0);
 
     console.log(`[Receipt Parser] Extracted ${regularParts.length} part(s) and ${shippingItems.length} shipping/tax item(s) totaling $${shippingTotal.toFixed(2)}`);
 
-    // Return raw parts (no markup, no amortization) + shipping total
     const rawParts = regularParts.map(part => ({
       name: part.name || '',
       itemNumber: part.itemNumber || '',
@@ -170,7 +153,7 @@ ${receiptData}`
     return { parts: rawParts, shippingTotal };
 
   } catch (error) {
-    console.error('Error parsing receipt with xAI:', error);
+    console.error('Error parsing receipt with Gemini:', error);
     throw new Error(`Receipt parsing failed: ${error.message}`);
   }
 };
@@ -211,19 +194,213 @@ exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage
 };
 
 /**
- * Test function to validate xAI service is configured correctly
+ * Fetch a URL and return simplified text content for AI extraction.
+ * Strips HTML tags, scripts, styles, and excessive whitespace.
+ */
+const fetchPageText = (pageUrl) => {
+  const lib = pageUrl.startsWith('https') ? require('https') : require('http');
+  return new Promise((resolve, reject) => {
+    const opts = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9'
+      },
+      timeout: 15000
+    };
+
+    const handleResponse = (res) => {
+      // Follow redirects
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const redirectUrl = new URL(res.headers.location, pageUrl).href;
+        console.log(`[URL Extract] Following redirect to: ${redirectUrl}`);
+        const rLib = redirectUrl.startsWith('https') ? require('https') : require('http');
+        rLib.get(redirectUrl, opts, handleResponse).on('error', reject);
+        return;
+      }
+
+      let html = '';
+      res.on('data', chunk => { html += chunk; });
+      res.on('end', () => {
+        // Strip scripts, styles, and HTML tags; collapse whitespace
+        let text = html
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&#\d+;/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        // Truncate to ~30k chars to stay within token limits
+        if (text.length > 30000) text = text.substring(0, 30000);
+
+        resolve(text);
+      });
+    };
+
+    lib.get(pageUrl, opts, handleResponse).on('error', reject);
+  });
+};
+
+/**
+ * Extract product details from a URL.
+ * Fetches the page content ourselves then sends it to Gemini Pro for extraction.
+ *
+ * @param {String} url - Product page URL
+ * @returns {Promise<Object>} Extracted product details
+ */
+/**
+ * Parse AI response text into normalized product object.
+ */
+const parseAiResponse = (text) => {
+  let content = text.trim();
+  if (!content) return null;
+
+  // Strip markdown code blocks if present
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) content = jsonMatch[1].trim();
+
+  // Remove trailing commas and comments
+  content = content.replace(/,\s*([}\]])/g, '$1');
+  content = content.replace(/\/\/[^\n]*/g, '');
+
+  const extracted = JSON.parse(content);
+  return {
+    name: extracted.name || null,
+    partNumber: extracted.partNumber || null,
+    price: null,
+    cost: null,
+    vendor: extracted.vendor || null,
+    brand: extracted.brand || null,
+    warranty: extracted.warranty || null
+  };
+};
+
+const EXTRACTION_FIELDS = `Fields to extract:
+- name: The exact product/part name as listed
+- partNumber: The manufacturer part number, SKU, model number, or item number
+- vendor: The retailer/marketplace name (e.g., "RockAuto", "Amazon", "eBay", "AutoZone")
+- brand: The manufacturer/brand name (e.g., "Bosch", "Mobil 1", "ACDelco")
+- warranty: Warranty information if listed
+
+IMPORTANT: Do NOT extract prices. Prices change constantly and we need the user to verify them manually. Only extract identifying information.
+
+Return a JSON object with these fields. Use null for any field not found.`;
+
+/**
+ * Extract product details from a URL.
+ * Strategy: fetch the page ourselves for ground truth, fall back to Gemini Pro
+ * for JS-rendered sites that return empty shells.
+ *
+ * @param {String} url - Product page URL
+ * @returns {Promise<Object>} Extracted product details
+ */
+exports.extractFromUrl = async (url) => {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+
+  // Strategy 1: Fetch page ourselves and send real content to AI
+  try {
+    console.log(`[URL Extract] Fetching page: ${url}`);
+    const pageText = await fetchPageText(url);
+
+    // Check if we got meaningful content (JS-rendered sites return <1000 chars of shell)
+    if (pageText && pageText.length > 1000) {
+      console.log(`[URL Extract] Got ${pageText.length} chars — using fetched content`);
+
+      const prompt = `You are a product data extractor for an auto repair shop. Below is the text content scraped from a product listing page at: ${url}
+
+Extract the product details from this page content. Only extract what is ACTUALLY present in the text — do NOT guess or infer.
+
+${EXTRACTION_FIELDS}
+
+PAGE CONTENT:
+${pageText}`;
+
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+          maxOutputTokens: 8192
+        }
+      });
+
+      const parsed = parseAiResponse(result.response.text());
+      if (parsed && parsed.name) {
+        console.log(`[URL Extract] Success via page fetch + Pro`);
+        return parsed;
+      }
+    } else {
+      console.log(`[URL Extract] Page returned only ${pageText?.length || 0} chars (JS-rendered site)`);
+    }
+  } catch (fetchErr) {
+    console.log(`[URL Extract] Fetch approach failed: ${fetchErr.message}`);
+  }
+
+  // Strategy 2: Let Gemini Pro try with just the URL (for JS-rendered sites)
+  // Model can identify products but NOT current prices from stale training data
+  try {
+    console.log(`[URL Extract] Falling back to Pro model with URL only (no live page content)`);
+
+    const prompt = `You are a product data extractor for an auto repair shop. Identify the product at this URL:
+
+${url}
+
+CRITICAL RULES:
+- You may identify the product name, part number, brand, vendor, and warranty from your knowledge.
+- You MUST set "price" to null and "cost" to null. Prices change constantly and you do not have access to the live page, so any price you provide would be wrong.
+- Do NOT guess or fabricate any field. Use null if unsure.
+
+Fields to extract:
+- name: The product/part name
+- partNumber: The manufacturer part number or SKU
+- price: null (you cannot see live prices without page content)
+- cost: null
+- vendor: The retailer/marketplace name (e.g., "RockAuto", "Amazon", "eBay", "AutoZone")
+- brand: The manufacturer/brand name
+- warranty: Warranty information if you are certain of it, otherwise null
+
+Return a JSON object with these fields.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 8192
+      }
+    });
+
+    const parsed = parseAiResponse(result.response.text());
+    if (parsed && parsed.name) {
+      // Force-null prices on fallback path — model doesn't have live data
+      parsed.price = null;
+      parsed.cost = null;
+      console.log(`[URL Extract] Success via Pro (URL only — prices omitted, no live page)`);
+      return parsed;
+    }
+  } catch (err) {
+    console.log(`[URL Extract] Pro URL-only failed: ${err.message}`);
+  }
+
+  throw new Error('Could not extract product details from this URL');
+};
+
+/**
+ * Test function to validate Gemini service is configured correctly
  * @returns {Promise<Boolean>}
  */
 exports.testConnection = async () => {
   try {
-    const response = await xai.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: 'user', content: 'Hello' }],
-      max_tokens: 10
-    });
-    return response.choices[0].message.content ? true : false;
+    const model = getModel();
+    const result = await model.generateContent('Hello');
+    return result.response.text() ? true : false;
   } catch (error) {
-    console.error('xAI connection test failed:', error);
+    console.error('Gemini connection test failed:', error);
     return false;
   }
 };

@@ -219,6 +219,41 @@ exports.removeInventoryCategory = catchAsync(async (req, res) => {
   res.status(200).json({ status: 'success', data: { settings } });
 });
 
+exports.addPackageTag = catchAsync(async (req, res) => {
+  const { tag } = req.body;
+  if (!tag || !tag.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Tag name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  const trimmed = tag.trim();
+
+  const exists = settings.packageTags.some(
+    t => t.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (exists) {
+    return res.status(400).json({ status: 'fail', message: 'This package tag already exists' });
+  }
+
+  settings.packageTags.push(trimmed);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.removePackageTag = catchAsync(async (req, res) => {
+  const { tag } = req.body;
+  if (!tag) {
+    return res.status(400).json({ status: 'fail', message: 'Tag name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  settings.packageTags = settings.packageTags.filter(t => t !== tag);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
 exports.addCategory = catchAsync(async (req, res) => {
   const { category } = req.body;
   if (!category || !category.trim()) {

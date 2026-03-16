@@ -4,6 +4,7 @@ import SettingsService from '../../services/settingsService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate, formatTime, formatCurrency } from '../../utils/formatters';
 import usePersistedState from '../../hooks/usePersistedState';
+import UrlExtractButton from '../../components/common/UrlExtractButton';
 
 const getStockStatus = (item) => {
   if (item.quantityOnHand === 0) return 'out';
@@ -40,14 +41,17 @@ const InventoryList = () => {
   // Item form state
   const [formData, setFormData] = useState({
     name: '', partNumber: '', category: '', quantityOnHand: 0, unit: 'each',
-    reorderPoint: 1, price: 0, cost: 0, vendor: '', brand: '', warranty: '',
+    unitsPerPurchase: 1, purchaseUnit: '', packageTag: '',
+    reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: '',
     url: '', notes: ''
   });
+  const [packageTags, setPackageTags] = useState([]);
   const [formSaving, setFormSaving] = useState(false);
 
   // Adjust modal state
   const [adjustAmount, setAdjustAmount] = useState(1);
   const [adjustReason, setAdjustReason] = useState('');
+  const [usePurchaseUnits, setUsePurchaseUnits] = useState(false);
 
   // Shopping list order amounts
   const [orderAmounts, setOrderAmounts] = useState({});
@@ -67,6 +71,7 @@ const InventoryList = () => {
       ]);
       setItems(itemsRes.data.items || []);
       setCategories(settingsRes.data.settings.inventoryCategories || []);
+      setPackageTags(settingsRes.data.settings.packageTags || []);
 
       // Calculate shopping list count
       const allItems = itemsRes.data.items || [];
@@ -109,7 +114,8 @@ const InventoryList = () => {
   const openCreateModal = () => {
     setEditingItem(null);
     setFormData({ name: '', partNumber: '', category: '', quantityOnHand: 0, unit: 'each',
-      reorderPoint: 1, price: 0, cost: 0, vendor: '', brand: '', warranty: '', url: '', notes: '' });
+      unitsPerPurchase: 1, purchaseUnit: '', packageTag: '',
+      reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: '', url: '', notes: '' });
     setShowItemModal(true);
   };
 
@@ -117,15 +123,17 @@ const InventoryList = () => {
     setEditingItem(item);
     setFormData({
       name: item.name,
-      partNumber: item.partNumber || '',
+      partNumber: item.partNumber || item.brand || '',
       category: item.category || '',
       quantityOnHand: item.quantityOnHand,
       unit: item.unit || 'each',
+      unitsPerPurchase: item.unitsPerPurchase || 1,
+      purchaseUnit: item.purchaseUnit || '',
+      packageTag: item.packageTag || '',
       reorderPoint: item.reorderPoint,
       price: item.price || 0,
       cost: item.cost || 0,
       vendor: item.vendor || '',
-      brand: item.brand || '',
       warranty: item.warranty || '',
       url: item.url || '',
       notes: item.notes || ''
@@ -141,7 +149,12 @@ const InventoryList = () => {
         const { quantityOnHand, ...updateData } = formData;
         await InventoryService.updateItem(editingItem._id, updateData);
       } else {
-        await InventoryService.createItem(formData);
+        const createData = { ...formData };
+        // Convert starting quantity from purchase units to usage units
+        if (createData.unitsPerPurchase > 1 && createData.quantityOnHand > 0) {
+          createData.quantityOnHand = createData.quantityOnHand * createData.unitsPerPurchase;
+        }
+        await InventoryService.createItem(createData);
       }
       setShowItemModal(false);
       fetchData();
@@ -168,16 +181,29 @@ const InventoryList = () => {
     setAdjustDirection(direction);
     setAdjustAmount(1);
     setAdjustReason(direction > 0 ? 'Restocked' : 'Used');
+    setUsePurchaseUnits(direction > 0 && (item.unitsPerPurchase || 1) > 1);
     setShowAdjustModal(true);
+  };
+
+  const getActualAdjustment = () => {
+    if (!adjustingItem) return adjustAmount;
+    if (usePurchaseUnits && adjustDirection > 0) {
+      return adjustAmount * (adjustingItem.unitsPerPurchase || 1);
+    }
+    return adjustAmount;
   };
 
   const handleAdjust = async () => {
     if (!adjustingItem || adjustAmount <= 0) return;
+    const actualAdj = getActualAdjustment();
+    const reason = usePurchaseUnits && adjustDirection > 0
+      ? `${adjustReason} (${adjustAmount} ${adjustingItem.purchaseUnit || 'unit'}${adjustAmount !== 1 ? 's' : ''})`
+      : adjustReason;
     try {
       await InventoryService.adjustQuantity(
         adjustingItem._id,
-        adjustDirection * adjustAmount,
-        adjustReason
+        adjustDirection * actualAdj,
+        reason
       );
       setShowAdjustModal(false);
       fetchData();
@@ -222,7 +248,7 @@ const InventoryList = () => {
     shoppingListItems.forEach(item => {
       const need = Math.max(1, item.reorderPoint - item.quantityOnHand + 1);
       let line = `- ${item.name}`;
-      if (item.partNumber) line += ` [${item.partNumber}]`;
+      if (item.partNumber || item.brand) line += ` (${item.partNumber || item.brand})`;
       line += ` (QOH: ${item.quantityOnHand}, Need: ${need})`;
       if (item.vendor) line += ` - ${item.vendor}`;
       if (item.url) line += ` ${item.url}`;
@@ -406,9 +432,8 @@ const InventoryList = () => {
 
                   {/* Part details row */}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 mb-1">
-                    {item.partNumber && <span>#{item.partNumber}</span>}
+                    {(item.partNumber || item.brand) && <span>{item.partNumber || item.brand}</span>}
                     {item.vendor && <span>{item.vendor}</span>}
-                    {item.brand && <span>{item.brand}</span>}
                     {item.price > 0 && <span className="text-green-600 font-medium">{formatCurrency(item.price)}</span>}
                   </div>
 
@@ -494,8 +519,7 @@ const InventoryList = () => {
                       <td className="px-4 py-4">
                         <div className="font-medium text-gray-900">{item.name}</div>
                         <div className="flex items-center gap-2 text-xs text-gray-400">
-                          {item.partNumber && <span>#{item.partNumber}</span>}
-                          {item.brand && <span>{item.brand}</span>}
+                          {(item.partNumber || item.brand) && <span>{item.partNumber || item.brand}</span>}
                           {item.url && (
                             <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">
                               Link
@@ -574,7 +598,7 @@ const InventoryList = () => {
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Name + Part Number */}
+              {/* Name + Brand/Model */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
@@ -587,12 +611,12 @@ const InventoryList = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Part #</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand / Model</label>
                   <input
                     type="text"
                     value={formData.partNumber}
                     onChange={(e) => setFormData(prev => ({ ...prev, partNumber: e.target.value }))}
-                    placeholder="SKU / Part #"
+                    placeholder="e.g., Bosch EK110"
                     className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
@@ -658,28 +682,34 @@ const InventoryList = () => {
                 )}
               </div>
 
-              {/* Vendor + Brand row */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Package Tag */}
+              {packageTags.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-                  <input
-                    type="text"
-                    value={formData.vendor}
-                    onChange={(e) => setFormData(prev => ({ ...prev, vendor: e.target.value }))}
-                    placeholder="e.g., Walmart, Amazon"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Service Package Tag</label>
+                  <select
+                    value={formData.packageTag}
+                    onChange={(e) => setFormData(prev => ({ ...prev, packageTag: e.target.value }))}
                     className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
+                  >
+                    <option value="">-- None --</option>
+                    {packageTags.map(tag => (
+                      <option key={tag} value={tag}>{tag}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Tag this item for use in service packages</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Brand</label>
-                  <input
-                    type="text"
-                    value={formData.brand}
-                    onChange={(e) => setFormData(prev => ({ ...prev, brand: e.target.value }))}
-                    placeholder="e.g., Mobil, 3M"
-                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
+              )}
+
+              {/* Vendor */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                <input
+                  type="text"
+                  value={formData.vendor}
+                  onChange={(e) => setFormData(prev => ({ ...prev, vendor: e.target.value }))}
+                  placeholder="e.g., Walmart, Amazon"
+                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
               </div>
 
               {/* Cost + Price row */}
@@ -725,12 +755,12 @@ const InventoryList = () => {
               {/* Unit + Reorder Point row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Usage Unit</label>
                   <input
                     type="text"
                     value={formData.unit}
                     onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
-                    placeholder="each, boxes, bottles..."
+                    placeholder="quart, each, oz..."
                     className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
@@ -747,10 +777,47 @@ const InventoryList = () => {
                 </div>
               </div>
 
+              {/* Bulk purchase unit conversion */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Units per Purchase
+                    <span className="text-xs text-gray-400 ml-1">(e.g., 5 for a 5qt jug)</span>
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    value={formData.unitsPerPurchase}
+                    onChange={(e) => setFormData(prev => ({ ...prev, unitsPerPurchase: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Purchase Unit
+                    <span className="text-xs text-gray-400 ml-1">(e.g., jug, case)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.purchaseUnit}
+                    onChange={(e) => setFormData(prev => ({ ...prev, purchaseUnit: e.target.value }))}
+                    placeholder={formData.unitsPerPurchase > 1 ? 'jug, case, box...' : ''}
+                    disabled={formData.unitsPerPurchase <= 1}
+                    className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  />
+                </div>
+              </div>
+
               {/* Initial QOH - only on create */}
               {!editingItem && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Starting Quantity</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Starting Quantity
+                    {formData.unitsPerPurchase > 1 && formData.purchaseUnit && (
+                      <span className="text-xs text-gray-400 ml-1">({formData.purchaseUnit}s)</span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -759,19 +826,39 @@ const InventoryList = () => {
                     onChange={(e) => setFormData(prev => ({ ...prev, quantityOnHand: parseInt(e.target.value) || 0 }))}
                     className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
+                  {formData.unitsPerPurchase > 1 && formData.quantityOnHand > 0 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      {formData.quantityOnHand} {formData.purchaseUnit || 'unit'}{formData.quantityOnHand !== 1 ? 's' : ''} = {formData.quantityOnHand * formData.unitsPerPurchase} {formData.unit}
+                    </p>
+                  )}
                 </div>
               )}
 
               {/* Purchase URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Purchase URL</label>
-                <input
-                  type="url"
-                  value={formData.url}
-                  onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
-                  placeholder="https://..."
-                  className="w-full px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+                <div className="flex items-start">
+                  <input
+                    type="url"
+                    value={formData.url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+                    placeholder="https://..."
+                    className="flex-1 px-3 py-3 sm:py-2 border border-gray-300 rounded-lg text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <UrlExtractButton
+                    url={formData.url}
+                    onExtracted={(data) => setFormData(prev => ({
+                      ...prev,
+                      name: prev.name || data.name || '',
+                      partNumber: prev.partNumber || data.partNumber || '',
+                      price: prev.price || (data.price != null ? data.price : 0),
+                      cost: prev.cost || (data.cost != null ? data.cost : data.price != null ? data.price : 0),
+                      vendor: prev.vendor || data.vendor || '',
+                      partNumber: prev.partNumber || [data.brand, data.partNumber].filter(Boolean).join(' ') || '',
+                      warranty: prev.warranty || data.warranty || ''
+                    }))}
+                  />
+                </div>
               </div>
 
               {/* Notes */}
@@ -821,8 +908,32 @@ const InventoryList = () => {
             </div>
 
             <div className="p-4 space-y-4">
+              {/* Purchase unit toggle (only when restocking items with unitsPerPurchase > 1) */}
+              {adjustDirection > 0 && (adjustingItem.unitsPerPurchase || 1) > 1 && (
+                <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <span className="text-sm text-blue-800">
+                    Enter in {adjustingItem.purchaseUnit || 'purchase unit'}s
+                  </span>
+                  <button
+                    onClick={() => setUsePurchaseUnits(!usePurchaseUnits)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      usePurchaseUnits ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      usePurchaseUnits ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {usePurchaseUnits && adjustDirection > 0
+                    ? `Amount (${adjustingItem.purchaseUnit || 'purchase unit'}s)`
+                    : `Amount (${adjustingItem.unit})`
+                  }
+                </label>
                 <input
                   type="number"
                   inputMode="numeric"
@@ -832,6 +943,11 @@ const InventoryList = () => {
                   className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg text-center font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
                   autoFocus
                 />
+                {usePurchaseUnits && adjustDirection > 0 && (
+                  <p className="text-xs text-blue-600 text-center mt-1">
+                    {adjustAmount} {adjustingItem.purchaseUnit || 'unit'}{adjustAmount !== 1 ? 's' : ''} = {getActualAdjustment()} {adjustingItem.unit}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -854,9 +970,9 @@ const InventoryList = () => {
               </div>
 
               <div className="text-center text-sm text-gray-500">
-                {adjustingItem.quantityOnHand} {adjustDirection > 0 ? '+' : '-'} {adjustAmount} = {' '}
+                {adjustingItem.quantityOnHand} {adjustDirection > 0 ? '+' : '-'} {getActualAdjustment()} = {' '}
                 <span className="font-bold text-gray-800">
-                  {Math.max(0, adjustingItem.quantityOnHand + (adjustDirection * adjustAmount))}
+                  {Math.max(0, adjustingItem.quantityOnHand + (adjustDirection * getActualAdjustment()))}
                 </span>{' '}
                 {adjustingItem.unit}
               </div>
@@ -875,7 +991,7 @@ const InventoryList = () => {
                   adjustDirection > 0 ? 'bg-green-600' : 'bg-red-600'
                 }`}
               >
-                {adjustDirection > 0 ? 'Add' : 'Remove'} {adjustAmount}
+                {adjustDirection > 0 ? 'Add' : 'Remove'} {getActualAdjustment()} {adjustingItem.unit}
               </button>
             </div>
           </div>

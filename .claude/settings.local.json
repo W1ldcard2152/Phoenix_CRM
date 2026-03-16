@@ -72,7 +72,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Read(//c/Users/W1ldcard/AppData/Local/Temp/claude/c--Users-W1ldcard-Programming-Phoenix-CRM/tasks/**)",
       "Bash(npx craco test --watchAll=false --verbose)",
-      "Bash(npx react-scripts build --config src/client)"
+      "Bash(npx react-scripts build --config src/client)",
+      "WebSearch",
+      "Read(//c/Users/W1ldcard/AppData/Local/Temp/claude/c--Users-W1ldcard-Programming-Phoenix-CRM/84a4d64b-ec95-4f70-8ae3-23a42e2849c2/tasks/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

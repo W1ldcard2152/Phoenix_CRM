@@ -49,8 +49,8 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
   const custAddr = customer?.address;
 
   // Process items array (modern structure) or fallback to legacy parts/labor arrays
-  let parts, labor;
-  
+  let parts, labor, services;
+
   if (items && items.length > 0) {
     // Modern structure: separate items by type
     parts = items.filter(item => item.type === 'Part').map(item => ({
@@ -64,7 +64,7 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       coreCharge: item.coreCharge || 0,
       coreChargeInvoiceable: item.coreChargeInvoiceable || false
     }));
-    
+
     labor = items.filter(item => item.type === 'Labor').map(item => ({
       _id: item._id,
       description: item.description,
@@ -73,17 +73,26 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       total: item.total,
       billingType: item.billingType || 'hourly'
     }));
+
+    services = items.filter(item => item.type === 'Service').map(item => ({
+      _id: item._id,
+      name: item.description,
+      price: item.unitPrice,
+      total: item.total
+    }));
   } else {
     // Legacy structure: use existing parts and labor arrays
     parts = invoiceDataParts || [];
     labor = invoiceDataLabor || [];
+    services = invoiceData.servicePackages || [];
   }
 
-  // Calculate totals based on processed parts and labor,
+  // Calculate totals based on processed parts, labor, and services
   // or use initial totals from invoiceData if provided.
   const calculatedPartsTotal = parts.reduce((sum, part) => sum + (parseFloat(part.total) || 0), 0);
   const calculatedLaborTotal = labor.reduce((sum, laborItem) => sum + (parseFloat(laborItem.total) || 0), 0);
-  const calculatedSubtotal = calculatedPartsTotal + calculatedLaborTotal;
+  const calculatedServicesTotal = services.reduce((sum, svc) => sum + (parseFloat(svc.total || svc.price) || 0), 0);
+  const calculatedSubtotal = calculatedPartsTotal + calculatedLaborTotal + calculatedServicesTotal;
 
   const finalSubtotal = initialSubtotal !== undefined ? initialSubtotal : calculatedSubtotal;
   const finalTaxAmount = initialTaxAmount !== undefined ? initialTaxAmount : finalSubtotal * (parseFloat(taxRate) / 100);
@@ -226,6 +235,29 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
                   </tr>
                 );
               })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Services */}
+      {services && services.length > 0 && (
+        <div className="mb-4">
+          <h3 className="font-semibold text-md mb-1">Services:</h3>
+          <table className="w-full border-collapse border border-gray-300 text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
+                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {services.map((svc, index) => (
+                <tr key={svc._id || `service-${index}`}>
+                  <td className="border border-gray-300 p-2">{svc.name}</td>
+                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(svc.total || svc.price)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
