@@ -63,11 +63,20 @@ Important instructions:
       }],
       generationConfig: {
         responseMimeType: 'application/json',
-        maxOutputTokens: 300
+        maxOutputTokens: 2000
       }
     });
 
-    const content = result.response.text();
+    const response = result.response;
+    const content = response.text();
+    console.log('Gemini registration response:', content);
+
+    if (!content || content.trim() === '') {
+      const finishReason = response.candidates?.[0]?.finishReason;
+      console.error('Gemini returned empty response. Finish reason:', finishReason);
+      throw new AppError('AI returned an empty response. Please try a clearer image.', 422);
+    }
+
     return JSON.parse(content);
 
   } catch (error) {

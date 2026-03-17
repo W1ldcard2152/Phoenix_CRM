@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import API from '../../services/api';
 import Button from '../common/Button';
 import Card from '../common/Card';
 
@@ -83,33 +84,20 @@ const RegistrationScanner = ({ onDataExtracted, onError }) => {
 
       console.log('Sending request to server...');
 
-      // Call backend API to process with OpenAI
-      const response = await fetch('/api/registration/scan', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      // Call backend API to process with AI
+      const response = await API.post('/registration/scan', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      console.log('Server response status:', response.status);
+      console.log('Server response:', response.data);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server error response:', errorText);
-        throw new Error(`Server error (${response.status}): ${errorText}`);
-      }
+      if (response.data.success) {
+        setScanResult(response.data.data);
 
-      const result = await response.json();
-      console.log('Server response:', result);
-
-      if (result.success) {
-        setScanResult(result.data);
-        
         // Call parent callback with extracted data
-        onDataExtracted?.(result.data);
+        onDataExtracted?.(response.data.data);
       } else {
-        throw new Error(result.error || 'Failed to scan registration');
+        throw new Error(response.data.error || 'Failed to scan registration');
       }
 
     } catch (error) {

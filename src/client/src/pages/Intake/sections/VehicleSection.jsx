@@ -4,6 +4,7 @@ import * as Yup from 'yup';
 import CustomerService from '../../../services/customerService';
 import VehicleService from '../../../services/vehicleService';
 import vinService from '../../../services/vinService';
+import RegistrationScanner from '../../../components/vehicles/RegistrationScanner';
 import Button from '../../../components/common/Button';
 import Input from '../../../components/common/Input';
 import SelectInput from '../../../components/common/SelectInput';
@@ -29,6 +30,7 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
   const [saving, setSaving] = useState(false);
   const [vinDecoding, setVinDecoding] = useState(false);
   const [vinError, setVinError] = useState(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   // Fetch customer's vehicles
   useEffect(() => {
@@ -143,6 +145,32 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting, setFieldValue }) => (
             <Form className="space-y-4">
+              {/* Registration Scanner Toggle */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(!showScanner)}
+                  className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  <i className={`fas fa-${showScanner ? 'chevron-up' : 'camera'} mr-2`}></i>
+                  {showScanner ? 'Hide Registration Scanner' : 'Scan Registration to Auto-Fill'}
+                </button>
+                {showScanner && (
+                  <div className="mt-3">
+                    <RegistrationScanner
+                      onDataExtracted={(data) => {
+                        if (data.vin) {
+                          setFieldValue('vin', data.vin);
+                          handleVinDecode(data.vin, setFieldValue);
+                        }
+                        if (data.licensePlate) setFieldValue('licensePlate', data.licensePlate);
+                      }}
+                      onError={(msg) => setVinError(msg)}
+                    />
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <SelectInput
                   label="Year"
