@@ -170,6 +170,8 @@ app.use('/api/schedule-blocks', scheduleBlockRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/service-packages', servicePackageRoutes);
 app.use('/api/ai', aiRoutes);
+const followUpRoutes = require('./routes/followUpRoutes');
+app.use('/api/follow-ups', followUpRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

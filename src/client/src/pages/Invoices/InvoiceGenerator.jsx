@@ -596,12 +596,62 @@ const InvoiceGenerator = () => {
               </div>
             </div>
 
+            {/* Service Packages */}
+            {invoiceData.servicePackages && invoiceData.servicePackages.length > 0 && (
+              <div className="border border-gray-200 rounded-md p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xl font-semibold text-gray-700">Services</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase tracking-wider w-3/5">Description</th>
+                        <th className="px-3 py-2 text-right font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                        <th className="px-3 py-2 text-center font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {invoiceData.servicePackages.map((pkg, index) => (
+                        <tr key={pkg._id || `service-form-${index}`}>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-gray-900">{pkg.name}</div>
+                            {pkg.includedItems && pkg.includedItems.length > 0 && (
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                Includes: {pkg.includedItems.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">{formatCurrency(pkg.price || 0)}</td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              type="button"
+                              className="text-red-600 hover:text-red-800 text-xs"
+                              onClick={() => setInvoiceData(prev => ({
+                                ...prev,
+                                servicePackages: prev.servicePackages.filter((_, i) => i !== index)
+                              }))}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             <div className="border border-gray-200 rounded-md p-4">
               <h3 className="text-xl font-semibold mb-3 text-gray-700">Summary</h3>
               <div className="flex justify-end">
                 <div className="w-full md:w-1/2 lg:w-1/3 space-y-2 text-sm">
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Subtotal (Parts):</span><span className="text-gray-800">{formatCurrency(totals.partsTotal)}</span></div>
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Subtotal (Labor):</span><span className="text-gray-800">{formatCurrency(totals.laborTotal)}</span></div>
+                  {totals.servicesTotal > 0 && (
+                    <div className="flex justify-between"><span className="font-medium text-gray-600">Subtotal (Services):</span><span className="text-gray-800">{formatCurrency(totals.servicesTotal)}</span></div>
+                  )}
                   <hr />
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Total Before Tax:</span><span className="text-gray-800">{formatCurrency(totals.subtotal)}</span></div>
                   <div className="flex justify-between items-center"><span className="font-medium text-gray-600">Tax Rate (%):</span><Input type="number" name="taxRate" value={invoiceData.taxRate} onChange={handleTaxRateChange} min="0" step="0.01" className="w-20 text-right p-1 border-gray-300 rounded" /></div>

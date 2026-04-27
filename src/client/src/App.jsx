@@ -40,6 +40,7 @@ import AdminPage from './pages/Admin/AdminPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import new FeedbackAdminPage
 import IntakePage from './pages/Intake/IntakePage';
+import FollowUpList from './pages/FollowUps/FollowUpList';
 
 // Parts Pages
 import PartsList from './pages/Parts/PartsList';
@@ -129,6 +130,7 @@ const App = () => {
 
                       {/* Quote Routes (office staff) */}
                       <Route path="/quotes" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><QuoteList /></RoleRoute>} />
+                      <Route path="/follow-ups" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><FollowUpList /></RoleRoute>} />
                       <Route path="/quotes/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentForm mode="quote" /></RoleRoute>} />
                       <Route path="/quotes/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentDetail /></RoleRoute>} />
                       <Route path="/quotes/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><DocumentForm mode="quote" /></RoleRoute>} />

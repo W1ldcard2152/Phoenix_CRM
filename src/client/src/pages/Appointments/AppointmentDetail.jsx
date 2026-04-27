@@ -5,6 +5,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import AppointmentService from '../../services/appointmentService';
 import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 
 const AppointmentDetail = () => {
   const { id } = useParams();
@@ -13,6 +14,7 @@ const AppointmentDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [reminderSending, setReminderSending] = useState(false);
   const [workOrderCreating, setWorkOrderCreating] = useState(false);
 
@@ -188,6 +190,13 @@ const AppointmentDetail = () => {
             Edit Appointment
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFollowUpModalOpen(true)}
+          >
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
+          </Button>
+          <Button
             variant="danger"
             onClick={() => setDeleteModalOpen(true)}
           >
@@ -195,6 +204,13 @@ const AppointmentDetail = () => {
           </Button>
         </div>
       </div>
+
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType="appointment"
+        entityId={id}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <Card title="Appointment Details">

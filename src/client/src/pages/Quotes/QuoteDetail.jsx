@@ -9,6 +9,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import QuoteDisplay from '../../components/quotes/QuoteDisplay';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
@@ -48,6 +49,7 @@ const QuoteDetail = () => {
   const [archiving, setArchiving] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
 
   // Notes state
   const [notes, setNotes] = useState([]);
@@ -500,6 +502,9 @@ const QuoteDetail = () => {
           </Button>
           <Button variant="outline" onClick={handlePrint}>
             <i className="fas fa-print mr-1"></i>Print
+          </Button>
+          <Button variant="outline" onClick={() => setFollowUpModalOpen(true)}>
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
           </Button>
           {/* More Actions Dropdown */}
           <div className="relative">
@@ -1271,6 +1276,13 @@ const QuoteDetail = () => {
         onClose={() => setConvertModalOpen(false)}
         quote={quote}
         onConvert={handleConvertToWorkOrder}
+      />
+
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType="quote"
+        entityId={id}
       />
     </div>
   );

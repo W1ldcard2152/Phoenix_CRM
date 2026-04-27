@@ -15,6 +15,7 @@ import FileUpload from '../../components/common/FileUpload';
 import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
+import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
 import invoiceService from '../../services/invoiceService';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
@@ -52,6 +53,8 @@ const WorkOrderDetail = () => {
   const [onHoldModalOpen, setOnHoldModalOpen] = useState(false);
   const [generatingQuote, setGeneratingQuote] = useState(false);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [inventoryModalOpen, setInventoryModalOpen] = useState(false);
+  const [inventoryModalLoading, setInventoryModalLoading] = useState(false);
   const [showCost, setShowCost] = useState(false);
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState('');
@@ -594,6 +597,31 @@ const WorkOrderDetail = () => {
   const handlePartFromInventory = (selectedPart) => {
     setNewPart(selectedPart);
     setPartModalOpen(true);
+  };
+
+  const handleAddFromInventory = async ({ inventoryItemId, quantity }) => {
+    setInventoryModalLoading(true);
+    try {
+      const response = await WorkOrderService.addPartFromInventory(id, { inventoryItemId, quantity });
+      let updatedWorkOrder = response.data.workOrder;
+      updatedWorkOrder = await checkAndUpdatePartsStatus(updatedWorkOrder);
+      if (updatedWorkOrder.status !== response.data.workOrder.status) {
+        const statusResponse = await WorkOrderService.updateWorkOrder(id, { status: updatedWorkOrder.status });
+        setWorkOrder(statusResponse.data.workOrder);
+      } else {
+        setWorkOrder(updatedWorkOrder);
+      }
+      setInventoryModalOpen(false);
+      if (response.lowStockWarning) {
+        const w = response.lowStockWarning;
+        alert(`Low stock warning: "${w.itemName}" now has ${w.currentQoh} ${w.unit} remaining (reorder point: ${w.reorderPoint})`);
+      }
+    } catch (err) {
+      console.error('Error adding part from inventory:', err);
+      setError(err.response?.data?.message || 'Failed to add part from inventory.');
+    } finally {
+      setInventoryModalLoading(false);
+    }
   };
 
   const openEditPartModal = (part, index) => {
@@ -1650,11 +1678,19 @@ const WorkOrderDetail = () => {
                 Import Parts
               </Button>
               <Button
-                onClick={() => setPartsSelectorOpen(true)}
+                onClick={() => setInventoryModalOpen(true)}
                 variant="primary"
                 size="sm"
               >
-                Select from Inventory
+                <i className="fas fa-boxes mr-1"></i>
+                Pull from Inventory
+              </Button>
+              <Button
+                onClick={() => setPartsSelectorOpen(true)}
+                variant="secondary"
+                size="sm"
+              >
+                Select from Catalog
               </Button>
               <Button
                 onClick={openAddPartModal}
@@ -2404,6 +2440,14 @@ const WorkOrderDetail = () => {
         onClose={() => setReceiptModalOpen(false)}
         entityId={id}
         onSuccess={handleReceiptImportSuccess}
+      />
+
+      {/* Inventory Picker Modal */}
+      <InventoryPickerModal
+        isOpen={inventoryModalOpen}
+        onClose={() => setInventoryModalOpen(false)}
+        onConfirm={handleAddFromInventory}
+        isLoading={inventoryModalLoading}
       />
 
       {/* Split Work Order Modal */}

@@ -19,6 +19,7 @@ import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
 import ServicePackageModal from '../../components/workorder/ServicePackageModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 import invoiceService from '../../services/invoiceService';
 import UrlExtractButton from '../../components/common/UrlExtractButton';
 import SettingsService from '../../services/settingsService';
@@ -61,6 +62,7 @@ const DocumentDetail = () => {
   const [laborModalOpen, setLaborModalOpen] = useState(false);
   const [diagnosticNotesModalOpen, setDiagnosticNotesModalOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
   // WO-specific state
@@ -1382,6 +1384,10 @@ const DocumentDetail = () => {
           {!isQuote && permissions.workOrders.canEdit(currentUser) && (
             <Button to={`/work-orders/${id}/edit`} variant="primary">Edit Work Order</Button>
           )}
+
+          <Button variant="outline" onClick={() => setFollowUpModalOpen(true)}>
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
+          </Button>
 
           <Button variant="outline" onClick={handlePrint}>
             <i className="fas fa-print mr-1"></i>Print
@@ -2898,6 +2904,12 @@ const DocumentDetail = () => {
           </div>
         </div>
       )}
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType={isQuote ? 'quote' : 'workOrder'}
+        entityId={id}
+      />
     </div>
   );
 };

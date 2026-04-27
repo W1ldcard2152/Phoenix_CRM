@@ -7,13 +7,15 @@ import technicianService from '../../services/technicianService';
 import { TIMEZONE } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyScheduleBlockVisibility } from '../../utils/permissions';
+import { getAppointmentColorClasses } from '../../utils/appointmentColors';
+
 const SHOP_OPEN = 8; // 8 AM
 const SHOP_CLOSE = 18; // 6 PM
 const HOUR_HEIGHT = 20; // pixels per hour (compact)
-const ROW_HEIGHT = (SHOP_CLOSE - SHOP_OPEN) * HOUR_HEIGHT; // Total height per technician row
+const ROW_HEIGHT = (SHOP_CLOSE - SHOP_OPEN) * HOUR_HEIGHT;
 
 /**
- * Compact appointment block with hover popover
+ * Compact appointment block with hover popover — styled to match dashboard calendar
  */
 const AppointmentBlock = ({ appt, top, height }) => {
   const [showPopover, setShowPopover] = useState(false);
@@ -34,20 +36,15 @@ const AppointmentBlock = ({ appt, top, height }) => {
       const viewportHeight = window.innerHeight;
       const spaceBelow = viewportHeight - rect.bottom;
       const spaceAbove = rect.top;
+      const margin = 8;
+      const popoverWidth = 224; // w-56
 
-      // Prefer showing below, but show above if not enough space
+      const left = Math.max(margin, Math.min(rect.left, window.innerWidth - popoverWidth - margin));
+
       if (spaceBelow < 200 && spaceAbove > spaceBelow) {
-        setPopoverCoords({
-          top: rect.top - 8,
-          left: Math.min(rect.left, window.innerWidth - 260),
-          position: 'top'
-        });
+        setPopoverCoords({ top: rect.top - margin, left, position: 'top' });
       } else {
-        setPopoverCoords({
-          top: rect.bottom + 8,
-          left: Math.min(rect.left, window.innerWidth - 260),
-          position: 'bottom'
-        });
+        setPopoverCoords({ top: rect.bottom + margin, left, position: 'bottom' });
       }
     }
     setShowPopover(true);
@@ -64,24 +61,31 @@ const AppointmentBlock = ({ appt, top, height }) => {
     ? `${appt.vehicle.year || ''} ${appt.vehicle.make || ''} ${appt.vehicle.model || ''}`.trim()
     : 'No vehicle';
 
-  // Use indigo for schedule blocks, grey for redacted blocks, blue for appointments
-  const blockColorClasses = isScheduleBlock
-    ? (appt._isRedacted
-        ? 'bg-gray-300 border-gray-400 text-gray-700 hover:bg-gray-400'
-        : 'bg-indigo-300 border-indigo-500 text-indigo-900 hover:bg-indigo-400')
-    : 'bg-blue-300 border-blue-500 text-blue-900 hover:bg-blue-400';
+  // Use status-based colors matching the dashboard calendar
+  let colorClasses;
+  if (isScheduleBlock) {
+    if (appt._isRedacted) {
+      colorClasses = { bg: 'bg-gray-200', border: 'border-gray-400', text: 'text-gray-600', hover: 'hover:bg-gray-300' };
+    } else {
+      colorClasses = { bg: 'bg-indigo-200', border: 'border-indigo-400', text: 'text-indigo-900', hover: 'hover:bg-indigo-300' };
+    }
+  } else {
+    const workOrderStatus = typeof appt.workOrder === 'object' ? appt.workOrder?.status : null;
+    const statusToUse = workOrderStatus || appt.status;
+    colorClasses = getAppointmentColorClasses(statusToUse);
+  }
 
   return (
     <>
       <div
         ref={blockRef}
-        className={`absolute left-0.5 right-0.5 ${blockColorClasses} border rounded-sm px-0.5 overflow-hidden cursor-default transition-colors`}
+        className={`absolute left-0.5 right-0.5 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} border-l-[3px] border-y border-r rounded-sm px-0.5 overflow-hidden cursor-default transition-colors`}
         style={{ top, height: Math.max(height, 10) }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
         {height > 14 && (
-          <div className="truncate text-xs leading-tight">
+          <div className="truncate text-xs leading-tight font-medium">
             {isScheduleBlock ? appt.title : `${start.format('h:mm')}-${end.format('h:mm')}`}
           </div>
         )}
@@ -90,9 +94,9 @@ const AppointmentBlock = ({ appt, top, height }) => {
       {/* Popover */}
       {showPopover && ReactDOM.createPortal(
         <div
-          className="fixed w-56 bg-white border border-gray-300 rounded-lg shadow-xl p-3 text-xs"
+          className="fixed w-56 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-3 text-xs"
           style={{
-            top: popoverCoords.position === 'top' ? popoverCoords.top : popoverCoords.top,
+            top: popoverCoords.top,
             left: popoverCoords.left,
             transform: popoverCoords.position === 'top' ? 'translateY(-100%)' : 'none',
             zIndex: 999999
@@ -104,13 +108,12 @@ const AppointmentBlock = ({ appt, top, height }) => {
         >
           {isScheduleBlock && appt._isRedacted ? (
             <>
-              {/* Redacted Schedule Block */}
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Unavailable</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Unavailable</div>
                 <div className="text-gray-700">This technician is unavailable</div>
               </div>
               <div>
-                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Time</div>
                 <div className="text-gray-900">
                   {start.format('h:mm A')} - {end.format('h:mm A')}
                 </div>
@@ -118,17 +121,18 @@ const AppointmentBlock = ({ appt, top, height }) => {
             </>
           ) : isScheduleBlock ? (
             <>
-              {/* Full Schedule Block (Admin/Management) */}
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Task</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Task</div>
                 <div className="font-semibold text-gray-900">{appt.title}</div>
               </div>
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Category</div>
-                <div className="text-gray-900 capitalize">{appt.category}</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Category</div>
+                <span className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border} capitalize`}>
+                  {appt.category}
+                </span>
               </div>
               <div>
-                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Time</div>
                 <div className="text-gray-900">
                   {start.format('h:mm A')} - {end.format('h:mm A')}
                 </div>
@@ -136,29 +140,28 @@ const AppointmentBlock = ({ appt, top, height }) => {
             </>
           ) : (
             <>
-              {/* Customer */}
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Customer</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Customer</div>
                 <div className="font-semibold text-gray-900">
-                  {appt.customer?.name || `${appt.customer?.firstName || ''} ${appt.customer?.lastName || ''}`.trim() || 'Unknown'}
+                  {appt.customer?.name || 'Unknown'}
                 </div>
               </div>
-
-              {/* Vehicle */}
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Vehicle</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Vehicle</div>
                 <div className="text-gray-900">{vehicleInfo}</div>
               </div>
-
-              {/* Service */}
               <div className="mb-2">
-                <div className="text-gray-500 text-xs uppercase font-medium">Service</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Service</div>
                 <div className="text-gray-900">{appt.serviceType || 'Not specified'}</div>
               </div>
-
-              {/* Time */}
+              <div className="mb-2">
+                <div className="text-xs font-bold text-gray-500 uppercase">Status</div>
+                <span className={`inline-block px-1.5 py-0.5 text-xs font-medium rounded ${colorClasses.bg} ${colorClasses.text} border ${colorClasses.border}`}>
+                  {typeof appt.workOrder === 'object' ? appt.workOrder?.status || appt.status : appt.status}
+                </span>
+              </div>
               <div>
-                <div className="text-gray-500 text-xs uppercase font-medium">Time</div>
+                <div className="text-xs font-bold text-gray-500 uppercase">Time</div>
                 <div className="text-gray-900">
                   {start.format('h:mm A')} - {end.format('h:mm A')}
                 </div>
@@ -175,6 +178,7 @@ const AppointmentBlock = ({ appt, top, height }) => {
 /**
  * Compact availability calendar for appointment scheduling
  * Shows separate calendar row for each technician with toggleable visibility
+ * Uses Mon-Fri by default, auto-expands to 7 days if weekend events exist
  */
 const AvailabilityCalendar = ({ initialDate = null }) => {
   const [appointments, setAppointments] = useState([]);
@@ -182,6 +186,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
   const [visibleTechnicians, setVisibleTechnicians] = useState({});
   const [currentDate, setCurrentDate] = useState(initialDate ? moment(initialDate) : moment());
   const [viewType, setViewType] = useState('weekly');
+  const [showWeekends, setShowWeekends] = useState(false);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
@@ -192,7 +197,6 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
         const response = await technicianService.getAllTechnicians(true);
         const techs = response.data?.data?.technicians || [];
         setTechnicians(techs);
-        // Default: all technicians collapsed
         const visible = {};
         techs.forEach(t => { visible[t._id] = false; });
         setVisibleTechnicians(visible);
@@ -203,7 +207,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
     fetchTechnicians();
   }, []);
 
-  // Fetch appointments
+  // Fetch appointments — mirrors SwimmingLaneCalendar logic
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
@@ -214,6 +218,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
           startDate = currentDate.clone().subtract(1, 'day').format('YYYY-MM-DD');
           endDate = currentDate.clone().format('YYYY-MM-DD');
         } else {
+          // Fetch full Sun-Sat week so we can detect weekend events
           startDate = currentDate.clone().startOf('week').format('YYYY-MM-DD');
           endDate = currentDate.clone().endOf('week').format('YYYY-MM-DD');
         }
@@ -228,12 +233,21 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
         const fetchedAppointments = appointmentResponse?.data?.appointments || [];
         const expandedBlocks = blockResponse?.data?.scheduleBlocks || [];
 
-        // Apply role-based visibility to schedule blocks
         const visibleBlocks = expandedBlocks.map(block =>
           applyScheduleBlockVisibility(block, user)
         );
 
-        setAppointments([...fetchedAppointments, ...visibleBlocks]);
+        const allEvents = [...fetchedAppointments, ...visibleBlocks];
+        setAppointments(allEvents);
+
+        // Auto-expand to 7 days if weekend events exist
+        if (viewType === 'weekly') {
+          const hasWeekendEvents = allEvents.some(event => {
+            const day = moment.utc(event.startTime).tz(TIMEZONE).day();
+            return day === 0 || day === 6;
+          });
+          setShowWeekends(hasWeekendEvents);
+        }
       } catch (err) {
         console.error('Error fetching appointments:', err);
       } finally {
@@ -243,7 +257,6 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
     fetchAppointments();
   }, [currentDate, viewType]);
 
-  // Toggle technician visibility
   const toggleTechnician = (techId) => {
     setVisibleTechnicians(prev => ({
       ...prev,
@@ -251,16 +264,20 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
     }));
   };
 
-  // Get days to display
+  // Get days to display — Mon-Fri or Sun-Sat, matching dashboard WeeklyView
   const days = useMemo(() => {
     if (viewType === 'daily') {
       return [currentDate.clone()];
     }
-    const weekStart = currentDate.clone().startOf('week');
-    return Array.from({ length: 5 }, (_, i) => weekStart.clone().add(i, 'days')); // Mon-Fri
-  }, [currentDate, viewType]);
+    const startDay = showWeekends ? 0 : 1; // 0 = Sunday, 1 = Monday
+    const endDay = showWeekends ? 6 : 5;   // 6 = Saturday, 5 = Friday
+    const result = [];
+    for (let i = startDay; i <= endDay; i++) {
+      result.push(currentDate.clone().day(i));
+    }
+    return result;
+  }, [currentDate, viewType, showWeekends]);
 
-  // Get appointments for a specific technician and day
   const getAppointmentsForTechAndDay = (techId, day) => {
     return appointments.filter(appt => {
       const apptTechId = appt.technician?._id || appt.technician;
@@ -269,7 +286,6 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
     });
   };
 
-  // Navigation
   const goToPrevious = () => {
     setCurrentDate(prev => prev.clone().subtract(1, viewType === 'daily' ? 'day' : 'week'));
   };
@@ -282,50 +298,53 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
     setCurrentDate(moment());
   };
 
-  // Count visible technicians
   const visibleCount = Object.values(visibleTechnicians).filter(Boolean).length;
-
-  // Get technician display name
   const getTechName = (tech) => tech.name || `${tech.firstName} ${tech.lastName}`;
 
+  const getPeriodDisplay = () => {
+    if (viewType === 'daily') {
+      return currentDate.format('ddd, MMM D');
+    }
+    const weekStart = currentDate.clone().day(showWeekends ? 0 : 1);
+    const weekEnd = currentDate.clone().day(showWeekends ? 6 : 5);
+    return `${weekStart.format('MMM D')} - ${weekEnd.format('MMM D, YYYY')}`;
+  };
+
   return (
-    <div className="border border-gray-200 rounded-lg bg-white text-xs">
-      {/* Header */}
-      <div className="flex items-center justify-between p-2 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center gap-2">
+    <div className="border border-gray-200 rounded-lg bg-white text-xs shadow-sm">
+      {/* Header — matching dashboard style */}
+      <div className="flex items-center justify-between p-2.5 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+        <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-0.5">
           <button
             onClick={() => setViewType('daily')}
-            className={`px-2 py-1 rounded text-xs font-medium ${
-              viewType === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              viewType === 'daily' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-700 hover:text-gray-900'
             }`}
           >
             Day
           </button>
           <button
             onClick={() => setViewType('weekly')}
-            className={`px-2 py-1 rounded text-xs font-medium ${
-              viewType === 'weekly' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              viewType === 'weekly' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-700 hover:text-gray-900'
             }`}
           >
             Week
           </button>
         </div>
 
-        <span className="font-medium text-gray-700">
-          {viewType === 'daily'
-            ? currentDate.format('ddd, MMM D')
-            : `${currentDate.clone().startOf('week').format('MMM D')} - ${currentDate.clone().endOf('week').format('MMM D')}`
-          }
+        <span className="font-semibold text-gray-800 text-sm">
+          {getPeriodDisplay()}
         </span>
 
         <div className="flex items-center gap-1">
-          <button onClick={goToPrevious} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-xs">
+          <button onClick={goToPrevious} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-xs font-medium transition-colors">
             ←
           </button>
-          <button onClick={goToToday} className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs">
+          <button onClick={goToToday} className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors">
             Today
           </button>
-          <button onClick={goToNext} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-xs">
+          <button onClick={goToNext} className="px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded text-xs font-medium transition-colors">
             →
           </button>
         </div>
@@ -333,7 +352,10 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
 
       {/* Technician Rows */}
       {loading ? (
-        <div className="p-4 text-center text-gray-500">Loading...</div>
+        <div className="p-4 text-center text-gray-500">
+          <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-gray-200 border-t-blue-600 mb-1"></div>
+          <div>Loading...</div>
+        </div>
       ) : (
         <div>
           {technicians.map(tech => {
@@ -347,19 +369,19 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
                 {/* Technician Toggle Header */}
                 <button
                   onClick={() => toggleTechnician(tech._id)}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 text-left hover:bg-gray-50 transition-colors ${
+                  className={`w-full flex items-center justify-between px-2.5 py-1.5 text-left hover:bg-gray-50 transition-colors ${
                     isVisible ? 'bg-blue-50' : ''
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`transform transition-transform ${isVisible ? 'rotate-90' : ''}`}>
+                    <span className={`transform transition-transform text-xs ${isVisible ? 'rotate-90' : ''}`}>
                       ▶
                     </span>
                     <span className={`font-medium ${isVisible ? 'text-blue-700' : 'text-gray-700'}`}>
                       {getTechName(tech)}
                     </span>
                   </div>
-                  <span className="text-gray-400">
+                  <span className="text-gray-400 text-xs">
                     {techAppointments.length} event{techAppointments.length !== 1 ? 's' : ''}
                   </span>
                 </button>
@@ -385,17 +407,18 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
                       {days.map((day, dayIndex) => {
                         const dayAppointments = getAppointmentsForTechAndDay(tech._id, day);
                         const isToday = day.isSame(moment(), 'day');
+                        const isWeekend = day.day() === 0 || day.day() === 6;
 
                         return (
                           <div
                             key={dayIndex}
                             className={`flex-1 border-r border-gray-200 last:border-r-0 ${
-                              isToday ? 'bg-blue-50' : ''
+                              isToday ? 'bg-blue-50' : isWeekend ? 'bg-gray-50' : ''
                             }`}
                           >
                             {/* Day Header */}
-                            <div className={`h-5 border-b border-gray-200 text-center text-xs ${
-                              isToday ? 'text-blue-700 font-medium' : 'text-gray-600'
+                            <div className={`h-5 border-b border-gray-200 text-center text-xs font-medium ${
+                              isToday ? 'text-blue-700 bg-blue-100' : 'text-gray-600'
                             }`}>
                               {day.format('ddd D')}
                             </div>
@@ -413,24 +436,24 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
 
                               {/* Appointments */}
                               {dayAppointments.map((appt, apptIndex) => {
-                                const start = moment.utc(appt.startTime).tz(TIMEZONE);
-                                const end = moment.utc(appt.endTime).tz(TIMEZONE);
-                                const startHour = start.hour() + start.minute() / 60;
-                                const endHour = end.hour() + end.minute() / 60;
-                                const top = Math.max(0, (startHour - SHOP_OPEN)) * HOUR_HEIGHT;
-                                const height = Math.min(
+                                const apptStart = moment.utc(appt.startTime).tz(TIMEZONE);
+                                const apptEnd = moment.utc(appt.endTime).tz(TIMEZONE);
+                                const startHour = apptStart.hour() + apptStart.minute() / 60;
+                                const endHour = apptEnd.hour() + apptEnd.minute() / 60;
+                                const blockTop = Math.max(0, (startHour - SHOP_OPEN)) * HOUR_HEIGHT;
+                                const blockHeight = Math.min(
                                   (endHour - Math.max(startHour, SHOP_OPEN)) * HOUR_HEIGHT,
-                                  ROW_HEIGHT - top
+                                  ROW_HEIGHT - blockTop
                                 );
 
-                                if (height <= 0) return null;
+                                if (blockHeight <= 0) return null;
 
                                 return (
                                   <AppointmentBlock
                                     key={appt._id || apptIndex}
                                     appt={appt}
-                                    top={top}
-                                    height={height}
+                                    top={blockTop}
+                                    height={blockHeight}
                                   />
                                 );
                               })}
@@ -449,7 +472,7 @@ const AvailabilityCalendar = ({ initialDate = null }) => {
 
       {/* Footer */}
       {visibleCount === 0 && !loading && (
-        <div className="p-2 text-center text-gray-400 text-xs">
+        <div className="p-2.5 text-center text-gray-400 text-xs">
           Click a technician name above to view their schedule
         </div>
       )}

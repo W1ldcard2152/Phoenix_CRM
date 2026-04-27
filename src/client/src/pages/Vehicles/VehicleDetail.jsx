@@ -7,6 +7,7 @@ import AppointmentService from '../../services/appointmentService';
 import { getTodayForInput, parseLocalDate, formatDate } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 
 const VehicleDetail = () => {
   const { currentUser } = useAuth();
@@ -18,6 +19,7 @@ const VehicleDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [mileageModalOpen, setMileageModalOpen] = useState(false);
   const [newMileageRecord, setNewMileageRecord] = useState({
     date: getTodayForInput(),
@@ -193,6 +195,13 @@ const VehicleDetail = () => {
           >
             Edit Vehicle
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFollowUpModalOpen(true)}
+          >
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
+          </Button>
           {permissions.vehicles.canDelete(currentUser) && (
             <Button
               variant="danger"
@@ -203,6 +212,13 @@ const VehicleDetail = () => {
           )}
         </div>
       </div>
+
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType="vehicle"
+        entityId={id}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <Card title="Vehicle Information">

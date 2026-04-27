@@ -73,6 +73,7 @@ const Sidebar = () => {
     { name: 'Vehicles', path: '/vehicles', icon: 'fas fa-car', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Work Orders', path: '/work-orders', icon: 'fas fa-clipboard-list', roles: null },
     { name: 'Quotes', path: '/quotes', icon: 'fas fa-file-alt', roles: ['admin', 'management', 'service-writer'] },
+    { name: 'Follow-Ups', path: '/follow-ups', icon: 'fas fa-thumbtack', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
     { name: 'Calendar & Tasks', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Parts Catalog', path: '/parts', icon: 'fas fa-cogs', roles: null },

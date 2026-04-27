@@ -11,7 +11,7 @@ const NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
  * Named date-only fields that need day-boundary conversion.
  * Start fields get startOf('day'), end fields get endOf('day').
  */
-const DATE_START_FIELDS = new Set(['effectiveFrom', 'oneTimeDate']);
+const DATE_START_FIELDS = new Set(['effectiveFrom', 'oneTimeDate', 'dueDate']);
 const DATE_END_FIELDS = new Set(['effectiveUntil']);
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 

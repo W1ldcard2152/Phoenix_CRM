@@ -55,7 +55,11 @@ const Navbar = ({ onMobileMenuToggle }) => {
                 />
               </Link>
             </div>
+
           </div>
+
+          {/* Test label - centered between logo and search */}
+          <span className="text-black font-semibold text-lg sm:text-xl">test</span>
 
           {/* Center - Global Search (visible when authenticated) */}
           {isAuthenticated && (

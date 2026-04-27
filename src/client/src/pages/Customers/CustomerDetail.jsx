@@ -7,6 +7,7 @@ import WorkOrderService from '../../services/workOrderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import { formatDate } from '../../utils/formatters';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 
 const CustomerDetail = () => {
   const { currentUser } = useAuth();
@@ -18,6 +19,7 @@ const CustomerDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [showAllWorkOrders, setShowAllWorkOrders] = useState(false);
   const [showAllVehicles, setShowAllVehicles] = useState(false);
 
@@ -100,6 +102,13 @@ const CustomerDetail = () => {
           >
             Edit Customer
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFollowUpModalOpen(true)}
+          >
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
+          </Button>
           {permissions.customers.canDelete(currentUser) && (
             <Button
               variant="danger"
@@ -110,6 +119,13 @@ const CustomerDetail = () => {
           )}
         </div>
       </div>
+
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType="customer"
+        entityId={id}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <Card title="Contact Information">

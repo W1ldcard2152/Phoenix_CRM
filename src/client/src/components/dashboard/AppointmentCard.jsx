@@ -220,31 +220,57 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
         ? `${vehicleInfo} (${serviceType})`
         : vehicleInfo;
 
-  // Check if popover should open upward or downward based on screen position
-  // Also calculate absolute viewport coordinates for fixed positioning
+  // Position popover relative to card, clamped within viewport
   useEffect(() => {
-    if (showPopover && cardRef.current) {
+    if (!showPopover || !cardRef.current) return;
+
+    const positionPopover = () => {
       const cardRect = cardRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
       const cardMiddle = cardRect.top + (cardRect.height / 2);
+      const popoverWidth = 320; // w-80 = 20rem = 320px
+      const margin = 8;
+
+      let top;
+      let position;
 
       // Open upward if in bottom half of screen, downward if in top half
       if (cardMiddle > viewportHeight / 2) {
-        setPopoverPosition('top');
-        // Position popover above the card
-        setPopoverCoords({
-          top: cardRect.top - 8, // 8px margin
-          left: cardRect.left
-        });
+        position = 'top';
+        top = cardRect.top - margin;
       } else {
-        setPopoverPosition('bottom');
-        // Position popover below the card
-        setPopoverCoords({
-          top: cardRect.bottom + 8, // 8px margin
-          left: cardRect.left
-        });
+        position = 'bottom';
+        top = cardRect.bottom + margin;
       }
-    }
+
+      // Clamp left so popover doesn't overflow right edge
+      let left = cardRect.left;
+      if (left + popoverWidth > viewportWidth - margin) {
+        left = viewportWidth - popoverWidth - margin;
+      }
+      if (left < margin) left = margin;
+
+      setPopoverPosition(position);
+      setPopoverCoords({ top, left });
+
+      // After a frame, check actual popover size and clamp vertically
+      requestAnimationFrame(() => {
+        if (!popoverRef.current) return;
+        const popoverRect = popoverRef.current.getBoundingClientRect();
+
+        if (position === 'top' && popoverRect.top < margin) {
+          // Popover overflows top — push it down
+          setPopoverCoords(prev => ({ ...prev, top: prev.top + (margin - popoverRect.top) }));
+          setPopoverPosition('bottom');
+        } else if (position === 'bottom' && popoverRect.bottom > viewportHeight - margin) {
+          // Popover overflows bottom — push it up
+          setPopoverCoords(prev => ({ ...prev, top: prev.top - (popoverRect.bottom - viewportHeight + margin) }));
+        }
+      });
+    };
+
+    positionPopover();
   }, [showPopover, appointment._id]);
 
   // Cleanup on unmount
@@ -267,8 +293,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
     >
       {/* Appointment Card */}
       <div
-        className={`h-full rounded border-l-4 border ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1 transition-colors ${isDragging ? 'ring-2 ring-blue-400 shadow-lg' : 'shadow-sm'} overflow-hidden`}
-        style={{ marginTop: '1px', marginBottom: '1px' }}
+        className={`h-full rounded border-l-4 border-2 ${colorClasses.bg} ${colorClasses.border} ${colorClasses.text} ${colorClasses.hover} px-2 py-1 transition-colors ${isDragging ? 'ring-2 ring-blue-400 shadow-lg' : 'shadow-sm'} overflow-hidden`}
+        style={{ marginTop: '2px', marginBottom: '2px' }}
       >
         {/* Vehicle Info with Service Type - Always show first, bold */}
         {viewType === 'daily' ? (
@@ -399,7 +425,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               <div className="mb-3">
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Customer</div>
                 <div className="text-base font-semibold text-gray-900">
-                  {appointment.customer?.firstName} {appointment.customer?.lastName}
+                  {appointment.customer?.name}
                 </div>
                 {appointment.customer?.phone && (
                   <div className="text-sm text-gray-600">{appointment.customer.phone}</div>

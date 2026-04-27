@@ -9,6 +9,7 @@ import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import settingsService from '../../services/settingsService';
+import FollowUpModal from '../../components/followups/FollowUpModal';
 
 const InvoiceDetail = () => {
   const { id } = useParams();
@@ -17,6 +18,7 @@ const InvoiceDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
   const printableRef = useRef(); // Keep for InvoiceDisplay component
 
@@ -224,11 +226,25 @@ const InvoiceDetail = () => {
               <><i className="fas fa-download mr-2"></i>Download</>
             )}
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFollowUpModalOpen(true)}
+          >
+            <i className="fas fa-thumbtack mr-1"></i>Follow-Up
+          </Button>
           <Link to="/admin" className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">
             Back to Admin
           </Link>
         </div>
       </div>
+
+      <FollowUpModal
+        isOpen={followUpModalOpen}
+        onClose={() => setFollowUpModalOpen(false)}
+        entityType="invoice"
+        entityId={id}
+      />
       <Card>
         {/* Use the new InvoiceDisplay component with preprocessed data */}
         {invoice && (

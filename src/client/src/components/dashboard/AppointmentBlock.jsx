@@ -101,7 +101,7 @@ const AppointmentBlock = ({ appointment, startMinutes, durationMinutes, isPartia
           <div className="mb-3">
             <div className="text-sm font-bold text-gray-700 mb-1">Customer</div>
             <div className="text-base font-semibold">
-              {appointment.customer?.firstName} {appointment.customer?.lastName}
+              {appointment.customer?.name}
             </div>
             {appointment.customer?.phone && (
               <div className="text-sm text-gray-600">{appointment.customer.phone}</div>
@@ -138,7 +138,7 @@ const AppointmentBlock = ({ appointment, startMinutes, durationMinutes, isPartia
           <div className="mb-3">
             <div className="text-sm font-bold text-gray-700 mb-1">Technician</div>
             <div className="text-base">
-              {appointment.technician?.firstName} {appointment.technician?.lastName}
+              {appointment.technician?.name || 'Unassigned'}
             </div>
           </div>
 

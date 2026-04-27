@@ -18,50 +18,50 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
     {
       title: 'Pre-Inspection Setup',
       items: [
-        { key: 'mileage', label: 'Mileage' },
-        { key: 'startVehicle', label: 'Start vehicle observations' },
-        { key: 'runningVoltage', label: 'Running Voltage' },
-        { key: 'keyOffVoltage', label: 'Key-Off Voltage' },
+        { key: 'mileage', label: 'Mileage', customerFacing: true },
+        { key: 'startVehicle', label: 'Start vehicle observations', customerFacing: true },
+        { key: 'runningVoltage', label: 'Running Voltage', customerFacing: true },
+        { key: 'keyOffVoltage', label: 'Key-Off Voltage', customerFacing: true },
         { key: 'preInspectionSmartScan', label: 'Pre-inspection smart scan' }
       ]
     },
     {
       title: 'Physical Inspection',
       items: [
-        { key: 'leaksUnderVehicle', label: 'Leaks under vehicle' },
-        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"' },
-        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"' },
-        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm' },
-        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm' },
-        { key: 'engineOil', label: 'Engine oil' },
-        { key: 'brakeFluid', label: 'Brake fluid' },
-        { key: 'coolant', label: 'Coolant' }
+        { key: 'leaksUnderVehicle', label: 'Leaks under vehicle', customerFacing: true },
+        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"', customerFacing: true },
+        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"', customerFacing: true },
+        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm', customerFacing: true },
+        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm', customerFacing: true },
+        { key: 'engineOil', label: 'Engine oil', customerFacing: true },
+        { key: 'brakeFluid', label: 'Brake fluid', customerFacing: true },
+        { key: 'coolant', label: 'Coolant', customerFacing: true }
       ]
     },
     {
       title: 'Suspension Check',
       items: [
-        { key: 'ballJoints', label: 'Ball joints' },
-        { key: 'tieRodEnds', label: 'Tie rod ends' },
-        { key: 'axleShafts', label: 'Axle shafts' },
-        { key: 'shocksStruts', label: 'Shock/strut' },
-        { key: 'wheelBearings', label: 'Wheel bearings' },
-        { key: 'controlArmBushings', label: 'Control arm bushings' },
-        { key: 'swayBarEndLinks', label: 'Sway bar end links' }
+        { key: 'ballJoints', label: 'Ball joints', customerFacing: true },
+        { key: 'tieRodEnds', label: 'Tie rod ends', customerFacing: true },
+        { key: 'axleShafts', label: 'Axle shafts', customerFacing: true },
+        { key: 'shocksStruts', label: 'Shock/strut', customerFacing: true },
+        { key: 'wheelBearings', label: 'Wheel bearings', customerFacing: true },
+        { key: 'controlArmBushings', label: 'Control arm bushings', customerFacing: true },
+        { key: 'swayBarEndLinks', label: 'Sway bar end links', customerFacing: true }
       ]
     },
     {
       title: 'Other Systems',
       items: [
-        { key: 'accessoryBelt', label: 'Accessory belt' },
-        { key: 'exhaust', label: 'Exhaust' }
+        { key: 'accessoryBelt', label: 'Accessory belt', customerFacing: true },
+        { key: 'exhaust', label: 'Exhaust', customerFacing: true }
       ]
     },
     {
       title: 'Documentation',
       items: [
         { key: 'preScanUploaded', label: 'Pre-scan uploaded' },
-        { key: 'inspectionNotes', label: 'Inspection notes' }
+        { key: 'inspectionNotes', label: 'Inspection notes', customerFacing: true }
       ]
     }
   ];
@@ -71,13 +71,13 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
       title: 'Pre-Repair Setup',
       items: [
         { key: 'getKeys', label: 'Get keys from service writer' },
-        { key: 'mileage', label: 'Mileage' },
-        { key: 'startVehicle', label: 'Start vehicle observations' },
-        { key: 'runningVoltage', label: 'Running Voltage' },
+        { key: 'mileage', label: 'Mileage', customerFacing: true },
+        { key: 'startVehicle', label: 'Start vehicle observations', customerFacing: true },
+        { key: 'runningVoltage', label: 'Running Voltage', customerFacing: true },
         { key: 'preRepairSmartScan', label: 'Pre-repair smart scan' },
-        { key: 'testDrive', label: 'Test drive' },
+        { key: 'testDrive', label: 'Test drive', customerFacing: true },
         { key: 'driveIntoBay', label: 'Drive into bay' },
-        { key: 'keyOffVoltage', label: 'Key-Off Voltage' },
+        { key: 'keyOffVoltage', label: 'Key-Off Voltage', customerFacing: true },
         { key: 'liftVehicle', label: 'Lift vehicle' },
         { key: 'positionTools', label: 'Position tools' }
       ]
@@ -85,28 +85,28 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
     {
       title: 'Physical Pre-Inspection',
       items: [
-        { key: 'leaksUnderVehicle', label: 'Leaks under vehicle' },
-        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"' },
-        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"' },
-        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm' },
-        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm' },
-        { key: 'engineOil', label: 'Engine oil' },
-        { key: 'brakeFluid', label: 'Brake fluid' },
-        { key: 'coolant', label: 'Coolant' }
+        { key: 'leaksUnderVehicle', label: 'Leaks under vehicle', customerFacing: true },
+        { key: 'tiresFront', label: 'Tires - Front', suffix: '/32"', customerFacing: true },
+        { key: 'tiresRear', label: 'Tires - Rear', suffix: '/32"', customerFacing: true },
+        { key: 'brakesFront', label: 'Brakes - Front', suffix: 'mm', customerFacing: true },
+        { key: 'brakesRear', label: 'Brakes - Rear', suffix: 'mm', customerFacing: true },
+        { key: 'engineOil', label: 'Engine oil', customerFacing: true },
+        { key: 'brakeFluid', label: 'Brake fluid', customerFacing: true },
+        { key: 'coolant', label: 'Coolant', customerFacing: true }
       ]
     },
     {
       title: 'Suspension Check',
       items: [
-        { key: 'ballJoints', label: 'Ball joints' },
-        { key: 'tieRodEnds', label: 'Tie rod ends' },
-        { key: 'axleShafts', label: 'Axle shafts' },
-        { key: 'shocksStruts', label: 'Shock/strut' },
-        { key: 'wheelBearings', label: 'Wheel bearings' },
-        { key: 'controlArmBushings', label: 'Control arm bushings' },
-        { key: 'swayBarEndLinks', label: 'Sway bar end links' },
-        { key: 'accessoryBelt', label: 'Accessory belt' },
-        { key: 'exhaust', label: 'Exhaust' }
+        { key: 'ballJoints', label: 'Ball joints', customerFacing: true },
+        { key: 'tieRodEnds', label: 'Tie rod ends', customerFacing: true },
+        { key: 'axleShafts', label: 'Axle shafts', customerFacing: true },
+        { key: 'shocksStruts', label: 'Shock/strut', customerFacing: true },
+        { key: 'wheelBearings', label: 'Wheel bearings', customerFacing: true },
+        { key: 'controlArmBushings', label: 'Control arm bushings', customerFacing: true },
+        { key: 'swayBarEndLinks', label: 'Sway bar end links', customerFacing: true },
+        { key: 'accessoryBelt', label: 'Accessory belt', customerFacing: true },
+        { key: 'exhaust', label: 'Exhaust', customerFacing: true }
       ]
     },
     {
@@ -123,10 +123,10 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
         { key: 'lowerVehicle', label: 'Lower vehicle' },
         { key: 'torqueLugNuts', label: 'Torque lug nuts' },
         { key: 'checkInteriorUnderHood', label: 'Check interior/under hood' },
-        { key: 'verifyRepair', label: 'Verify repair' },
+        { key: 'verifyRepair', label: 'Verify repair', customerFacing: true },
         { key: 'moduleReset', label: 'Module reset' },
         { key: 'postRepairSmartScan', label: 'Post-repair smart scan' },
-        { key: 'postRepairTestDrive', label: 'Post-repair test drive' },
+        { key: 'postRepairTestDrive', label: 'Post-repair test drive', customerFacing: true },
         { key: 'parkVehicle', label: 'Park vehicle' }
       ]
     },
@@ -137,7 +137,7 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
         { key: 'postScanUploaded', label: 'Post-scan uploaded' },
         { key: 'voltageRecorded', label: 'Voltage recorded' },
         { key: 'mileageRecorded', label: 'Mileage recorded' },
-        { key: 'postRepairNotes', label: 'Post-repair notes' }
+        { key: 'postRepairNotes', label: 'Post-repair notes', customerFacing: true }
       ]
     }
   ];
@@ -222,6 +222,8 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
     return { total, completed, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 };
   };
 
+  const toTitleCase = (str) => str.replace(/\b\w/g, c => c.toUpperCase());
+
   const generateCustomerNote = async () => {
     if (!workOrder?._id) return;
 
@@ -233,10 +235,11 @@ const ChecklistViewModal = ({ isOpen, onClose, checklist, type, workOrder, onNot
     sections.forEach(section => {
       const sectionItems = [];
       section.items.forEach(item => {
+        if (!item.customerFacing) return;
         const itemData = checklist?.[item.key];
         if (!itemData?.completed && !itemData?.value) return;
 
-        let line = `- ${item.label}`;
+        let line = `- ${toTitleCase(item.label)}`;
         const rawValue = itemData.value || (itemData.completed ? 'Done' : null);
         if (rawValue && rawValue !== true && rawValue !== 'Done') {
           const displayVal = (typeof rawValue === 'string' && item.suffix) ? `${rawValue}${item.suffix}` : rawValue;
