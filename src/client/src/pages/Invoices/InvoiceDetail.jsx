@@ -97,7 +97,9 @@ const InvoiceDetail = () => {
       }));
       servicePackages = items.filter(item => item.type === 'Service').map(item => ({
         name: item.description,
-        price: item.unitPrice
+        price: item.unitPrice,
+        committed: true,
+        includedItems: item.includedItems || []
       }));
     } else {
       parts = invoice?.parts || [];

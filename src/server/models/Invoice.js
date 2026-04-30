@@ -27,6 +27,14 @@ const PaymentSchema = new Schema({
   }
 });
 
+const ServicePackageIncludedItemSchema = new Schema({
+  name: { type: String, trim: true },
+  partNumber: { type: String, trim: true },
+  brand: { type: String, trim: true },
+  quantity: { type: Number, default: 0 },
+  unit: { type: String, trim: true }
+});
+
 const InvoiceItemSchema = new Schema({
   type: {
     type: String,
@@ -74,7 +82,8 @@ const InvoiceItemSchema = new Schema({
   coreChargeInvoiceable: {
     type: Boolean,
     default: false
-  }
+  },
+  includedItems: [ServicePackageIncludedItemSchema]
 });
 
 // Main Invoice Schema

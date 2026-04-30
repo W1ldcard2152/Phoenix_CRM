@@ -206,6 +206,40 @@ exports.addInventoryCategory = catchAsync(async (req, res) => {
   res.status(200).json({ status: 'success', data: { settings } });
 });
 
+exports.renameInventoryCategory = catchAsync(async (req, res) => {
+  const InventoryItem = require('../models/InventoryItem');
+  const { oldName, newName } = req.body;
+
+  if (!oldName || !newName || !newName.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Both oldName and newName are required' });
+  }
+
+  const trimmed = newName.trim();
+  if (oldName === trimmed) {
+    return res.status(400).json({ status: 'fail', message: 'New name is the same as the old name' });
+  }
+
+  const settings = await Settings.getSettings();
+
+  if (!settings.inventoryCategories.includes(oldName)) {
+    return res.status(404).json({ status: 'fail', message: 'Category does not exist' });
+  }
+
+  const conflict = settings.inventoryCategories.some(
+    c => c !== oldName && c.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (conflict) {
+    return res.status(400).json({ status: 'fail', message: 'A category with that name already exists' });
+  }
+
+  settings.inventoryCategories = settings.inventoryCategories.map(c => c === oldName ? trimmed : c);
+  await settings.save();
+
+  await InventoryItem.updateMany({ category: oldName }, { $set: { category: trimmed } });
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
 exports.removeInventoryCategory = catchAsync(async (req, res) => {
   const { category } = req.body;
   if (!category) {
@@ -214,6 +248,117 @@ exports.removeInventoryCategory = catchAsync(async (req, res) => {
 
   const settings = await Settings.getSettings();
   settings.inventoryCategories = settings.inventoryCategories.filter(c => c !== category);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.addBrandOverride = catchAsync(async (req, res) => {
+  const { brand } = req.body;
+  if (!brand || !brand.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Brand name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  const trimmed = brand.trim();
+
+  const exists = (settings.brandOverrides || []).some(
+    b => b.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (exists) {
+    return res.status(400).json({ status: 'fail', message: 'This brand override already exists' });
+  }
+
+  settings.brandOverrides = [...(settings.brandOverrides || []), trimmed];
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.updateBrandOverride = catchAsync(async (req, res) => {
+  const { oldBrand, newBrand } = req.body;
+  if (!oldBrand || !newBrand || !newBrand.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Both oldBrand and newBrand are required' });
+  }
+
+  const trimmed = newBrand.trim();
+  const settings = await Settings.getSettings();
+  const list = settings.brandOverrides || [];
+
+  if (!list.includes(oldBrand)) {
+    return res.status(404).json({ status: 'fail', message: 'Brand override not found' });
+  }
+
+  const conflict = list.some(b => b !== oldBrand && b.toLowerCase() === trimmed.toLowerCase());
+  if (conflict) {
+    return res.status(400).json({ status: 'fail', message: 'Another brand override with that name already exists' });
+  }
+
+  settings.brandOverrides = list.map(b => b === oldBrand ? trimmed : b);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.applyBrandOverridesToInventory = catchAsync(async (req, res) => {
+  const InventoryItem = require('../models/InventoryItem');
+  const { brand, applyAll } = req.body;
+
+  const settings = await Settings.getSettings();
+  const allOverrides = settings.brandOverrides || [];
+
+  let overridesToApply;
+  if (applyAll) {
+    overridesToApply = allOverrides;
+  } else if (brand) {
+    if (!allOverrides.includes(brand)) {
+      return res.status(404).json({ status: 'fail', message: 'Brand override not found' });
+    }
+    overridesToApply = [brand];
+  } else {
+    return res.status(400).json({ status: 'fail', message: 'Either brand or applyAll is required' });
+  }
+
+  if (overridesToApply.length === 0) {
+    return res.status(200).json({ status: 'success', data: { updatedCount: 0 } });
+  }
+
+  const overridesMap = {};
+  overridesToApply.forEach(b => { overridesMap[b.toLowerCase()] = b; });
+
+  // Scan all items with non-empty partNumber (the "Brand / Model" field)
+  const items = await InventoryItem.find({
+    partNumber: { $exists: true, $nin: [null, ''] }
+  }).select('_id partNumber').lean();
+
+  const updates = [];
+  for (const item of items) {
+    const next = item.partNumber.replace(/[A-Za-z]+/g, (word) => {
+      const override = overridesMap[word.toLowerCase()];
+      return override || word;
+    });
+    if (next !== item.partNumber) {
+      updates.push({ _id: item._id, partNumber: next });
+    }
+  }
+
+  if (updates.length > 0) {
+    await Promise.all(updates.map(u =>
+      InventoryItem.findByIdAndUpdate(u._id, { partNumber: u.partNumber })
+    ));
+  }
+
+  res.status(200).json({ status: 'success', data: { updatedCount: updates.length } });
+});
+
+exports.removeBrandOverride = catchAsync(async (req, res) => {
+  const { brand } = req.body;
+  if (!brand) {
+    return res.status(400).json({ status: 'fail', message: 'Brand name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  settings.brandOverrides = (settings.brandOverrides || []).filter(b => b !== brand);
   await settings.save();
 
   res.status(200).json({ status: 'success', data: { settings } });

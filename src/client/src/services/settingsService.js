@@ -51,6 +51,11 @@ const SettingsService = {
     return response.data;
   },
 
+  renameInventoryCategory: async (oldName, newName) => {
+    const response = await API.post('/settings/inventory-categories/rename', { oldName, newName });
+    return response.data;
+  },
+
   addPackageTag: async (tag) => {
     const response = await API.post('/settings/package-tags', { tag });
     return response.data;
@@ -58,6 +63,31 @@ const SettingsService = {
 
   removePackageTag: async (tag) => {
     const response = await API.post('/settings/package-tags/remove', { tag });
+    return response.data;
+  },
+
+  addBrandOverride: async (brand) => {
+    const response = await API.post('/settings/brand-overrides', { brand });
+    return response.data;
+  },
+
+  updateBrandOverride: async (oldBrand, newBrand) => {
+    const response = await API.post('/settings/brand-overrides/update', { oldBrand, newBrand });
+    return response.data;
+  },
+
+  removeBrandOverride: async (brand) => {
+    const response = await API.post('/settings/brand-overrides/remove', { brand });
+    return response.data;
+  },
+
+  applyBrandOverrideToInventory: async (brand) => {
+    const response = await API.post('/settings/brand-overrides/apply', { brand });
+    return response.data;
+  },
+
+  applyAllBrandOverridesToInventory: async () => {
+    const response = await API.post('/settings/brand-overrides/apply', { applyAll: true });
     return response.data;
   }
 };

@@ -20,8 +20,13 @@ router.post('/categories/remove', authController.restrictTo('admin', 'management
 router.post('/task-categories', authController.restrictTo('admin', 'management'), settingsController.addTaskCategory);
 router.post('/task-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeTaskCategory);
 router.post('/inventory-categories', authController.restrictTo('admin', 'management'), settingsController.addInventoryCategory);
+router.post('/inventory-categories/rename', authController.restrictTo('admin', 'management'), settingsController.renameInventoryCategory);
 router.post('/inventory-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeInventoryCategory);
 router.post('/package-tags', authController.restrictTo('admin', 'management'), settingsController.addPackageTag);
 router.post('/package-tags/remove', authController.restrictTo('admin', 'management'), settingsController.removePackageTag);
+router.post('/brand-overrides', authController.restrictTo('admin', 'management'), settingsController.addBrandOverride);
+router.post('/brand-overrides/update', authController.restrictTo('admin', 'management'), settingsController.updateBrandOverride);
+router.post('/brand-overrides/remove', authController.restrictTo('admin', 'management'), settingsController.removeBrandOverride);
+router.post('/brand-overrides/apply', authController.restrictTo('admin', 'management'), settingsController.applyBrandOverridesToInventory);
 
 module.exports = router;

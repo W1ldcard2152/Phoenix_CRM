@@ -5,6 +5,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatDate, formatTime, formatCurrency } from '../../utils/formatters';
 import usePersistedState from '../../hooks/usePersistedState';
 import InventoryItemForm from '../../components/inventory/InventoryItemForm';
+import InventoryReceiptImportModal from '../../components/inventory/InventoryReceiptImportModal';
+import ManageBrandsModal from '../../components/inventory/ManageBrandsModal';
 
 const getStockStatus = (item) => {
   if (item.quantityOnHand === 0) return 'out';
@@ -46,6 +48,7 @@ const InventoryList = () => {
     url: '', notes: ''
   });
   const [packageTags, setPackageTags] = useState([]);
+  const [markupPercentage, setMarkupPercentage] = useState(30);
   const [formSaving, setFormSaving] = useState(false);
 
   // Adjust modal state
@@ -56,8 +59,74 @@ const InventoryList = () => {
   // Shopping list order amounts
   const [orderAmounts, setOrderAmounts] = useState({});
 
+  // Receipt import modal
+  const [showReceiptImportModal, setShowReceiptImportModal] = useState(false);
+
+  // New item queue (opened after receipt import for items with no match)
+  const [newItemQueue, setNewItemQueue] = useState([]);
+  const [newItemQueueIndex, setNewItemQueueIndex] = useState(0);
+
+  // Category management (inline on this page)
+  const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null); // original name being edited
+  const [editingCategoryDraft, setEditingCategoryDraft] = useState('');
+
+  // More Actions menu + Manage Brands modal
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const [showManageBrandsModal, setShowManageBrandsModal] = useState(false);
+  const [brandOverrides, setBrandOverrides] = useState([]);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'management';
+
+  const handleAddCategory = async () => {
+    if (!newCategoryInput.trim()) return;
+    try {
+      const res = await SettingsService.addInventoryCategory(newCategoryInput.trim());
+      setCategories(res.data.settings.inventoryCategories);
+      setNewCategoryInput('');
+    } catch (err) {
+      console.error('Error adding category:', err);
+    }
+  };
+
+  const handleRemoveCategory = async (cat) => {
+    try {
+      const res = await SettingsService.removeInventoryCategory(cat);
+      setCategories(res.data.settings.inventoryCategories);
+      if (categoryFilter === cat) setCategoryFilter('All');
+    } catch (err) {
+      console.error('Error removing category:', err);
+    }
+  };
+
+  const startEditCategory = (cat) => {
+    setEditingCategory(cat);
+    setEditingCategoryDraft(cat);
+  };
+
+  const cancelEditCategory = () => {
+    setEditingCategory(null);
+    setEditingCategoryDraft('');
+  };
+
+  const saveEditCategory = async () => {
+    const newName = editingCategoryDraft.trim();
+    if (!newName || newName === editingCategory) {
+      cancelEditCategory();
+      return;
+    }
+    try {
+      const res = await SettingsService.renameInventoryCategory(editingCategory, newName);
+      setCategories(res.data.settings.inventoryCategories);
+      if (categoryFilter === editingCategory) setCategoryFilter(newName);
+      cancelEditCategory();
+      fetchData();
+    } catch (err) {
+      console.error('Error renaming category:', err);
+      alert(err.response?.data?.message || 'Failed to rename category');
+    }
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -67,8 +136,11 @@ const InventoryList = () => {
         SettingsService.getSettings()
       ]);
       setItems(itemsRes.data.items || []);
-      setCategories(settingsRes.data.settings.inventoryCategories || []);
-      setPackageTags(settingsRes.data.settings.packageTags || []);
+      const settings = settingsRes.data.settings;
+      setCategories(settings.inventoryCategories || []);
+      setPackageTags(settings.packageTags || []);
+      setBrandOverrides(settings.brandOverrides || []);
+      if (settings.partMarkupPercentage != null) setMarkupPercentage(settings.partMarkupPercentage);
 
       // Calculate shopping list count
       const allItems = itemsRes.data.items || [];
@@ -169,6 +241,46 @@ const InventoryList = () => {
       fetchData();
     } catch (err) {
       console.error('Error deleting item:', err);
+    }
+  };
+
+  // Called when receipt import finishes; newItemPrefills are items with no inventory match
+  const handleReceiptImportSuccess = (newItemPrefills) => {
+    fetchData();
+    if (!newItemPrefills || newItemPrefills.length === 0) return;
+    // Open the form modal for the first new item; user steps through the queue
+    setNewItemQueue(newItemPrefills);
+    setNewItemQueueIndex(0);
+    setEditingItem(null);
+    setFormData(newItemPrefills[0]);
+    setShowItemModal(true);
+  };
+
+  // Save current queued item and advance to next (or close when done)
+  const handleSaveQueuedItem = async () => {
+    if (!formData.name.trim()) return;
+    setFormSaving(true);
+    try {
+      const createData = { ...formData };
+      if (createData.unitsPerPurchase > 1 && createData.quantityOnHand > 0) {
+        createData.quantityOnHand = createData.quantityOnHand * createData.unitsPerPurchase;
+      }
+      await InventoryService.createItem(createData);
+      fetchData();
+
+      const nextIndex = newItemQueueIndex + 1;
+      if (nextIndex < newItemQueue.length) {
+        setNewItemQueueIndex(nextIndex);
+        setFormData(newItemQueue[nextIndex]);
+      } else {
+        setNewItemQueue([]);
+        setNewItemQueueIndex(0);
+        setShowItemModal(false);
+      }
+    } catch (err) {
+      console.error('Error saving queued item:', err);
+    } finally {
+      setFormSaving(false);
     }
   };
 
@@ -290,11 +402,44 @@ const InventoryList = () => {
                 )}
               </button>
               <button
+                onClick={() => setShowReceiptImportModal(true)}
+                className="px-3 py-2 rounded-lg bg-gray-700 text-white text-sm font-medium active:bg-gray-800 flex items-center gap-1"
+                title="Import from receipt"
+              >
+                <i className="fas fa-receipt text-xs"></i>
+                <span className="hidden sm:inline">Import Receipt</span>
+              </button>
+              <button
                 onClick={openCreateModal}
                 className="px-3 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium active:bg-primary-700"
               >
                 + Add Item
               </button>
+              {isAdmin && (
+                <div className="relative">
+                  <button
+                    onClick={() => setMoreActionsOpen(!moreActionsOpen)}
+                    className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium active:bg-gray-200 flex items-center gap-1"
+                    title="More actions"
+                  >
+                    <span className="hidden sm:inline">More</span>
+                    <span>☰</span>
+                  </button>
+                  {moreActionsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMoreActionsOpen(false)}></div>
+                      <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg z-20 border border-gray-200">
+                        <button
+                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          onClick={() => { setShowManageBrandsModal(true); setMoreActionsOpen(false); }}
+                        >
+                          <i className="fas fa-tag mr-2"></i>Manage Brands
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -340,6 +485,84 @@ const InventoryList = () => {
               </button>
             ))}
           </div>
+
+          {/* Manage Categories (admin only) */}
+          {isAdmin && (
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={() => setShowCategoryMgmt(!showCategoryMgmt)}
+                className="text-xs text-primary-600 font-medium"
+              >
+                {showCategoryMgmt ? 'Hide' : 'Manage'} categories
+              </button>
+              {showCategoryMgmt && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-lg space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCategoryInput}
+                      onChange={(e) => setNewCategoryInput(e.target.value)}
+                      placeholder="New category"
+                      className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                    />
+                    <button
+                      onClick={handleAddCategory}
+                      className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded font-medium"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {categories.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {categories.map(cat => (
+                        editingCategory === cat ? (
+                          <span key={cat} className="inline-flex items-center gap-1 px-1 py-0.5 bg-white border border-primary-400 rounded text-xs">
+                            <input
+                              type="text"
+                              value={editingCategoryDraft}
+                              onChange={(e) => setEditingCategoryDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveEditCategory();
+                                else if (e.key === 'Escape') cancelEditCategory();
+                              }}
+                              autoFocus
+                              className="px-1.5 py-0.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500 w-32"
+                            />
+                            <button onClick={saveEditCategory} className="text-green-600 hover:text-green-700" title="Save">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button onClick={cancelEditCategory} className="text-gray-400 hover:text-gray-600" title="Cancel">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </span>
+                        ) : (
+                          <span key={cat} className="inline-flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs">
+                            {cat}
+                            <button onClick={() => startEditCategory(cat)} className="text-gray-400 hover:text-primary-600" title={`Rename ${cat}`}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => handleRemoveCategory(cat)} className="text-red-400 hover:text-red-600" title={`Remove ${cat}`}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </span>
+                        )
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Search */}
           <div className="relative">
@@ -562,17 +785,24 @@ const InventoryList = () => {
       {/* ========== ITEM FORM MODAL ========== */}
       {showItemModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setShowItemModal(false)} />
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => { if (!newItemQueue.length) setShowItemModal(false); }} />
           <div className="relative bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">
-                {editingItem ? 'Edit Item' : 'Add Item'}
-              </h2>
-              <button onClick={() => setShowItemModal(false)} className="text-gray-400 p-1">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  {editingItem ? 'Edit Item' : newItemQueue.length > 0 ? `New Item (${newItemQueueIndex + 1} of ${newItemQueue.length})` : 'Add Item'}
+                </h2>
+                {newItemQueue.length > 0 && (
+                  <p className="text-xs text-gray-500">From receipt import — confirm details before saving</p>
+                )}
+              </div>
+              {!newItemQueue.length && (
+                <button onClick={() => setShowItemModal(false)} className="text-gray-400 p-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
 
             <div className="p-4">
@@ -584,24 +814,41 @@ const InventoryList = () => {
                 onCategoriesChange={setCategories}
                 packageTags={packageTags}
                 isAdmin={isAdmin}
+                markupPercentage={markupPercentage}
               />
             </div>
 
             {/* Save/Cancel buttons */}
             <div className="sticky bottom-0 bg-white px-4 py-3 border-t border-gray-200 flex gap-2">
-              <button
-                onClick={() => setShowItemModal(false)}
-                className="flex-1 py-3 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 active:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveItem}
-                disabled={formSaving || !formData.name.trim()}
-                className="flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-primary-600 active:bg-primary-700 disabled:opacity-50"
-              >
-                {formSaving ? 'Saving...' : editingItem ? 'Save Changes' : 'Add Item'}
-              </button>
+              {newItemQueue.length > 0 ? (
+                <button
+                  onClick={handleSaveQueuedItem}
+                  disabled={formSaving || !formData.name.trim()}
+                  className="flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-primary-600 active:bg-primary-700 disabled:opacity-50"
+                >
+                  {formSaving
+                    ? 'Saving...'
+                    : newItemQueueIndex < newItemQueue.length - 1
+                      ? `Save & Next Item (${newItemQueue.length - newItemQueueIndex - 1} remaining)`
+                      : 'Save Item'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setShowItemModal(false)}
+                    className="flex-1 py-3 rounded-lg text-sm font-semibold text-gray-700 bg-gray-100 active:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveItem}
+                    disabled={formSaving || !formData.name.trim()}
+                    className="flex-1 py-3 rounded-lg text-sm font-semibold text-white bg-primary-600 active:bg-primary-700 disabled:opacity-50"
+                  >
+                    {formSaving ? 'Saving...' : editingItem ? 'Save Changes' : 'Add Item'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -800,6 +1047,21 @@ const InventoryList = () => {
           </div>
         </div>
       )}
+      {/* ========== RECEIPT IMPORT MODAL ========== */}
+      <InventoryReceiptImportModal
+        isOpen={showReceiptImportModal}
+        onClose={() => setShowReceiptImportModal(false)}
+        onSuccess={handleReceiptImportSuccess}
+      />
+
+      {/* ========== MANAGE BRANDS MODAL ========== */}
+      <ManageBrandsModal
+        isOpen={showManageBrandsModal}
+        onClose={() => setShowManageBrandsModal(false)}
+        brandOverrides={brandOverrides}
+        onChange={setBrandOverrides}
+        onApplied={fetchData}
+      />
     </div>
   );
 };

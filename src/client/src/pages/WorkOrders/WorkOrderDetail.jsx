@@ -924,7 +924,9 @@ const WorkOrderDetail = () => {
     diagnosticNotes: workOrder.diagnosticNotes,
     parts: workOrder.parts || [],
     labor: workOrder.labor || [],
+    servicePackages: workOrder.servicePackages || [],
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    taxRate: taxRate * 100,
     technicianName: getCustomerFacingName(workOrder.assignedTechnician),
     serviceAdvisorName: getCustomerFacingName(workOrder.createdBy)
   });

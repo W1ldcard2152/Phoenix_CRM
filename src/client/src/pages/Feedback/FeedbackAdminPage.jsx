@@ -153,7 +153,7 @@ const FeedbackAdminPage = () => {
               <tr>
                 <th className="py-2 px-4 border-b text-left">User</th>
                 <th className="py-2 px-4 border-b text-left">Feedback</th>
-                <th className="py-2 px-4 border-b text-left">Date</th>
+                <th className="py-2 px-4 border-b text-left whitespace-nowrap">Date</th>
                 <th className="py-2 px-4 border-b text-left">Actions</th>
               </tr>
             </thead>
@@ -167,7 +167,7 @@ const FeedbackAdminPage = () => {
                   <tr key={entry._id}>
                     <td className="py-2 px-4 border-b">{entry.user ? entry.user.name : 'N/A'}</td>
                     <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
-                    <td className="py-2 px-4 border-b">{formatDate(entry.createdAt)}</td>
+                    <td className="py-2 px-4 border-b whitespace-nowrap">{formatDate(entry.createdAt)}</td>
                     <td className="py-2 px-4 border-b">
                       <div className="flex flex-row space-x-2">
                         <Button onClick={() => handleCopyClick(entry.feedbackText)} className="bg-gray-500 hover:bg-gray-700" size="sm">Copy</Button>
@@ -195,7 +195,7 @@ const FeedbackAdminPage = () => {
                 <tr>
                   <th className="py-2 px-4 border-b text-left">User</th>
                   <th className="py-2 px-4 border-b text-left">Feedback</th>
-                  <th className="py-2 px-4 border-b text-left">Archived Date</th>
+                  <th className="py-2 px-4 border-b text-left whitespace-nowrap">Archived Date</th>
                   <th className="py-2 px-4 border-b text-left">Actions</th>
                 </tr>
               </thead>
@@ -209,7 +209,7 @@ const FeedbackAdminPage = () => {
                     <tr key={entry._id}>
                       <td className="py-2 px-4 border-b">{entry.user ? entry.user.name : 'N/A'}</td>
                       <td className="py-2 px-4 border-b">{entry.feedbackText}</td>
-                      <td className="py-2 px-4 border-b">{formatDate(entry.archivedAt)}</td>
+                      <td className="py-2 px-4 border-b whitespace-nowrap">{formatDate(entry.archivedAt)}</td>
                       <td className="py-2 px-4 border-b">
                         <div className="flex flex-row space-x-2">
                           <Button onClick={() => handleRestoreClick(entry._id)} className="bg-blue-500 hover:bg-blue-700" size="sm">Restore</Button>

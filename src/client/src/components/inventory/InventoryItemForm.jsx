@@ -12,12 +12,31 @@ import UrlExtractButton from '../common/UrlExtractButton';
  *  - packageTags — package tags list
  *  - isAdmin — show category management controls
  */
-const InventoryItemForm = ({ formData, onChange, isEditing = false, categories = [], onCategoriesChange, packageTags = [], isAdmin = false }) => {
+const InventoryItemForm = ({ formData, onChange, isEditing = false, categories = [], onCategoriesChange, packageTags = [], isAdmin = false, markupPercentage = 30 }) => {
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+  const [overridePrice, setOverridePrice] = useState(false);
+
+  const multiplier = 1 + markupPercentage / 100;
 
   const updateField = (field, value) => {
     onChange({ ...formData, [field]: value });
+  };
+
+  const handleCostChange = (cost) => {
+    if (overridePrice) {
+      onChange({ ...formData, cost });
+    } else {
+      onChange({ ...formData, cost, price: parseFloat((cost * multiplier).toFixed(2)) });
+    }
+  };
+
+  const handlePriceChange = (price) => {
+    if (overridePrice) {
+      onChange({ ...formData, price });
+    } else {
+      onChange({ ...formData, price, cost: parseFloat((price / multiplier).toFixed(2)) });
+    }
   };
 
   const handleAddCategory = async () => {
@@ -167,22 +186,39 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             min="0"
             step="0.01"
             value={formData.cost}
-            onChange={(e) => updateField('cost', parseFloat(e.target.value) || 0)}
+            onChange={(e) => handleCostChange(parseFloat(e.target.value) || 0)}
             className={inputClass}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Retail Price</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Retail Price
+            {!overridePrice && (
+              <span className="ml-1 text-xs text-gray-400 font-normal">({markupPercentage}% markup)</span>
+            )}
+          </label>
           <input
             type="number"
             inputMode="decimal"
             min="0"
             step="0.01"
             value={formData.price}
-            onChange={(e) => updateField('price', parseFloat(e.target.value) || 0)}
+            onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
             className={inputClass}
           />
         </div>
+      </div>
+      <div className="flex items-center -mt-1">
+        <input
+          type="checkbox"
+          id="overridePriceInv"
+          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+          checked={overridePrice}
+          onChange={(e) => setOverridePrice(e.target.checked)}
+        />
+        <label htmlFor="overridePriceInv" className="ml-2 text-sm text-gray-600">
+          Override price calculations
+        </label>
       </div>
 
       {/* Warranty */}

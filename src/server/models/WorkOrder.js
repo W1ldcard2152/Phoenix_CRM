@@ -136,6 +136,7 @@ const ServicePackageItemSchema = new Schema({
   inventoryItemId: { type: Schema.Types.ObjectId, ref: 'InventoryItem' },
   name: { type: String, required: true, trim: true },
   partNumber: { type: String, trim: true },
+  brand: { type: String, trim: true },
   quantity: { type: Number, required: true, min: 0 },
   cost: { type: Number, default: 0, min: 0 },
   unit: { type: String, trim: true }

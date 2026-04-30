@@ -78,7 +78,8 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       _id: item._id,
       name: item.description,
       price: item.unitPrice,
-      total: item.total
+      total: item.total,
+      includedItems: item.includedItems || []
     }));
   } else {
     // Legacy structure: use existing parts and labor arrays
@@ -254,8 +255,21 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
             <tbody>
               {services.map((svc, index) => (
                 <tr key={svc._id || `service-${index}`}>
-                  <td className="border border-gray-300 p-2">{svc.name}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(svc.total || svc.price)}</td>
+                  <td className="border border-gray-300 p-2 align-top">
+                    <div className="font-medium">{svc.name}</div>
+                    {svc.includedItems && svc.includedItems.length > 0 && (
+                      <ul className="mt-1 ml-4 list-disc text-xs text-gray-600">
+                        {svc.includedItems.map((i, idx) => {
+                          const qty = i.quantity || 0;
+                          const unit = i.unit ? ` ${i.unit}` : '';
+                          const brand = i.brand ? `${i.brand} ` : '';
+                          const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+                          return <li key={idx}>{`${qty}${unit} - ${brand}${i.name}${partNum}`}</li>;
+                        })}
+                      </ul>
+                    )}
+                  </td>
+                  <td className="border border-gray-300 p-2 text-right align-top">{formatCurrency(svc.total || svc.price)}</td>
                 </tr>
               ))}
             </tbody>

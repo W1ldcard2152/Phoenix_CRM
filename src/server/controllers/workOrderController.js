@@ -773,6 +773,7 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
         inventoryItemId: inv._id,
         name: inv.name,
         partNumber: inv.partNumber || '',
+        brand: inv.brand || '',
         quantity: included.quantity,
         cost: inv.cost,
         unit: inv.unit || ''
@@ -1419,13 +1420,50 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
     return next(new AppError('No parts could be extracted from the receipt', 400));
   }
 
+  // Duplicate detection: check against WO parts, parts catalog, and inventory
+  const Part = require('../models/Part');
+  const [catalogParts, inventoryItems] = await Promise.all([
+    Part.find({ isActive: true }).select('_id name partNumber').lean(),
+    InventoryItem.find({ isActive: true }).select('_id name partNumber').lean()
+  ]);
+
+  const allExisting = [
+    ...workOrder.parts.map(p => ({ _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || p.itemNumber || '' })),
+    ...catalogParts.map(p => ({ _id: `catalog:${p._id}`, name: p.name, partNumber: p.partNumber || '' })),
+    ...inventoryItems.map(p => ({ _id: `inv:${p._id}`, name: p.name, partNumber: p.partNumber || '' }))
+  ];
+
+  let duplicates = [];
+  if (allExisting.length > 0) {
+    const rawMatches = await aiService.findDuplicates(parts, allExisting);
+
+    const woById = {};
+    workOrder.parts.forEach(p => { woById[p._id.toString()] = p; });
+    const catById = {};
+    catalogParts.forEach(p => { catById[p._id.toString()] = p; });
+    const invById = {};
+    inventoryItems.forEach(p => { invById[p._id.toString()] = p; });
+
+    duplicates = rawMatches.map(m => {
+      const colonIdx = m.existingId.indexOf(':');
+      const source = m.existingId.substring(0, colonIdx);
+      const rawId = m.existingId.substring(colonIdx + 1);
+      let existingName = '';
+      if (source === 'wo') existingName = woById[rawId]?.name || '';
+      else if (source === 'catalog') existingName = catById[rawId]?.name || '';
+      else if (source === 'inv') existingName = invById[rawId]?.name || '';
+      return { parsedIndex: m.parsedIndex, source, rawId, existingName, reason: m.reason };
+    });
+  }
+
   res.status(200).json({
     status: 'success',
     data: {
       parts,
       shippingTotal,
       mediaId: mediaDoc ? mediaDoc._id : null,
-      mediaS3Key: mediaDoc ? mediaDoc.s3Key : null
+      mediaS3Key: mediaDoc ? mediaDoc.s3Key : null,
+      duplicates
     }
   });
 });
@@ -1436,7 +1474,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   const Media = require('../models/Media');
 
   const workOrderId = req.params.id;
-  const { selectedParts, shippingTotal, isOrder, mediaId, mediaS3Key, catalogActions } = req.body;
+  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, catalogActions, duplicateResolutions = {} } = req.body;
 
   if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
     return next(new AppError('No parts selected', 400));
@@ -1449,7 +1487,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
 
   // Apply shipping amortization and markup to selected parts
   const settings = await Settings.getSettings();
-  const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder, settings.partMarkupPercentage);
+  const finalizedParts = aiService.finalizeParts(selectedParts, shippingTotal || 0, isOrder, settings.partMarkupPercentage, totalAllUnits);
 
   // Link receipt media to each part
   const partsWithReceipt = finalizedParts.map(part => ({
@@ -1457,7 +1495,28 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
     receiptImageUrl: mediaS3Key || null
   }));
 
-  workOrder.parts.push(...partsWithReceipt);
+  // Add new parts or overwrite existing WO parts based on duplicate resolutions
+  for (let i = 0; i < partsWithReceipt.length; i++) {
+    const part = partsWithReceipt[i];
+    const resolution = duplicateResolutions[i] || {};
+
+    if (resolution.woAction === 'overwrite' && resolution.woMatchId) {
+      const existingPart = workOrder.parts.id(resolution.woMatchId);
+      if (existingPart) {
+        existingPart.name = part.name;
+        if (part.itemNumber) existingPart.partNumber = part.itemNumber;
+        if (part.vendor) existingPart.vendor = part.vendor;
+        if (part.supplier) existingPart.supplier = part.supplier;
+        existingPart.quantity = part.quantity;
+        existingPart.cost = part.cost;
+        existingPart.price = part.price;
+        existingPart.ordered = part.ordered;
+        if (part.receiptImageUrl) existingPart.receiptImageUrl = part.receiptImageUrl;
+        continue;
+      }
+    }
+    workOrder.parts.push(part);
+  }
 
   // Auto-advance status if all parts ordered
   if (isOrder) {
@@ -1481,43 +1540,77 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
     const Part = require('../models/Part');
 
     for (const [indexStr, action] of Object.entries(catalogActions)) {
-      const part = partsWithReceipt[parseInt(indexStr)];
+      const i = parseInt(indexStr);
+      const part = partsWithReceipt[i];
       if (!part || !action) continue;
+
+      const resolution = duplicateResolutions[i] || {};
 
       try {
         if (action === 'catalog') {
-          const partNumber = part.itemNumber || `IMPORT-${Date.now()}-${indexStr}`;
-          await Part.findOneAndUpdate(
-            { partNumber },
-            {
-              name: part.name,
-              partNumber,
-              vendor: part.vendor || 'Unknown',
-              brand: part.vendor || 'Unknown',
-              category: 'Other',
+          if (resolution.catalogAction === 'update_price' && resolution.catalogMatchId) {
+            // Same part found in catalog — update price/cost only, no new entry
+            await Part.findByIdAndUpdate(resolution.catalogMatchId, {
               cost: part.cost || 0,
-              price: part.price || 0,
-              warranty: '',
-              url: ''
-            },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-          );
+              price: part.price || 0
+            });
+          } else {
+            const partNumber = part.itemNumber || `IMPORT-${Date.now()}-${indexStr}`;
+            await Part.findOneAndUpdate(
+              { partNumber },
+              {
+                name: part.name,
+                partNumber,
+                vendor: part.vendor || 'Unknown',
+                brand: part.vendor || 'Unknown',
+                category: 'Other',
+                cost: part.cost || 0,
+                price: part.price || 0,
+                warranty: '',
+                url: ''
+              },
+              { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+          }
         } else if (action === 'inventory') {
-          await InventoryItem.findOneAndUpdate(
-            { name: part.name, partNumber: part.itemNumber || '' },
-            {
-              name: part.name,
-              partNumber: part.itemNumber || '',
-              vendor: part.vendor || '',
-              cost: part.cost || 0,
-              price: part.price || 0,
-              quantityOnHand: part.quantity || 1
-            },
-            { upsert: true, new: true, setDefaultsOnInsert: true }
-          );
+          if (resolution.inventoryAction === 'add_to_existing' && resolution.inventoryMatchId) {
+            // Same item found in inventory — add to QOH and update cost/price
+            const existing = await InventoryItem.findById(resolution.inventoryMatchId);
+            if (existing) {
+              const previousQty = existing.quantityOnHand;
+              const newQty = previousQty + (part.quantity || 1);
+              const update = { quantityOnHand: newQty, name: part.name, cost: part.cost || 0, price: part.price || 0 };
+              if (part.vendor) update.vendor = part.vendor;
+              if (part.itemNumber) update.partNumber = part.itemNumber;
+              await InventoryItem.findByIdAndUpdate(resolution.inventoryMatchId, {
+                $set: update,
+                $push: {
+                  adjustmentLog: {
+                    adjustedBy: req.user._id,
+                    previousQty,
+                    newQty,
+                    reason: 'Restocked (receipt import)'
+                  }
+                }
+              });
+            }
+          } else {
+            await InventoryItem.findOneAndUpdate(
+              { name: part.name, partNumber: part.itemNumber || '' },
+              {
+                name: part.name,
+                partNumber: part.itemNumber || '',
+                vendor: part.vendor || '',
+                cost: part.cost || 0,
+                price: part.price || 0,
+                quantityOnHand: part.quantity || 1
+              },
+              { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
+          }
         }
       } catch (catalogErr) {
-        console.error(`[Receipt] Failed to add part "${part.name}" to ${action}:`, catalogErr.message);
+        console.error(`[Receipt] Failed to process part "${part.name}" for ${action}:`, catalogErr.message);
       }
     }
   }

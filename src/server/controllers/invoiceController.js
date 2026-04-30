@@ -172,7 +172,14 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
       unitPrice: pkg.price,
       total: pkg.price,
       taxable: true,
-      billingType: 'fixed'
+      billingType: 'fixed',
+      includedItems: (pkg.includedItems || []).map(item => ({
+        name: item.name,
+        partNumber: item.partNumber || '',
+        brand: item.brand || '',
+        quantity: item.quantity,
+        unit: item.unit || ''
+      }))
     }))
   ];
   

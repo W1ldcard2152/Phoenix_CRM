@@ -9,6 +9,10 @@ router.use(authController.protect);
 // Shopping list must come before /:id to avoid route conflict
 router.get('/shopping-list', inventoryController.getShoppingList);
 
+// Receipt import (must come before /:id)
+router.post('/extract-receipt', inventoryController.receiptUpload, inventoryController.extractInventoryReceipt);
+router.post('/confirm-receipt', inventoryController.confirmInventoryReceipt);
+
 router.get('/', inventoryController.getAllItems);
 router.post('/', inventoryController.createItem);
 

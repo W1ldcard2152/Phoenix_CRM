@@ -3,7 +3,21 @@ const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-3.1-flash-lite-preview';
+
+// Normalize brand-name casing: words ≤3 letters stay all-caps (acronyms like BCA, NTK),
+// words ≥4 letters become Title Case ("BOSCH" → "Bosch", "MAHLE / CLEVITE" → "Mahle / Clevite").
+// User-managed overrides (e.g. ACDelco) are looked up first.
+// Numbers and separators (/, -, spaces) are preserved as-is.
+const formatBrandName = (brand, overridesMap = {}) => {
+  if (!brand || typeof brand !== 'string') return brand || '';
+  return brand.replace(/[A-Za-z]+/g, (word) => {
+    const override = overridesMap[word.toLowerCase()];
+    if (override) return override;
+    if (word.length <= 3) return word.toUpperCase();
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+};
 
 /**
  * Get a Gemini model instance (shared with registrationController)
@@ -31,20 +45,28 @@ FIRST, identify the retailer/marketplace at the TOP of the receipt (e.g., "RockA
 SECOND, find the ORDER NUMBER (e.g., "Order 328112506" = "328112506"). On eBay receipts with multiple sellers, each seller section has its own order number.
 
 For EACH item found, extract:
-1. Part name (full descriptive name as shown in the item listing)
-2. Vendor - The MARKETPLACE/RETAILER name from the receipt header (e.g., "RockAuto", "eBay", "Amazon")
-   - DO NOT use part brand names (like "QUALITY-LT", "SKP", "NTK") as the vendor
-   - USE the company name from the receipt header (RockAuto, Advance Auto, etc.)
-3. Supplier - The actual seller (only for marketplaces like eBay/Amazon where items come from different sellers; leave empty for direct retailers like RockAuto)
-4. Order number - Use the order number from the section the item appears in
-5. Price - The EXACT dollar amount shown next to the item (e.g., "Item price" column). Read this number precisely as printed - do NOT estimate or calculate it
-6. Quantity (from "Qty" or "Quantity" column, default to 1)
-7. Item Number/SKU - the eBay item number in parentheses, or part number from "Part Number" column
+1. Part name - A concise, clean description of the part itself. If the receipt has a "Part Type" / "Description" / "Item" column, use that value (e.g., "Oil Filter", "Wheel Bearing", "Oxygen Sensor"). For listing-style titles (Amazon/eBay), strip brand names, seller names, and marketing filler from the title and keep only what identifies the part itself.
+2. Brand - The manufacturer/brand name ONLY (e.g., "Mobil 1", "Bosch", "MANN", "MAHLE", "ACDelco"). This must be SEPARATE from the part number — do NOT combine them. Leave empty string if not identifiable.
+3. Item Number/SKU - The part number or SKU ONLY (e.g., "OX387D", "3334", "PF64"). This is separate from the brand. Do NOT include the brand name here.
+4. Vendor - The MARKETPLACE/RETAILER name from the receipt header (e.g., "RockAuto", "eBay", "Amazon"). DO NOT use part brand names as vendor.
+5. Supplier - The actual seller (only for marketplaces like eBay/Amazon; leave empty for direct retailers like RockAuto)
+6. Order number - Use the order number from the section the item appears in
+7. Price - The EXACT per-unit dollar amount (e.g., "Price EA" column). Read precisely as printed — do NOT estimate or calculate from totals
+8. Quantity - From "Qty" or "Quantity" column, default to 1
+
+CRITICAL — Brand vs. Part Number separation:
+- Brand and part number are ALWAYS two distinct fields. NEVER merge them into one.
+- Brand = a manufacturer/company name (e.g., "Bosch", "MAHLE / CLEVITE", "MANN", "ACDelco", "FEL-PRO", "Mobil 1", "Genuine BMW", "OEM", "Febi"). Brands often appear ALL-CAPS on parts receipts.
+- Part number = an alphanumeric SKU/identifier (e.g., "OX387D", "3334", "PF64", "11427837997"). Often contains digits or mixed letters/digits.
+- HOW to identify which is which:
+  • If the receipt has a TABLE with column headers, read the headers — "Brand" / "Manufacturer" / "Mfr" columns hold the brand; "Part Number" / "Part #" / "SKU" / "Mfr #" columns hold the part number. Trust the headers, NOT column position.
+  • If the receipt is a LISTING-STYLE row (Amazon/eBay-style with one long title), parse the title: a leading recognizable manufacturer name → brand; an alphanumeric token that looks like a SKU → itemNumber; the descriptive remainder → name.
+- If you cannot confidently separate them, populate the field you ARE sure about and leave the other empty — never put a combined string like "Bosch 3334" into either field.
 
 CRITICAL - Price extraction:
 - Read the EXACT price printed on the receipt for each item
 - Do NOT round, estimate, or infer prices from totals
-- The price is the per-unit "Item price" shown in the item's row
+- Use the per-unit price ("Price EA" or "Item price" column), NOT the line total
 - IGNORE coupons, discounts, and promotions — extract only the item price as listed
 
 CRITICAL - Vendor identification:
@@ -58,30 +80,45 @@ CRITICAL - Shipping extraction:
 - Do NOT include coupons, discounts, or tax as shipping
 - If shipping is $0 or free, do not create a shipping item
 
+CRITICAL - Tax extraction:
+- If a tax total is listed in the order summary, create ONE item called "Tax" with that exact amount as the price
+- If tax is $0, do not create a tax item
+
 IGNORE these line items entirely (do NOT extract them):
-- Coupons, discounts, promotions
-- Tax lines
+- Coupons, discounts, promotions, core charges
 - Order totals / subtotals
 
 Return a JSON array. Example format:
 [
   {
-    "name": "Oxygen (O2) Sensor",
+    "name": "Oil Filter",
+    "brand": "Bosch",
+    "itemNumber": "3334",
     "vendor": "RockAuto",
     "supplier": "",
-    "orderNumber": "327394945",
-    "price": 36.79,
-    "quantity": 2,
-    "itemNumber": "22012"
+    "orderNumber": "341993980",
+    "price": 3.87,
+    "quantity": 3
   },
   {
-    "name": "Door Lock Latch Actuator Front Left",
-    "vendor": "eBay",
-    "supplier": "prestigeautorecycling",
-    "orderNumber": "23-13747-54228",
-    "price": 65.34,
-    "quantity": 1,
-    "itemNumber": "406323463061"
+    "name": "Oil Filter",
+    "brand": "MAHLE / CLEVITE",
+    "itemNumber": "OX387D",
+    "vendor": "RockAuto",
+    "supplier": "",
+    "orderNumber": "341993980",
+    "price": 5.89,
+    "quantity": 3
+  },
+  {
+    "name": "Full Synthetic Motor Oil 0W-20, 5 Quart",
+    "brand": "Mobil 1",
+    "itemNumber": "",
+    "vendor": "Walmart",
+    "supplier": "",
+    "orderNumber": "",
+    "price": 28.97,
+    "quantity": 1
   }
 ]`;
 
@@ -140,8 +177,15 @@ Return a JSON array. Example format:
 
     console.log(`[Receipt Parser] Extracted ${regularParts.length} part(s) and ${shippingItems.length} shipping/tax item(s) totaling $${shippingTotal.toFixed(2)}`);
 
+    // Load brand override map from Settings (singleton)
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const overridesMap = {};
+    (settings.brandOverrides || []).forEach(b => { overridesMap[b.toLowerCase()] = b; });
+
     const rawParts = regularParts.map(part => ({
       name: part.name || '',
+      brand: formatBrandName(part.brand || '', overridesMap),
       itemNumber: part.itemNumber || '',
       vendor: part.vendor || '',
       supplier: part.supplier || '',
@@ -168,11 +212,12 @@ Return a JSON array. Example format:
  * @param {Number} markupPercentage - Markup percentage (e.g. 30 for 30%)
  * @returns {Array} Finalized parts ready to add to a work order
  */
-exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage = 30) => {
-  const shippingPerItem = selectedParts.length > 0 ? shippingTotal / selectedParts.length : 0;
+exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage = 30, totalAllUnits = null) => {
+  const divisor = totalAllUnits || selectedParts.reduce((sum, p) => sum + (p.quantity || 1), 0);
+  const shippingPerItem = divisor > 0 ? shippingTotal / divisor : 0;
   const multiplier = 1 + markupPercentage / 100;
 
-  console.log(`[Receipt Parser] Amortizing $${shippingPerItem.toFixed(2)} shipping per item across ${selectedParts.length} selected parts (markup: ${markupPercentage}%)`);
+  console.log(`[Receipt Parser] Amortizing $${shippingPerItem.toFixed(2)} shipping per unit across ${divisor} total units (${selectedParts.length} selected lines, markup: ${markupPercentage}%)`);
 
   return selectedParts.map(part => {
     const baseCost = parseFloat(part.price) || 0;
@@ -180,6 +225,7 @@ exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage
 
     return {
       name: part.name || '',
+      brand: part.brand || '',
       itemNumber: part.itemNumber || '',
       vendor: part.vendor || '',
       supplier: part.supplier || '',
@@ -388,6 +434,100 @@ Return a JSON object with these fields.`;
   }
 
   throw new Error('Could not extract product details from this URL');
+};
+
+/**
+ * Find duplicate matches between parsed receipt items and existing inventory/parts items.
+ * Uses AI to recognize same physical products despite name variations.
+ *
+ * @param {Array} parsedItems - Items from receipt: [{ name, itemNumber }]
+ * @param {Array} existingItems - Existing records: [{ _id, name, partNumber }]
+ * @returns {Promise<Array>} Matches: [{ parsedIndex, existingId, reason }]
+ */
+exports.findDuplicates = async (parsedItems, existingItems) => {
+  if (!parsedItems.length || !existingItems.length) return [];
+
+  try {
+    const model = getModel();
+
+    const parsedList = parsedItems
+      .map((item, i) => {
+        const tags = [];
+        if (item.brand) tags.push(`Brand: ${item.brand}`);
+        if (item.itemNumber) tags.push(`SKU: ${item.itemNumber}`);
+        return `[${i}] "${item.name}"${tags.length ? ` (${tags.join(', ')})` : ''}`;
+      })
+      .join('\n');
+
+    const existingList = existingItems
+      .map(item => `["${item._id}"] "${item.name}"${item.partNumber ? ` (Brand/SKU: ${item.partNumber})` : ''}`)
+      .join('\n');
+
+    const prompt = `You are a duplicate detection assistant for an auto repair shop's parts and inventory system.
+
+Compare the RECEIPT ITEMS against EXISTING ITEMS to identify likely duplicates — the same physical product regardless of minor name differences.
+
+RECEIPT ITEMS:
+${parsedList}
+
+EXISTING ITEMS (Brand field is the manufacturer brand):
+${existingList}
+
+For each receipt item with a confident match, return an entry. Use the exact ID string shown in brackets for existingId.
+
+Output a JSON array:
+[{ "parsedIndex": <number>, "existingId": "<id string>", "reason": "<short explanation>" }]
+
+Matching rules (apply in order):
+
+RULE 1 — Part number is the strongest signal:
+- If BOTH the receipt item and the existing item have a part number / SKU and they DIFFER (e.g., "3311" vs "3334", "OX387D" vs "OX1213D"), it is NEVER a match — they are different physical parts even if the brand and product type are identical (different oil filters fit different vehicles, different brake pads fit different calipers, etc.).
+- If part numbers MATCH, it is a strong match signal.
+- Treat a Brand/SKU field on existing items as containing a part number when it has digits or mixed alphanumerics (e.g., "Bosch 3311", "OX387D"), and as just a brand when it's pure letters (e.g., "Mobil 1", "Castrol").
+
+RULE 2 — Brand must agree:
+- If brands clearly differ (e.g., "Mobil 1" vs "Super Tech", "Bosch" vs "MANN", "Castrol" vs "Pennzoil"), it is NEVER a match.
+- A receipt item whose name starts with a different brand than the existing item's Brand → NOT a match.
+
+RULE 3 — Same brand, no part numbers, same core product → match (consumables/fluids):
+- This applies when neither side has a distinguishing SKU (typical for oils, cleaners, fluids, hand soap, etc.).
+- "Full Synthetic Motor Oil 0W-20 5 Quart" (Mobil 1) matches "Advanced Fuel Economy Full Synthetic Motor Oil 0W-20" (Mobil 1) — same brand, type, viscosity, size.
+- Product line sub-names like "Advanced Fuel Economy", "Extended Performance", "High Mileage", "Pro Select" are marketing descriptors, not differentiators — IGNORE them when matching consumables.
+- Multi-pack of same product by same brand (e.g., "Fast Orange 2pk" vs "Fast Orange") → match.
+
+RULE 4 — Size/volume always matters:
+- "5 Quart" vs "1 Quart" of the same oil → NOT a match (different quantities tracked separately).
+- "12oz" vs "32oz" → NOT a match.
+
+RULE 5 — When in doubt, do NOT match. A false negative is better than a false positive.
+- Return [] if no confident matches found.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 1500 }
+    });
+
+    let matches;
+    try {
+      matches = JSON.parse(result.response.text());
+    } catch {
+      return [];
+    }
+
+    if (!Array.isArray(matches)) return [];
+
+    const validIds = new Set(existingItems.map(i => i._id.toString()));
+    return matches.filter(m =>
+      typeof m.parsedIndex === 'number' &&
+      m.parsedIndex >= 0 &&
+      m.parsedIndex < parsedItems.length &&
+      m.existingId &&
+      validIds.has(m.existingId.toString())
+    );
+  } catch (err) {
+    console.error('[findDuplicates] Error:', err);
+    return [];
+  }
 };
 
 /**

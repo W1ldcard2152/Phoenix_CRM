@@ -57,6 +57,10 @@ const SettingsSchema = new Schema(
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
     },
+    brandOverrides: {
+      type: [String],
+      default: ['ACDelco']
+    },
     showServiceAdvisorOnInvoice: {
       type: Boolean,
       default: false
@@ -105,6 +109,10 @@ SettingsSchema.statics.getSettings = async function () {
     }
     if (!settings.vendorHostnames || settings.vendorHostnames.length === 0) {
       settings.vendorHostnames = [...defaultVendorHostnames];
+      needsSave = true;
+    }
+    if (!settings.brandOverrides) {
+      settings.brandOverrides = ['ACDelco'];
       needsSave = true;
     }
     if (needsSave) await settings.save();

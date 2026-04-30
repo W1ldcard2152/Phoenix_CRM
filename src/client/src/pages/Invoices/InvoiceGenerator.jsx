@@ -406,6 +406,7 @@ const InvoiceGenerator = () => {
     servicePackages: (invoiceData.servicePackages || []).map(pkg => ({
       name: pkg.name,
       price: pkg.price,
+      committed: true,
       includedItems: pkg.includedItems || []
     })),
     customerFacingNotes,
@@ -617,9 +618,15 @@ const InvoiceGenerator = () => {
                           <td className="px-3 py-2">
                             <div className="font-medium text-gray-900">{pkg.name}</div>
                             {pkg.includedItems && pkg.includedItems.length > 0 && (
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                Includes: {pkg.includedItems.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                              </div>
+                              <ul className="mt-1 ml-4 list-disc text-xs text-gray-500">
+                                {pkg.includedItems.map((i, idx) => {
+                                  const qty = i.quantity || 0;
+                                  const unit = i.unit ? ` ${i.unit}` : '';
+                                  const brand = i.brand ? `${i.brand} ` : '';
+                                  const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+                                  return <li key={idx}>{`${qty}${unit} - ${brand}${i.name}${partNum}`}</li>;
+                                })}
+                              </ul>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">{formatCurrency(pkg.price || 0)}</td>

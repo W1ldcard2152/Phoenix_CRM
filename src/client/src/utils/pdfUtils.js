@@ -181,13 +181,16 @@ export const generateDocumentHtml = (type, data) => {
     serviceAdvisorName
   } = data;
 
+  // Filter service packages to only include committed ones for invoices/work orders
+  const committedServicePackages = servicePackages.filter(pkg => pkg.committed !== false);
+
   const partsTotal = parts.reduce((sum, p) => {
     const lineTotal = parseFloat(p.price || p.unitPrice || 0) * (parseInt(p.quantity) || 1);
     const core = (p.coreChargeInvoiceable && p.coreCharge) ? parseFloat(p.coreCharge) : 0;
     return sum + lineTotal + core;
   }, 0);
   const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.quantity || l.hours) || 0)), 0);
-  const servicesTotal = servicePackages.reduce((sum, pkg) => sum + (parseFloat(pkg.price) || 0), 0);
+  const servicesTotal = committedServicePackages.reduce((sum, pkg) => sum + (parseFloat(pkg.price) || 0), 0);
   const subtotal = partsTotal + laborTotal + servicesTotal;
   const taxAmount = subtotal * (taxRate / 100);
   const total = subtotal + taxAmount;
@@ -378,7 +381,7 @@ export const generateDocumentHtml = (type, data) => {
       </div>
       ` : ''}
 
-      ${servicePackages.length > 0 ? `
+      ${committedServicePackages.length > 0 ? `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
         <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Services:</p>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; font-size: 13px;">
@@ -389,17 +392,23 @@ export const generateDocumentHtml = (type, data) => {
             </tr>
           </thead>
           <tbody>
-            ${servicePackages.map(pkg => `
+            ${committedServicePackages.map(pkg => `
               <tr>
                 <td style="border: 1px solid #d1d5db; padding: 6px 8px;">
-                  ${pkg.name}
+                  <div style="font-weight: 600;">${pkg.name}</div>
                   ${(pkg.includedItems && pkg.includedItems.length > 0) ? `
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">
-                      Includes: ${pkg.includedItems.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                    </div>
+                    <ul style="margin: 4px 0 0 0; padding-left: 18px; font-size: 11px; color: #4b5563;">
+                      ${pkg.includedItems.map(i => {
+                        const qty = i.quantity || 0;
+                        const unit = i.unit ? ` ${i.unit}` : '';
+                        const brand = i.brand ? `${i.brand} ` : '';
+                        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+                        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
+                      }).join('')}
+                    </ul>
                   ` : ''}
                 </td>
-                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right;">${formatCurrency(pkg.price)}</td>
+                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; vertical-align: top;">${formatCurrency(pkg.price)}</td>
               </tr>
             `).join('')}
           </tbody>

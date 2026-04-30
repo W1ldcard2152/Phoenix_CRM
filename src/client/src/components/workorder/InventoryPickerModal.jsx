@@ -28,6 +28,7 @@ const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   // Settings for the form
   const [categories, setCategories] = useState([]);
   const [packageTags, setPackageTags] = useState([]);
+  const [markupPercentage, setMarkupPercentage] = useState(30);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'management';
 
@@ -64,6 +65,7 @@ const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
         const settings = res.data?.settings || {};
         setCategories(settings.inventoryCategories || []);
         setPackageTags(settings.packageTags || []);
+        if (settings.partMarkupPercentage != null) setMarkupPercentage(settings.partMarkupPercentage);
       }).catch(() => {});
     }
   }, [isOpen]);
@@ -159,6 +161,7 @@ const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                   onCategoriesChange={setCategories}
                   packageTags={packageTags}
                   isAdmin={isAdmin}
+                  markupPercentage={markupPercentage}
                 />
               </div>
 

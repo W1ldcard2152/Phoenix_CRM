@@ -1,6 +1,13 @@
+const multer = require('multer');
 const InventoryItem = require('../models/InventoryItem');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }
+}).single('receipt');
+exports.receiptUpload = receiptUpload;
 
 // Get all active inventory items (excludes adjustment log for performance)
 exports.getAllItems = catchAsync(async (req, res, next) => {
@@ -176,6 +183,139 @@ exports.getShoppingList = catchAsync(async (req, res, next) => {
     results: items.length,
     data: { items }
   });
+});
+
+// Parse a receipt image/text and find duplicate matches in existing inventory
+exports.extractInventoryReceipt = catchAsync(async (req, res, next) => {
+  const aiService = require('../services/aiService');
+
+  let receiptData, dataType, mimeType = 'image/png';
+
+  if (req.file) {
+    mimeType = req.file.mimetype;
+    if (req.file.mimetype === 'application/pdf') {
+      const { pdfToPng } = require('pdf-to-png-converter');
+      const pngPages = await pdfToPng(req.file.buffer, {
+        viewportScale: 2.0,
+        disableFontFace: false,
+        verbosityLevel: 0
+      });
+      receiptData = pngPages.map(p => p.content);
+      dataType = 'image';
+      mimeType = 'image/png';
+    } else {
+      receiptData = req.file.buffer;
+      dataType = 'image';
+    }
+  } else if (req.body.receiptText) {
+    receiptData = req.body.receiptText;
+    dataType = 'text';
+  } else {
+    return next(new AppError('Please provide either a receipt file or text', 400));
+  }
+
+  const { parts, shippingTotal } = await aiService.parseReceipt(receiptData, dataType, mimeType);
+
+  if (!parts || parts.length === 0) {
+    return next(new AppError('No items could be extracted from the receipt', 400));
+  }
+
+  const existingItems = await InventoryItem.find({ isActive: true })
+    .select('_id name partNumber brand quantityOnHand')
+    .lean();
+
+  let duplicates = [];
+  if (existingItems.length > 0) {
+    const rawMatches = await aiService.findDuplicates(parts, existingItems);
+    const byId = {};
+    existingItems.forEach(i => { byId[i._id.toString()] = i; });
+    duplicates = rawMatches.map(m => ({
+      parsedIndex: m.parsedIndex,
+      existingId: m.existingId,
+      existingName: byId[m.existingId]?.name || '',
+      existingPartNumber: byId[m.existingId]?.partNumber || '',
+      existingBrand: byId[m.existingId]?.brand || '',
+      existingQoh: byId[m.existingId]?.quantityOnHand ?? 0,
+      reason: m.reason
+    }));
+  }
+
+  res.status(200).json({ status: 'success', data: { parts, shippingTotal, duplicates } });
+});
+
+// Apply confirmed inventory receipt import actions
+exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
+  const Settings = require('../models/Settings');
+
+  const { confirmedItems, shippingTotal, totalAllUnits } = req.body;
+
+  if (!confirmedItems || !Array.isArray(confirmedItems) || confirmedItems.length === 0) {
+    return next(new AppError('confirmedItems array is required', 400));
+  }
+
+  const settings = await Settings.getSettings();
+  const markupPercentage = settings.partMarkupPercentage || 30;
+  const multiplier = 1 + markupPercentage / 100;
+
+  const nonSkipped = confirmedItems.filter(i => i.type !== 'skip');
+  const divisor = totalAllUnits || nonSkipped.reduce((sum, i) => sum + (i.parsedItem?.quantity || 1), 0);
+  const shippingPerItem = divisor > 0 ? (parseFloat(shippingTotal) || 0) / divisor : 0;
+
+  const newItemPrefills = [];
+
+  for (const item of confirmedItems) {
+    if (item.type === 'skip') continue;
+
+    const { parsedItem, type, existingId } = item;
+    const baseCost = parseFloat(parsedItem.price) || 0;
+    const cost = parseFloat((baseCost + shippingPerItem).toFixed(2));
+    const price = parseFloat((cost * multiplier).toFixed(2));
+
+    if (type === 'add_to_existing' && existingId) {
+      const existing = await InventoryItem.findById(existingId);
+      if (!existing) continue;
+
+      const previousQty = existing.quantityOnHand;
+      const unitsPerPurchase = existing.unitsPerPurchase || 1;
+      const newQty = previousQty + (parsedItem.quantity || 1) * unitsPerPurchase;
+      const update = { quantityOnHand: newQty, name: parsedItem.name, cost, price };
+      if (parsedItem.vendor) update.vendor = parsedItem.vendor;
+      if (parsedItem.itemNumber) update.partNumber = parsedItem.itemNumber;
+
+      await InventoryItem.findByIdAndUpdate(existingId, {
+        $set: update,
+        $push: {
+          adjustmentLog: {
+            adjustedBy: req.user._id,
+            previousQty,
+            newQty,
+            reason: 'Restocked (receipt import)'
+          }
+        }
+      });
+    } else if (type === 'create_new') {
+      const brandModel = [parsedItem.brand, parsedItem.itemNumber].filter(Boolean).join(' ');
+      newItemPrefills.push({
+        name: parsedItem.name,
+        partNumber: brandModel,
+        vendor: parsedItem.vendor || '',
+        cost,
+        price,
+        quantityOnHand: parsedItem.quantity || 1,
+        unit: 'each',
+        unitsPerPurchase: 1,
+        purchaseUnit: '',
+        packageTag: '',
+        category: '',
+        reorderPoint: 1,
+        warranty: '',
+        url: '',
+        notes: ''
+      });
+    }
+  }
+
+  res.status(200).json({ status: 'success', data: { newItemPrefills } });
 });
 
 // Soft delete an inventory item

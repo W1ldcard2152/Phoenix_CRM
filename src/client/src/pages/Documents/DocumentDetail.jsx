@@ -18,6 +18,9 @@ import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
 import ServicePackageModal from '../../components/workorder/ServicePackageModal';
+import ServicePackageCommitModal from '../../components/workorder/ServicePackageCommitModal';
+import ServicePackageRemovalModal from '../../components/workorder/ServicePackageRemovalModal';
+import UncommittedServicesWarningModal from '../../components/workorder/UncommittedServicesWarningModal';
 import ChecklistViewModal from '../../components/workorder/ChecklistViewModal';
 import FollowUpModal from '../../components/followups/FollowUpModal';
 import invoiceService from '../../services/invoiceService';
@@ -101,6 +104,13 @@ const DocumentDetail = () => {
   const [inventoryModalLoading, setInventoryModalLoading] = useState(false);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [serviceModalLoading, setServiceModalLoading] = useState(false);
+  const [serviceCommitModalOpen, setServiceCommitModalOpen] = useState(false);
+  const [serviceCommitModalData, setServiceCommitModalData] = useState(null);
+  const [serviceCommitLoading, setServiceCommitLoading] = useState(false);
+  const [uncommittedWarningModalOpen, setUncommittedWarningModalOpen] = useState(false);
+  const [uncommittedPackagesForWarning, setUncommittedPackagesForWarning] = useState([]);
+  const [serviceRemovalModalOpen, setServiceRemovalModalOpen] = useState(false);
+  const [serviceRemovalData, setServiceRemovalData] = useState(null);
 
   // Notes state (shared)
   const [notes, setNotes] = useState([]);
@@ -975,49 +985,89 @@ const DocumentDetail = () => {
     }
   };
 
-  const handleCommitServicePackage = async (packageIndex) => {
-    if (!window.confirm('Commit this service package? This will deduct items from inventory.')) return;
+  const handleCommitServicePackage = (packageIndex) => {
+    const pkg = workOrder.servicePackages?.[packageIndex];
+    if (!pkg) {
+      alert('Package not found!');
+      return;
+    }
+
+    // Open the commit modal with validation
+    setServiceCommitModalData({ packageIndex, package: pkg });
+    setServiceCommitModalOpen(true);
+    console.log('Modal should be open now. State:', { serviceCommitModalOpen: true, pkg });
+  };
+
+  const handleConfirmCommitServicePackage = async () => {
+    if (!serviceCommitModalData) return;
+
     try {
-      const response = await DocumentService.commitServicePackage(id, { packageIndex });
+      setServiceCommitLoading(true);
+      const response = await DocumentService.commitServicePackage(id, { packageIndex: serviceCommitModalData.packageIndex });
       setWorkOrder(response.data.workOrder);
+      setServiceCommitModalOpen(false);
+      setServiceCommitModalData(null);
+
+      // Show low stock warnings if any
       if (response.lowStockWarnings?.length > 0) {
         const warnings = response.lowStockWarnings.map(w =>
           `"${w.itemName}": ${w.currentQoh} ${w.unit} remaining`
         ).join('\n');
-        alert(`Low stock warnings:\n${warnings}`);
+        alert(`Service package committed successfully!\n\nLow stock warnings:\n${warnings}`);
+      } else {
+        alert('Service package committed successfully!');
+      }
+
+      // If we came from the uncommitted warning modal, check if there are still more uncommitted packages
+      if (uncommittedPackagesForWarning.length > 0) {
+        // Update the work order state and re-check for uncommitted packages
+        setTimeout(() => {
+          const remainingUncommitted = (response.data.workOrder.servicePackages || [])
+            .filter(pkg => !pkg.committed)
+            .map((pkg, idx) => ({
+              ...pkg,
+              packageIndex: response.data.workOrder.servicePackages.findIndex(p => p === pkg)
+            }));
+
+          if (remainingUncommitted.length > 0) {
+            // Still have uncommitted packages, show the warning modal again
+            setUncommittedPackagesForWarning(remainingUncommitted);
+            setUncommittedWarningModalOpen(true);
+          } else {
+            // All committed, proceed to invoice generation
+            navigate(`/invoices/generate?workOrder=${id}`);
+          }
+        }, 500);
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to commit service package';
-      setError(msg);
+      alert(`Error: ${msg}`);
+    } finally {
+      setServiceCommitLoading(false);
     }
   };
 
-  const handleRemoveServicePackage = async (packageIndex) => {
+  const handleRemoveServicePackage = (packageIndex) => {
     const pkg = workOrder.servicePackages?.[packageIndex];
     if (!pkg) return;
 
-    if (pkg.committed) {
-      // Committed package — ask about returning to inventory
-      const returnToInventory = window.confirm(
-        'This service was already pulled from inventory.\n\nClick OK to return items to stock, or Cancel to remove without restocking.'
-      );
-      try {
-        const response = await DocumentService.removeServicePackage(id, { packageIndex, returnToInventory });
-        setWorkOrder(response.data.workOrder);
-      } catch (err) {
-        const msg = err.response?.data?.message || 'Failed to remove service package';
-        setError(msg);
-      }
-    } else {
-      // Uncommitted — just remove, no inventory impact
-      if (!window.confirm('Remove this service package?')) return;
-      try {
-        const response = await DocumentService.removeServicePackage(id, { packageIndex });
-        setWorkOrder(response.data.workOrder);
-      } catch (err) {
-        const msg = err.response?.data?.message || 'Failed to remove service package';
-        setError(msg);
-      }
+    setServiceRemovalData({ packageIndex, package: pkg });
+    setServiceRemovalModalOpen(true);
+  };
+
+  const handleConfirmRemoveServicePackage = async (returnToInventory) => {
+    if (!serviceRemovalData) return;
+    const { packageIndex, package: pkg } = serviceRemovalData;
+
+    try {
+      const payload = pkg.committed ? { packageIndex, returnToInventory } : { packageIndex };
+      const response = await DocumentService.removeServicePackage(id, payload);
+      setWorkOrder(response.data.workOrder);
+      setServiceRemovalModalOpen(false);
+      setServiceRemovalData(null);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to remove service package';
+      alert(`Error: ${msg}`);
     }
   };
 
@@ -1196,7 +1246,38 @@ const DocumentDetail = () => {
       navigate(`/invoices/${linkedInvoice._id}`);
       return;
     }
+
+    // Check for uncommitted service packages
+    const uncommittedPackages = (workOrder.servicePackages || []).filter(pkg => !pkg.committed)
+      .map((pkg, idx) => ({
+        ...pkg,
+        packageIndex: workOrder.servicePackages.findIndex(p => p === pkg)
+      }));
+
+    if (uncommittedPackages.length > 0) {
+      // Show modal instead of alert
+      setUncommittedPackagesForWarning(uncommittedPackages);
+      setUncommittedWarningModalOpen(true);
+      return;
+    }
+
     navigate(`/invoices/generate?workOrder=${id}`);
+  };
+
+  const handleProceedWithInvoiceAnyway = () => {
+    setUncommittedWarningModalOpen(false);
+    setUncommittedPackagesForWarning([]);
+    navigate(`/invoices/generate?workOrder=${id}`);
+  };
+
+  const handleCommitFromWarningModal = (packageIndex) => {
+    // Close the warning modal and open the commit modal for this package
+    setUncommittedWarningModalOpen(false);
+    const pkg = workOrder.servicePackages?.[packageIndex];
+    if (pkg) {
+      setServiceCommitModalData({ packageIndex, package: pkg });
+      setServiceCommitModalOpen(true);
+    }
   };
 
   const handleSplitWorkOrder = async (splitData) => {
@@ -2830,6 +2911,35 @@ const DocumentDetail = () => {
         onClose={() => setServiceModalOpen(false)}
         onConfirm={handleAddServicePackage}
         isLoading={serviceModalLoading}
+      />
+      <ServicePackageCommitModal
+        isOpen={serviceCommitModalOpen}
+        onClose={() => {
+          setServiceCommitModalOpen(false);
+          setServiceCommitModalData(null);
+        }}
+        onConfirm={handleConfirmCommitServicePackage}
+        servicePackage={serviceCommitModalData?.package}
+        isLoading={serviceCommitLoading}
+      />
+      <UncommittedServicesWarningModal
+        isOpen={uncommittedWarningModalOpen}
+        onClose={() => {
+          setUncommittedWarningModalOpen(false);
+          setUncommittedPackagesForWarning([]);
+        }}
+        uncommittedPackages={uncommittedPackagesForWarning}
+        onProceedAnyway={handleProceedWithInvoiceAnyway}
+        onCommitPackage={handleCommitFromWarningModal}
+      />
+      <ServicePackageRemovalModal
+        isOpen={serviceRemovalModalOpen}
+        onClose={() => {
+          setServiceRemovalModalOpen(false);
+          setServiceRemovalData(null);
+        }}
+        onConfirm={handleConfirmRemoveServicePackage}
+        servicePackage={serviceRemovalData?.package}
       />
 
       {/* WO-specific modals */}

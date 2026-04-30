@@ -69,6 +69,29 @@ const InventoryService = {
       console.error('Error fetching shopping list:', error);
       throw error;
     }
+  },
+
+  extractReceipt: async (formData) => {
+    try {
+      const response = await API.post('/inventory/extract-receipt', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error extracting inventory receipt:', error);
+      throw error;
+    }
+  },
+
+  confirmReceipt: async (data) => {
+    try {
+      const response = await API.post('/inventory/confirm-receipt', data, { timeout: 30000 });
+      return response.data;
+    } catch (error) {
+      console.error('Error confirming inventory receipt:', error);
+      throw error;
+    }
   }
 };
 
