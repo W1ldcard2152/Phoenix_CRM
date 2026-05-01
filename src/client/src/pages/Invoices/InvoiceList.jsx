@@ -108,6 +108,7 @@ const InvoiceList = () => {
       parts,
       labor,
       servicePackages,
+      discount: invoice.discount || null,
       customerFacingNotes,
       taxRate: invoice.taxRate || 0,
       terms: invoice.terms,

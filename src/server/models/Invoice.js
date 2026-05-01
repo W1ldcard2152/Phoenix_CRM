@@ -35,6 +35,13 @@ const ServicePackageIncludedItemSchema = new Schema({
   unit: { type: String, trim: true }
 });
 
+const InvoiceDiscountSchema = new Schema({
+  type: { type: String, enum: ['percent', 'fixed'], required: true },
+  value: { type: Number, required: true, min: 0 },
+  description: { type: String, trim: true },
+  amount: { type: Number, required: true, min: 0 } // resolved dollar amount, locked at issue
+}, { _id: false });
+
 const InvoiceItemSchema = new Schema({
   type: {
     type: String,
@@ -123,6 +130,7 @@ const InvoiceSchema = new Schema(
       required: true,
       min: 0
     },
+    discount: { type: InvoiceDiscountSchema, default: null },
     taxRate: {
       type: Number,
       default: 0
@@ -225,20 +233,26 @@ InvoiceSchema.methods.calculateTotals = function() {
   this.items.forEach(item => {
     item.total = item.quantity * item.unitPrice;
   });
-  
+
   // Calculate subtotal
   this.subtotal = this.items.reduce((total, item) => total + item.total, 0);
-  
-  // Calculate tax amount based on taxable items
+
+  // Apply discount (clamped to subtotal)
+  const discountAmount = (this.discount && this.discount.amount)
+    ? Math.min(this.discount.amount, this.subtotal)
+    : 0;
+
+  // Calculate tax amount based on taxable items, reduced by discount
   const taxableTotal = this.items
     .filter(item => item.taxable)
     .reduce((total, item) => total + item.total, 0);
-  
-  this.taxAmount = taxableTotal * (this.taxRate / 100);
-  
+  const taxableAfterDiscount = Math.max(0, taxableTotal - discountAmount);
+
+  this.taxAmount = taxableAfterDiscount * (this.taxRate / 100);
+
   // Calculate final total
-  this.total = this.subtotal + this.taxAmount;
-  
+  this.total = Math.max(0, this.subtotal - discountAmount + this.taxAmount);
+
   return this;
 };
 

@@ -64,7 +64,7 @@ const QuoteDetail = () => {
   const [editingLabor, setEditingLabor] = useState(null);
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [newPart, setNewPart] = useState({
-    name: '', partNumber: '', itemNumber: '', quantity: 1,
+    name: '', partNumber: '', quantity: 1,
     price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: ''
   });
   const [newLabor, setNewLabor] = useState({
@@ -136,7 +136,7 @@ const QuoteDetail = () => {
       const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setQuote(response.data.workOrder);
       setPartModalOpen(false);
-      setNewPart({ name: '', partNumber: '', itemNumber: '', quantity: 1, price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '' });
+      setNewPart({ name: '', partNumber: '', quantity: 1, price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '' });
       setIsOtherVendor(false);
       setError(null);
     } catch (err) {

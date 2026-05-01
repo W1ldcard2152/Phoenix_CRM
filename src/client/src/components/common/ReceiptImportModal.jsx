@@ -5,7 +5,7 @@ import { formatCurrency } from '../../utils/formatters';
 
 const STEPS = { UPLOAD: 'upload', TYPE: 'type', REVIEW: 'review', DUPLICATES: 'duplicates' };
 
-const SOURCE_LABELS = { wo: 'In this WO', catalog: 'Parts Catalog', inv: 'Shop Inventory' };
+const SOURCE_LABELS = { wo: 'In this WO', inv: 'Shop Inventory' };
 
 const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30 }) => {
   const [step, setStep] = useState(STEPS.UPLOAD);
@@ -104,7 +104,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     return duplicates.filter(dup => {
       if (!selected.includes(dup.parsedIndex)) return false;
       if (dup.source === 'wo') return true;
-      if (dup.source === 'catalog') return catalogActions[dup.parsedIndex] === 'catalog';
       if (dup.source === 'inv') return catalogActions[dup.parsedIndex] === 'inventory';
       return false;
     });
@@ -163,9 +162,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           if (dup.source === 'wo') {
             duplicateResolutionsPayload[selectedIdx].woAction = decision === 'same' ? 'overwrite' : 'add_new';
             if (decision === 'same') duplicateResolutionsPayload[selectedIdx].woMatchId = dup.rawId;
-          } else if (dup.source === 'catalog') {
-            duplicateResolutionsPayload[selectedIdx].catalogAction = decision === 'same' ? 'update_price' : 'add_new';
-            if (decision === 'same') duplicateResolutionsPayload[selectedIdx].catalogMatchId = dup.rawId;
           } else if (dup.source === 'inv') {
             duplicateResolutionsPayload[selectedIdx].inventoryAction = decision === 'same' ? 'add_to_existing' : 'add_new';
             if (decision === 'same') duplicateResolutionsPayload[selectedIdx].inventoryMatchId = dup.rawId;
@@ -249,7 +245,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                   const decision = dupResolutions[key] ?? 'same';
                   const part = extractedParts[dup.parsedIndex];
 
-                  const sameLabel = dup.source === 'wo' ? 'Overwrite' : dup.source === 'catalog' ? 'Update Price' : 'Add to Stock';
+                  const sameLabel = dup.source === 'wo' ? 'Overwrite' : 'Add to Stock';
                   const diffLabel = 'Add as New';
 
                   return (
@@ -258,7 +254,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                       <td className="px-3 py-2.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                           dup.source === 'wo' ? 'bg-orange-100 text-orange-700' :
-                          dup.source === 'catalog' ? 'bg-purple-100 text-purple-700' :
                           'bg-teal-100 text-teal-700'
                         }`}>
                           {SOURCE_LABELS[dup.source] || dup.source}
@@ -362,7 +357,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
               className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
             >
               <option value="">WO Only</option>
-              <option value="catalog">+ Parts Catalog</option>
               <option value="inventory">+ Shop Inventory</option>
             </select>
           </div>
@@ -381,7 +375,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                     />
                   </th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand / Model</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
@@ -407,7 +401,9 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                         />
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-900">{part.name}</td>
-                      <td className="px-3 py-2 text-gray-500">{part.itemNumber || '—'}</td>
+                      <td className="px-3 py-2 text-gray-500">
+                        {[part.brand, part.itemNumber].filter(Boolean).join(' · ') || '—'}
+                      </td>
                       <td className="px-3 py-2 text-gray-500">{part.vendor}{part.supplier ? ` / ${part.supplier}` : ''}</td>
                       <td className="px-3 py-2 text-right text-gray-900">{part.quantity}</td>
                       <td className="px-3 py-2 text-right">
@@ -442,7 +438,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                             className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
                           >
                             <option value="">WO Only</option>
-                            <option value="catalog">+ Parts Catalog</option>
                             <option value="inventory">+ Shop Inventory</option>
                           </select>
                         )}
@@ -599,7 +594,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
 
           <div className="bg-blue-50 p-3 rounded-md">
             <p className="text-sm text-blue-800">
-              <strong>AI will extract:</strong> Part names, quantities, prices, vendors, order numbers, and item SKUs.
+              <strong>AI will extract:</strong> Part names, brands, model/part numbers, quantities, prices, vendors, and order numbers.
               You'll review and select which parts to add.
             </p>
           </div>

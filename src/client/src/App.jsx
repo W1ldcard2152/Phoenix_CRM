@@ -42,9 +42,6 @@ import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import ne
 import IntakePage from './pages/Intake/IntakePage';
 import FollowUpList from './pages/FollowUps/FollowUpList';
 
-// Parts Pages
-import PartsList from './pages/Parts/PartsList';
-
 // Schedule Block Pages
 import ScheduleBlockList from './pages/ScheduleBlocks/ScheduleBlockList';
 import ScheduleBlockForm from './pages/ScheduleBlocks/ScheduleBlockForm';
@@ -161,9 +158,6 @@ const App = () => {
 
                       {/* Feedback Admin Route (admin only) */}
                       <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
-
-                      {/* Parts Routes */}
-                      <Route path="/parts" element={<PartsList />} />
 
                       {/* Inventory Route */}
                       <Route path="/inventory" element={<InventoryList />} />

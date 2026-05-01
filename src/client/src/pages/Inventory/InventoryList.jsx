@@ -733,7 +733,12 @@ const InventoryList = () => {
                       <td className="px-4 py-4 text-right text-sm text-gray-900">
                         {item.price > 0 ? formatCurrency(item.price) : '-'}
                         {item.cost > 0 && item.price > 0 && (
-                          <div className="text-xs text-gray-400">{formatCurrency(item.cost)} cost</div>
+                          <div className="text-xs text-gray-400">
+                            {formatCurrency(item.cost)} cost
+                            {item.unitsPerPurchase > 1 && (
+                              <span> / {item.purchaseUnit || 'pack'}</span>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-4 text-center">

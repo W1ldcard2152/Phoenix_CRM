@@ -89,13 +89,35 @@ const WorkOrderService = {
     }
   },
 
-  // Add part from inventory to work order (deducts inventory QOH)
+  // Add part from inventory as a draft (no inventory deduction yet)
   addPartFromInventory: async (id, data) => {
     try {
       const response = await API.post(`/workorders/${id}/parts/from-inventory`, data);
       return response.data;
     } catch (error) {
       console.error(`Error adding inventory part to work order ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Commit a draft part (deduct inventory)
+  commitPart: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/commit-part`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error committing part on work order ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Remove a part (optionally restock if it was committed)
+  removePart: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/remove-part`, data);
+      return response.data;
+    } catch (error) {
+      console.error(`Error removing part from work order ${id}:`, error);
       throw error;
     }
   },

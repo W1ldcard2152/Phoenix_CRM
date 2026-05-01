@@ -58,7 +58,6 @@ jest.mock('../../models/Vehicle', () => createMockModel('Vehicle'));
 jest.mock('../../models/WorkOrder', () => createMockModel('WorkOrder'));
 jest.mock('../../models/Appointment', () => createMockModel('Appointment'));
 jest.mock('../../models/Invoice', () => createMockModel('Invoice'));
-jest.mock('../../models/Part', () => createMockModel('Part'));
 jest.mock('../../models/Media', () => createMockModel('Media'));
 jest.mock('../../models/Feedback', () => createMockModel('Feedback'));
 jest.mock('../../models/Technician', () => createMockModel('Technician'));
@@ -283,28 +282,6 @@ describe('Route access control', () => {
 
     it('allows service-writer to GET /api/invoices', () =>
       expectNotForbidden('get', '/api/invoices', 'serviceWriter'));
-  });
-
-  // ==================================================================
-  //  Parts — reads open, writes admin+management
-  // ==================================================================
-  describe('Part routes (/api/parts)', () => {
-    const partId = mockObjectId().toString();
-
-    it('allows technician to GET /api/parts (list)', () =>
-      expectNotForbidden('get', '/api/parts', 'technician'));
-
-    it('rejects technician from POST /api/parts', () =>
-      expectForbidden('post', '/api/parts', 'technician'));
-
-    it('rejects service-writer from POST /api/parts', () =>
-      expectForbidden('post', '/api/parts', 'serviceWriter'));
-
-    it('allows admin to POST /api/parts', () =>
-      expectNotForbidden('post', '/api/parts', 'admin'));
-
-    it('allows management to POST /api/parts', () =>
-      expectNotForbidden('post', '/api/parts', 'management'));
   });
 
   // ==================================================================

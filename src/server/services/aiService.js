@@ -222,11 +222,11 @@ exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage
   return selectedParts.map(part => {
     const baseCost = parseFloat(part.price) || 0;
     const costWithShipping = baseCost + shippingPerItem;
+    const partNumber = [part.brand, part.itemNumber].filter(Boolean).join(' ');
 
     return {
       name: part.name || '',
-      brand: part.brand || '',
-      itemNumber: part.itemNumber || '',
+      partNumber,
       vendor: part.vendor || '',
       supplier: part.supplier || '',
       purchaseOrderNumber: part.orderNumber || '',

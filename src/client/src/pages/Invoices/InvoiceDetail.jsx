@@ -119,6 +119,7 @@ const InvoiceDetail = () => {
       parts,
       labor,
       servicePackages,
+      discount: invoice?.discount || null,
       customerFacingNotes,
       customerNotes: invoice?.notes,
       taxRate: invoice?.taxRate || 0,

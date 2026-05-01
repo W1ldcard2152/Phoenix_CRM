@@ -5,7 +5,7 @@ const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
-const { calculatePartsCost, calculateLaborCost, calculateServicePackagesCost } = require('../utils/calculationHelpers');
+const { calculatePartsCost, calculateLaborCost, calculateServicePackagesCost, calculateWorkOrderTotal } = require('../utils/calculationHelpers');
 const emailService = require('../services/emailService');
 
 // Get all invoices
@@ -85,6 +85,7 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     parts,
     labor,
     servicePackages,
+    discount,
     subtotal,
     taxRate,
     taxAmount,
@@ -133,8 +134,8 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
       }
     }
 
-    // Calculate totalActual from the work order's parts and labor
-    workOrderToUpdate.totalActual = calculatePartsCost(workOrderToUpdate.parts) + calculateLaborCost(workOrderToUpdate.labor) + calculateServicePackagesCost(workOrderToUpdate.servicePackages);
+    // Calculate totalActual from the work order's parts, labor, services, and discount
+    workOrderToUpdate.totalActual = calculateWorkOrderTotal(workOrderToUpdate.parts, workOrderToUpdate.labor, workOrderToUpdate.servicePackages, workOrderToUpdate.discount);
     workOrderToUpdate.status = 'Repair Complete - Invoiced';
     // Note: work order will be saved after invoice is created to include invoice reference
   }
@@ -212,6 +213,12 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     dueDate,
     items,
     subtotal,
+    discount: discount && discount.type && discount.value != null ? {
+      type: discount.type,
+      value: discount.value,
+      description: discount.description || '',
+      amount: Math.max(0, discount.amount || 0)
+    } : null,
     taxRate: taxRate || 0,
     taxAmount: taxAmount || 0,
     total,

@@ -269,7 +269,6 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
     const { parsedItem, type, existingId } = item;
     const baseCost = parseFloat(parsedItem.price) || 0;
     const cost = parseFloat((baseCost + shippingPerItem).toFixed(2));
-    const price = parseFloat((cost * multiplier).toFixed(2));
 
     if (type === 'add_to_existing' && existingId) {
       const existing = await InventoryItem.findById(existingId);
@@ -278,6 +277,8 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
       const previousQty = existing.quantityOnHand;
       const unitsPerPurchase = existing.unitsPerPurchase || 1;
       const newQty = previousQty + (parsedItem.quantity || 1) * unitsPerPurchase;
+      // cost is per purchase unit (per jug); retail price is per sale unit (per quart).
+      const price = parseFloat(((cost / unitsPerPurchase) * multiplier).toFixed(2));
       const update = { quantityOnHand: newQty, name: parsedItem.name, cost, price };
       if (parsedItem.vendor) update.vendor = parsedItem.vendor;
       if (parsedItem.itemNumber) update.partNumber = parsedItem.itemNumber;
@@ -295,6 +296,9 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
       });
     } else if (type === 'create_new') {
       const brandModel = [parsedItem.brand, parsedItem.itemNumber].filter(Boolean).join(' ');
+      // New items default to unitsPerPurchase=1, so price equals cost * markup at this stage.
+      // If the user bumps unitsPerPurchase in the form, the auto-calc will divide accordingly.
+      const price = parseFloat((cost * multiplier).toFixed(2));
       newItemPrefills.push({
         name: parsedItem.name,
         partNumber: brandModel,

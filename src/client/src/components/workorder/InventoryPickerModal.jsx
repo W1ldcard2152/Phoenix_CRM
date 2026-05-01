@@ -233,7 +233,7 @@ const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                               <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                                 {(item.partNumber || item.brand) && <span>{item.partNumber || item.brand}</span>}
                                 {item.vendor && <span>· {item.vendor}</span>}
-                                {item.cost > 0 && <span>· {formatCurrency(item.cost)}/{item.unit}</span>}
+                                {item.cost > 0 && <span>· {formatCurrency(item.cost / (item.unitsPerPurchase || 1))}/{item.unit}</span>}
                               </div>
                             </div>
                             <span className={`ml-3 px-2 py-1 rounded-full text-xs font-bold ${getStockColor(item)}`}>
@@ -300,21 +300,24 @@ const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                     )}
                   </div>
 
-                  {selectedItem.cost > 0 && (
-                    <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                      <div className="flex justify-between text-gray-600">
-                        <span>Cost per {selectedItem.unit}:</span>
-                        <span>{formatCurrency(selectedItem.cost)}</span>
+                  {selectedItem.cost > 0 && (() => {
+                    const unitCost = selectedItem.cost / (selectedItem.unitsPerPurchase || 1);
+                    return (
+                      <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                        <div className="flex justify-between text-gray-600">
+                          <span>Cost per {selectedItem.unit}:</span>
+                          <span>{formatCurrency(unitCost)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600 mt-1">
+                          <span>Subtotal cost:</span>
+                          <span>{formatCurrency(unitCost * quantity)}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          Customer price calculated with markup
+                        </div>
                       </div>
-                      <div className="flex justify-between text-gray-600 mt-1">
-                        <span>Subtotal cost:</span>
-                        <span>{formatCurrency(selectedItem.cost * quantity)}</span>
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Customer price calculated with markup
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {(selectedItem.quantityOnHand - quantity) <= selectedItem.reorderPoint && quantity <= selectedItem.quantityOnHand && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">

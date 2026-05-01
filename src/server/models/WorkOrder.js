@@ -12,10 +12,6 @@ const PartSchema = new Schema({
     type: String,
     trim: true
   },
-  itemNumber: { // Vendor SKU/Item number
-    type: String,
-    trim: true
-  },
   quantity: {
     type: Number,
     required: true,
@@ -94,6 +90,12 @@ const PartSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'InventoryItem'
   },
+  // Inventory-pulled parts start uncommitted (draft) — set true once stock is deducted.
+  // Defaults true so manual parts and pre-existing data behave as already-committed.
+  committed: {
+    type: Boolean,
+    default: true
+  },
   serviceIncluded: { // Part included in a service package ($0 price)
     type: Boolean,
     default: false
@@ -149,6 +151,18 @@ const ServicePackageLineSchema = new Schema({
   committed: { type: Boolean, default: false },
   includedItems: [ServicePackageItemSchema]
 });
+
+const DiscountAppliedToSchema = new Schema({
+  lineType: { type: String, enum: ['part', 'labor', 'service'], required: true },
+  lineId: { type: Schema.Types.ObjectId, required: true }
+}, { _id: false });
+
+const DiscountSchema = new Schema({
+  type: { type: String, enum: ['percent', 'fixed'], required: true },
+  value: { type: Number, required: true, min: 0 },
+  description: { type: String, trim: true },
+  appliedTo: [DiscountAppliedToSchema]
+}, { _id: false });
 
 const MediaSchema = new Schema({
   type: {
@@ -387,6 +401,7 @@ const WorkOrderSchema = new Schema(
     parts: [PartSchema],
     labor: [LaborSchema],
     servicePackages: [ServicePackageLineSchema],
+    discount: { type: DiscountSchema, default: null },
     media: [MediaSchema],
     partsSortConfig: [{
       column: { type: String },
@@ -478,6 +493,18 @@ WorkOrderSchema.pre('validate', function(next) {
       }
     });
   }
+
+  // Prune orphaned discount.appliedTo refs whose lineId no longer exists
+  if (this.discount && Array.isArray(this.discount.appliedTo)) {
+    const validIds = new Set();
+    (this.parts || []).forEach(p => p._id && validIds.add(`part:${p._id.toString()}`));
+    (this.labor || []).forEach(l => l._id && validIds.add(`labor:${l._id.toString()}`));
+    (this.servicePackages || []).forEach(s => s._id && validIds.add(`service:${s._id.toString()}`));
+    this.discount.appliedTo = this.discount.appliedTo.filter(
+      a => a.lineId && validIds.has(`${a.lineType}:${a.lineId.toString()}`)
+    );
+  }
+
   next();
 });
 

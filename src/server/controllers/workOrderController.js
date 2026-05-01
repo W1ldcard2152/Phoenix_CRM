@@ -277,14 +277,31 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     }
   }
   
-  // Recalculate total estimate/actual if parts or labor changed
-  if (workOrderData.parts || workOrderData.labor) {
+  // Recalculate total estimate/actual if parts, labor, services, or discount changed
+  if (workOrderData.parts || workOrderData.labor || workOrderData.servicePackages || workOrderData.discount !== undefined) {
     const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
 
     const parts = workOrderData.parts || workOrder.parts;
     const labor = workOrderData.labor || workOrder.labor;
     const servicePackages = workOrderData.servicePackages || workOrder.servicePackages;
-    workOrderData.totalEstimate = calculateWorkOrderTotal(parts, labor, servicePackages);
+    let discount = workOrderData.discount !== undefined ? workOrderData.discount : workOrder.discount;
+
+    // Prune orphaned discount.appliedTo refs if lines changed
+    if (discount && Array.isArray(discount.appliedTo) && discount.appliedTo.length > 0) {
+      const validIds = new Set();
+      (parts || []).forEach(p => p._id && validIds.add(`part:${p._id.toString()}`));
+      (labor || []).forEach(l => l._id && validIds.add(`labor:${l._id.toString()}`));
+      (servicePackages || []).forEach(s => s._id && validIds.add(`service:${s._id.toString()}`));
+      const cleaned = discount.appliedTo.filter(
+        a => a.lineId && validIds.has(`${a.lineType}:${a.lineId.toString()}`)
+      );
+      if (cleaned.length !== discount.appliedTo.length) {
+        discount = { ...discount, appliedTo: cleaned };
+        workOrderData.discount = discount;
+      }
+    }
+
+    workOrderData.totalEstimate = calculateWorkOrderTotal(parts, labor, servicePackages, discount);
   }
   
   
@@ -576,7 +593,7 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
 
   // If the status is "Invoiced", set the totalActual
   if (status === 'Repair Complete - Invoiced') {
-    workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+    workOrder.totalActual = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages, workOrder.discount);
   }
 
   await workOrder.save({ validateBeforeSave: false });
@@ -648,7 +665,7 @@ exports.addPart = catchAsync(async (req, res, next) => {
   });
 });
 
-// Add part from inventory to work order (deducts inventory QOH)
+// Add part from inventory as a draft (no inventory deduction yet — commit later).
 exports.addPartFromInventory = catchAsync(async (req, res, next) => {
   const { inventoryItemId, quantity } = req.body;
   if (!inventoryItemId || !quantity || quantity < 1) {
@@ -661,19 +678,82 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
     return next(new AppError('Inventory item not found or inactive', 404));
   }
 
-  if (item.quantityOnHand < quantity) {
-    return next(new AppError(`Insufficient stock: ${item.quantityOnHand} ${item.unit} available, ${quantity} requested`, 400));
-  }
-
+  // Cost is stored per purchase unit (e.g., per 5qt jug); divide to get per-sale-unit cost.
+  const unitsPerPurchase = item.unitsPerPurchase || 1;
+  const unitCost = parseFloat((item.cost / unitsPerPurchase).toFixed(4));
   const settings = await Settings.getSettings();
   const markup = settings.partMarkupPercentage || 30;
-  const price = parseFloat((item.cost * (1 + markup / 100)).toFixed(2));
+  // Prefer the inventory item's stored retail price (already per sale unit and respects manual overrides);
+  // fall back to recomputing from cost if missing.
+  const price = item.price > 0
+    ? item.price
+    : parseFloat((unitCost * (1 + markup / 100)).toFixed(2));
 
-  // Deduct inventory atomically
-  const previousQty = item.quantityOnHand;
-  const newQty = previousQty - quantity;
+  // Add as uncommitted draft — inventory is deducted only on commit.
+  workOrder.parts.push({
+    name: item.name,
+    partNumber: item.partNumber || '',
+    quantity,
+    price,
+    cost: unitCost,
+    vendor: item.vendor || '',
+    warranty: item.warranty || '',
+    url: item.url || '',
+    category: item.category || '',
+    inventoryItemId: item._id,
+    committed: false,
+    ordered: true,
+    received: true
+  });
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  });
+});
+
+// Commit an inventory-pulled part — atomically deduct stock and mark committed.
+exports.commitPart = catchAsync(async (req, res, next) => {
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const { partIndex } = req.body;
+
+  if (partIndex === undefined || partIndex < 0 || partIndex >= (workOrder.parts || []).length) {
+    return next(new AppError('Invalid part index', 400));
+  }
+
+  const part = workOrder.parts[partIndex];
+  if (!part.inventoryItemId) {
+    return next(new AppError('This part is not linked to an inventory item', 400));
+  }
+  // committed !== false rejects pre-migration parts whose stock was deducted at add-time;
+  // re-committing them would double-deduct.
+  if (part.committed !== false) {
+    return next(new AppError('This part is already committed', 400));
+  }
+
+  const inv = await InventoryItem.findById(part.inventoryItemId);
+  if (!inv || !inv.isActive) {
+    return next(new AppError(`Inventory item "${part.name}" is not found or inactive`, 400));
+  }
+  if (inv.quantityOnHand < part.quantity) {
+    return next(new AppError(`Insufficient stock for "${part.name}": ${inv.quantityOnHand} ${inv.unit} available, ${part.quantity} needed`, 400));
+  }
+
+  const previousQty = inv.quantityOnHand;
+  const newQty = previousQty - part.quantity;
   const updated = await InventoryItem.findOneAndUpdate(
-    { _id: inventoryItemId, quantityOnHand: { $gte: quantity } },
+    { _id: inv._id, quantityOnHand: { $gte: part.quantity } },
     {
       $set: { quantityOnHand: newQty },
       $push: {
@@ -688,25 +768,11 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
     { new: true }
   );
   if (!updated) {
-    return next(new AppError('Insufficient stock (concurrent update)', 409));
+    return next(new AppError(`Failed to deduct inventory for "${part.name}" (concurrent update)`, 409));
   }
 
-  // Add part line to work order
-  workOrder.parts.push({
-    name: item.name,
-    partNumber: item.partNumber || '',
-    quantity,
-    price,
-    cost: item.cost,
-    vendor: item.vendor || '',
-    warranty: item.warranty || '',
-    url: item.url || '',
-    category: item.category || '',
-    inventoryItemId: item._id,
-    ordered: true,
-    received: true
-  });
-  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  workOrder.parts[partIndex].committed = true;
+  workOrder.markModified('parts');
   await workOrder.save();
 
   const populatedWorkOrder = await applyPopulation(
@@ -733,6 +799,57 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
   }
 
   res.status(200).json(response);
+});
+
+// Remove a part. If committed and linked to inventory, optionally restock.
+exports.removePart = catchAsync(async (req, res, next) => {
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const { partIndex, returnToInventory } = req.body;
+
+  if (partIndex === undefined || partIndex < 0 || partIndex >= (workOrder.parts || []).length) {
+    return next(new AppError('Invalid part index', 400));
+  }
+
+  const removedPart = workOrder.parts[partIndex];
+
+  // Restock only if explicitly requested AND the part was committed AND linked to inventory.
+  // committed !== false covers pre-migration parts that lack the field (stock was deducted at add-time).
+  if (returnToInventory && removedPart.inventoryItemId && removedPart.committed !== false) {
+    const inv = await InventoryItem.findById(removedPart.inventoryItemId);
+    if (inv) {
+      const previousQty = inv.quantityOnHand;
+      const newQty = previousQty + removedPart.quantity;
+      await InventoryItem.findByIdAndUpdate(removedPart.inventoryItemId, {
+        $set: { quantityOnHand: newQty },
+        $push: {
+          adjustmentLog: {
+            adjustedBy: req.user._id,
+            previousQty,
+            newQty,
+            reason: `Returned from removed part on WO #${workOrder._id}`
+          }
+        }
+      });
+    }
+  }
+
+  workOrder.parts.splice(partIndex, 1);
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  });
 });
 
 // Add service package to work order (labor line + $0 included parts + inventory deductions)
@@ -769,13 +886,14 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
       if (inv.packageTag !== included.packageTag) {
         return next(new AppError(`Selected item "${inv.name}" does not match required tag "${included.packageTag}"`, 400));
       }
+      const invUnitCost = parseFloat((inv.cost / (inv.unitsPerPurchase || 1)).toFixed(4));
       packageIncludedItems.push({
         inventoryItemId: inv._id,
         name: inv.name,
         partNumber: inv.partNumber || '',
         brand: inv.brand || '',
         quantity: included.quantity,
-        cost: inv.cost,
+        cost: invUnitCost,
         unit: inv.unit || ''
       });
     } else {
@@ -1420,16 +1538,11 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
     return next(new AppError('No parts could be extracted from the receipt', 400));
   }
 
-  // Duplicate detection: check against WO parts, parts catalog, and inventory
-  const Part = require('../models/Part');
-  const [catalogParts, inventoryItems] = await Promise.all([
-    Part.find({ isActive: true }).select('_id name partNumber').lean(),
-    InventoryItem.find({ isActive: true }).select('_id name partNumber').lean()
-  ]);
+  // Duplicate detection: check against WO parts and inventory
+  const inventoryItems = await InventoryItem.find({ isActive: true }).select('_id name partNumber').lean();
 
   const allExisting = [
-    ...workOrder.parts.map(p => ({ _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || p.itemNumber || '' })),
-    ...catalogParts.map(p => ({ _id: `catalog:${p._id}`, name: p.name, partNumber: p.partNumber || '' })),
+    ...workOrder.parts.map(p => ({ _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || '' })),
     ...inventoryItems.map(p => ({ _id: `inv:${p._id}`, name: p.name, partNumber: p.partNumber || '' }))
   ];
 
@@ -1439,8 +1552,6 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
 
     const woById = {};
     workOrder.parts.forEach(p => { woById[p._id.toString()] = p; });
-    const catById = {};
-    catalogParts.forEach(p => { catById[p._id.toString()] = p; });
     const invById = {};
     inventoryItems.forEach(p => { invById[p._id.toString()] = p; });
 
@@ -1450,7 +1561,6 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
       const rawId = m.existingId.substring(colonIdx + 1);
       let existingName = '';
       if (source === 'wo') existingName = woById[rawId]?.name || '';
-      else if (source === 'catalog') existingName = catById[rawId]?.name || '';
       else if (source === 'inv') existingName = invById[rawId]?.name || '';
       return { parsedIndex: m.parsedIndex, source, rawId, existingName, reason: m.reason };
     });
@@ -1504,7 +1614,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
       const existingPart = workOrder.parts.id(resolution.woMatchId);
       if (existingPart) {
         existingPart.name = part.name;
-        if (part.itemNumber) existingPart.partNumber = part.itemNumber;
+        if (part.partNumber) existingPart.partNumber = part.partNumber;
         if (part.vendor) existingPart.vendor = part.vendor;
         if (part.supplier) existingPart.supplier = part.supplier;
         existingPart.quantity = part.quantity;
@@ -1535,10 +1645,8 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
 
   await workOrder.save();
 
-  // Add parts to catalog/inventory if requested (best-effort)
+  // Add parts to inventory if requested (best-effort)
   if (catalogActions && typeof catalogActions === 'object') {
-    const Part = require('../models/Part');
-
     for (const [indexStr, action] of Object.entries(catalogActions)) {
       const i = parseInt(indexStr);
       const part = partsWithReceipt[i];
@@ -1547,32 +1655,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
       const resolution = duplicateResolutions[i] || {};
 
       try {
-        if (action === 'catalog') {
-          if (resolution.catalogAction === 'update_price' && resolution.catalogMatchId) {
-            // Same part found in catalog — update price/cost only, no new entry
-            await Part.findByIdAndUpdate(resolution.catalogMatchId, {
-              cost: part.cost || 0,
-              price: part.price || 0
-            });
-          } else {
-            const partNumber = part.itemNumber || `IMPORT-${Date.now()}-${indexStr}`;
-            await Part.findOneAndUpdate(
-              { partNumber },
-              {
-                name: part.name,
-                partNumber,
-                vendor: part.vendor || 'Unknown',
-                brand: part.vendor || 'Unknown',
-                category: 'Other',
-                cost: part.cost || 0,
-                price: part.price || 0,
-                warranty: '',
-                url: ''
-              },
-              { upsert: true, new: true, setDefaultsOnInsert: true }
-            );
-          }
-        } else if (action === 'inventory') {
+        if (action === 'inventory') {
           if (resolution.inventoryAction === 'add_to_existing' && resolution.inventoryMatchId) {
             // Same item found in inventory — add to QOH and update cost/price
             const existing = await InventoryItem.findById(resolution.inventoryMatchId);
@@ -1581,7 +1664,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
               const newQty = previousQty + (part.quantity || 1);
               const update = { quantityOnHand: newQty, name: part.name, cost: part.cost || 0, price: part.price || 0 };
               if (part.vendor) update.vendor = part.vendor;
-              if (part.itemNumber) update.partNumber = part.itemNumber;
+              if (part.partNumber) update.partNumber = part.partNumber;
               await InventoryItem.findByIdAndUpdate(resolution.inventoryMatchId, {
                 $set: update,
                 $push: {
@@ -1596,10 +1679,10 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
             }
           } else {
             await InventoryItem.findOneAndUpdate(
-              { name: part.name, partNumber: part.itemNumber || '' },
+              { name: part.name, partNumber: part.partNumber || '' },
               {
                 name: part.name,
-                partNumber: part.itemNumber || '',
+                partNumber: part.partNumber || '',
                 vendor: part.vendor || '',
                 cost: part.cost || 0,
                 price: part.price || 0,

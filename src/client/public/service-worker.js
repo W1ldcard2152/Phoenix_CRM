@@ -24,7 +24,6 @@ const API_ENDPOINTS = [
   '/api/work-orders',
   '/api/appointments',
   '/api/technicians',
-  '/api/parts',
   '/api/invoices'
 ];
 

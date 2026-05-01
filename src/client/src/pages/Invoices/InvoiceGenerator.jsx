@@ -9,11 +9,13 @@ import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
+import DiscountModal from '../../components/common/DiscountModal';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import { formatCurrency, getTodayForInput } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
+import { calculateDiscountAmount, describeDiscount } from '../../utils/discountUtils';
 import settingsService from '../../services/settingsService';
 
 
@@ -41,8 +43,10 @@ const InvoiceGenerator = () => {
     taxRate: 8.0,
     parts: [],
     labor: [],
-    servicePackages: []
+    servicePackages: [],
+    discount: null
   });
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
 
   // Page states
   const [loading, setLoading] = useState(true); // Set to true initially for the first load
@@ -184,6 +188,7 @@ const InvoiceGenerator = () => {
               _id: pkg._id || `service-${Date.now()}-${index}`,
             }))
           : [],
+        discount: workOrder.discount || null,
       }));
     } catch (err) {
       console.error(`Error loading work order ${workOrderId}:`, err);
@@ -369,9 +374,16 @@ const InvoiceGenerator = () => {
     const laborTotal = invoiceData.labor.reduce((sum, laborItem) => sum + (parseFloat(laborItem.total) || 0), 0);
     const servicesTotal = (invoiceData.servicePackages || []).reduce((sum, pkg) => sum + (pkg.price || 0), 0);
     const subtotal = partsTotal + laborTotal + servicesTotal;
-    const taxAmount = subtotal * (parseFloat(invoiceData.taxRate) / 100);
-    const total = subtotal + taxAmount;
-    return { partsTotal, laborTotal, servicesTotal, subtotal, taxAmount, total };
+    const discountAmount = calculateDiscountAmount(
+      invoiceData.parts,
+      invoiceData.labor,
+      invoiceData.servicePackages,
+      invoiceData.discount
+    );
+    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+    const taxAmount = discountedSubtotal * (parseFloat(invoiceData.taxRate) / 100);
+    const total = discountedSubtotal + taxAmount;
+    return { partsTotal, laborTotal, servicesTotal, subtotal, discountAmount, taxAmount, total };
   };
 
   const handleTaxRateChange = (e) => {
@@ -412,6 +424,9 @@ const InvoiceGenerator = () => {
     customerFacingNotes,
     customerNotes: invoiceData.customerNotes,
     taxRate: invoiceData.taxRate || 0,
+    discount: invoiceData.discount
+      ? { ...invoiceData.discount, amount: calculateTotals().discountAmount }
+      : null,
     terms: invoiceData.terms,
     technicianName: getCustomerFacingName(selectedWorkOrder?.assignedTechnician),
     serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(selectedWorkOrder?.createdBy) : undefined
@@ -437,13 +452,22 @@ const InvoiceGenerator = () => {
   };
 
   const saveInvoice = async () => {
+    const totals = calculateTotals();
     const finalInvoice = {
       ...invoiceData,
       customerId: selectedCustomer?._id,
       vehicleId: selectedVehicle?._id,
       workOrderId: selectedWorkOrder?._id,
       status: 'Issued',
-      ...calculateTotals()
+      ...totals,
+      discount: invoiceData.discount
+        ? {
+            type: invoiceData.discount.type,
+            value: invoiceData.discount.value,
+            description: invoiceData.discount.description || '',
+            amount: totals.discountAmount
+          }
+        : null
     };
     try {
       if (InvoiceService && typeof InvoiceService.createInvoice === 'function') {
@@ -661,6 +685,31 @@ const InvoiceGenerator = () => {
                   )}
                   <hr />
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Total Before Tax:</span><span className="text-gray-800">{formatCurrency(totals.subtotal)}</span></div>
+                  {invoiceData.discount ? (
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountModalOpen(true)}
+                          className="text-sm text-blue-700 hover:text-blue-900 hover:underline text-left truncate"
+                        >
+                          {invoiceData.discount.description || 'Coupon'}
+                        </button>
+                        <div className="text-xs text-gray-500">{describeDiscount(invoiceData.discount)}</div>
+                      </div>
+                      <span className="text-green-700 font-medium ml-3">−{formatCurrency(totals.discountAmount)}</span>
+                    </div>
+                  ) : (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountModalOpen(true)}
+                        className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded"
+                      >
+                        Add Coupon
+                      </button>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center"><span className="font-medium text-gray-600">Tax Rate (%):</span><Input type="number" name="taxRate" value={invoiceData.taxRate} onChange={handleTaxRateChange} min="0" step="0.01" className="w-20 text-right p-1 border-gray-300 rounded" /></div>
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Tax Amount:</span><span className="text-gray-800">{formatCurrency(totals.taxAmount)}</span></div>
                   <hr className="my-1 border-t-2 border-gray-300" />
@@ -688,13 +737,29 @@ const InvoiceGenerator = () => {
         <Card>
           <h2 className="text-xl font-semibold mb-4 text-gray-700">Invoice Preview</h2>
           {/* Use the new InvoiceDisplay component, passing the ref */}
-          <InvoiceDisplay 
-            ref={printTemplateRef} 
-            invoiceData={currentFullInvoiceData} 
-            businessSettings={settings} 
+          <InvoiceDisplay
+            ref={printTemplateRef}
+            invoiceData={currentFullInvoiceData}
+            businessSettings={settings}
           />
         </Card>
       )}
+      <DiscountModal
+        isOpen={discountModalOpen}
+        onClose={() => setDiscountModalOpen(false)}
+        existingDiscount={invoiceData.discount}
+        parts={invoiceData.parts}
+        labor={invoiceData.labor}
+        servicePackages={invoiceData.servicePackages}
+        onApply={(discount) => {
+          setInvoiceData(prev => ({ ...prev, discount }));
+          setDiscountModalOpen(false);
+        }}
+        onRemove={() => {
+          setInvoiceData(prev => ({ ...prev, discount: null }));
+          setDiscountModalOpen(false);
+        }}
+      />
     </div>
   );
 };

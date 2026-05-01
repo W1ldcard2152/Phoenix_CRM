@@ -38,6 +38,8 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
     parts: invoiceDataParts = [],      // Legacy parts from invoiceData (fallback)
     labor: invoiceDataLabor = [],      // Legacy labor from invoiceData (fallback)
     subtotal: initialSubtotal,     // Original subtotal from invoiceData
+    discount,                      // { type, value, description, amount } | null
+    discountAmount: initialDiscountAmount,
     taxAmount: initialTaxAmount,   // Original taxAmount from invoiceData
     total: initialTotal,           // Original total from invoiceData
     // Nested data
@@ -96,8 +98,12 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
   const calculatedSubtotal = calculatedPartsTotal + calculatedLaborTotal + calculatedServicesTotal;
 
   const finalSubtotal = initialSubtotal !== undefined ? initialSubtotal : calculatedSubtotal;
-  const finalTaxAmount = initialTaxAmount !== undefined ? initialTaxAmount : finalSubtotal * (parseFloat(taxRate) / 100);
-  const finalTotal = initialTotal !== undefined ? initialTotal : finalSubtotal + finalTaxAmount;
+  const finalDiscountAmount = initialDiscountAmount !== undefined
+    ? initialDiscountAmount
+    : (discount && discount.amount ? Math.min(parseFloat(discount.amount) || 0, finalSubtotal) : 0);
+  const discountedSubtotal = Math.max(0, finalSubtotal - finalDiscountAmount);
+  const finalTaxAmount = initialTaxAmount !== undefined ? initialTaxAmount : discountedSubtotal * (parseFloat(taxRate) / 100);
+  const finalTotal = initialTotal !== undefined ? initialTotal : discountedSubtotal + finalTaxAmount;
 
   return (
     <div ref={ref} className="p-4 sm:p-6 lg:p-8 bg-white text-gray-900 text-sm max-w-4xl mx-auto print-friendly-font">
@@ -161,6 +167,42 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
           <div className="border border-gray-300 p-3 rounded-md">
             <p className="whitespace-pre-wrap">{workOrder.diagnosticNotes}</p>
           </div>
+        </div>
+      )}
+
+      {/* Services */}
+      {services && services.length > 0 && (
+        <div className="mb-4">
+          <h3 className="font-semibold text-md mb-1">Services:</h3>
+          <table className="w-full border-collapse border border-gray-300 text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
+                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {services.map((svc, index) => (
+                <tr key={svc._id || `service-${index}`}>
+                  <td className="border border-gray-300 p-2 align-top">
+                    <div className="font-medium">{svc.name}</div>
+                    {svc.includedItems && svc.includedItems.length > 0 && (
+                      <ul className="mt-1 ml-4 list-disc text-xs text-gray-600">
+                        {svc.includedItems.map((i, idx) => {
+                          const qty = i.quantity || 0;
+                          const unit = i.unit ? ` ${i.unit}` : '';
+                          const brand = i.brand ? `${i.brand} ` : '';
+                          const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+                          return <li key={idx}>{`${qty}${unit} - ${brand}${i.name}${partNum}`}</li>;
+                        })}
+                      </ul>
+                    )}
+                  </td>
+                  <td className="border border-gray-300 p-2 text-right align-top">{formatCurrency(svc.total || svc.price)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -241,42 +283,6 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
         </div>
       )}
 
-      {/* Services */}
-      {services && services.length > 0 && (
-        <div className="mb-4">
-          <h3 className="font-semibold text-md mb-1">Services:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {services.map((svc, index) => (
-                <tr key={svc._id || `service-${index}`}>
-                  <td className="border border-gray-300 p-2 align-top">
-                    <div className="font-medium">{svc.name}</div>
-                    {svc.includedItems && svc.includedItems.length > 0 && (
-                      <ul className="mt-1 ml-4 list-disc text-xs text-gray-600">
-                        {svc.includedItems.map((i, idx) => {
-                          const qty = i.quantity || 0;
-                          const unit = i.unit ? ` ${i.unit}` : '';
-                          const brand = i.brand ? `${i.brand} ` : '';
-                          const partNum = i.partNumber ? ` (${i.partNumber})` : '';
-                          return <li key={idx}>{`${qty}${unit} - ${brand}${i.name}${partNum}`}</li>;
-                        })}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="border border-gray-300 p-2 text-right align-top">{formatCurrency(svc.total || svc.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
       {/* Totals */}
       <div className="flex justify-end mb-6">
         <div className="w-full sm:w-1/2 md:w-1/3 text-sm">
@@ -284,6 +290,12 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
             <span>Subtotal:</span>
             <span>{formatCurrency(finalSubtotal)}</span>
           </div>
+          {discount && finalDiscountAmount > 0 && (
+            <div className="flex justify-between py-1">
+              <span>{discount.description || 'Discount'}:</span>
+              <span className="text-green-700">−{formatCurrency(finalDiscountAmount)}</span>
+            </div>
+          )}
           <div className="flex justify-between py-1">
             <span>Tax ({taxRate}%):</span>
             <span>{formatCurrency(finalTaxAmount)}</span>

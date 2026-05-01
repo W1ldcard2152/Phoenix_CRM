@@ -173,6 +173,7 @@ export const generateDocumentHtml = (type, data) => {
     parts = [],
     labor = [],
     servicePackages = [],
+    discount = null,
     customerFacingNotes = [],
     customerNotes,
     taxRate = 0,
@@ -192,8 +193,12 @@ export const generateDocumentHtml = (type, data) => {
   const laborTotal = labor.reduce((sum, l) => sum + (parseFloat(l.rate || l.unitPrice || 0) * (parseFloat(l.quantity || l.hours) || 0)), 0);
   const servicesTotal = committedServicePackages.reduce((sum, pkg) => sum + (parseFloat(pkg.price) || 0), 0);
   const subtotal = partsTotal + laborTotal + servicesTotal;
-  const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const discountAmount = discount && discount.amount
+    ? Math.min(parseFloat(discount.amount) || 0, subtotal)
+    : 0;
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+  const taxAmount = discountedSubtotal * (taxRate / 100);
+  const total = discountedSubtotal + taxAmount;
 
   const typeLabels = {
     workorder: 'WORK ORDER',
@@ -304,6 +309,42 @@ export const generateDocumentHtml = (type, data) => {
       </div>
       ` : ''}
 
+      <!-- Services -->
+      ${committedServicePackages.length > 0 ? `
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
+        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Services:</p>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; font-size: 13px;">
+          <thead>
+            <tr style="background-color: #f3f4f6;">
+              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-weight: 600;">Description</th>
+              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; font-weight: 600; width: 100px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${committedServicePackages.map(pkg => `
+              <tr>
+                <td style="border: 1px solid #d1d5db; padding: 6px 8px;">
+                  <div style="font-weight: 600;">${pkg.name}</div>
+                  ${(pkg.includedItems && pkg.includedItems.length > 0) ? `
+                    <ul style="margin: 4px 0 0 0; padding-left: 18px; font-size: 11px; color: #4b5563;">
+                      ${pkg.includedItems.map(i => {
+                        const qty = i.quantity || 0;
+                        const unit = i.unit ? ` ${i.unit}` : '';
+                        const brand = i.brand ? `${i.brand} ` : '';
+                        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+                        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
+                      }).join('')}
+                    </ul>
+                  ` : ''}
+                </td>
+                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; vertical-align: top;">${formatCurrency(pkg.price)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+
       <!-- Parts -->
       ${parts.length > 0 ? `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
@@ -381,41 +422,6 @@ export const generateDocumentHtml = (type, data) => {
       </div>
       ` : ''}
 
-      ${committedServicePackages.length > 0 ? `
-      <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Services:</p>
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; font-size: 13px;">
-          <thead>
-            <tr style="background-color: #f3f4f6;">
-              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-weight: 600;">Description</th>
-              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; font-weight: 600; width: 100px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${committedServicePackages.map(pkg => `
-              <tr>
-                <td style="border: 1px solid #d1d5db; padding: 6px 8px;">
-                  <div style="font-weight: 600;">${pkg.name}</div>
-                  ${(pkg.includedItems && pkg.includedItems.length > 0) ? `
-                    <ul style="margin: 4px 0 0 0; padding-left: 18px; font-size: 11px; color: #4b5563;">
-                      ${pkg.includedItems.map(i => {
-                        const qty = i.quantity || 0;
-                        const unit = i.unit ? ` ${i.unit}` : '';
-                        const brand = i.brand ? `${i.brand} ` : '';
-                        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
-                        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
-                      }).join('')}
-                    </ul>
-                  ` : ''}
-                </td>
-                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; vertical-align: top;">${formatCurrency(pkg.price)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
-
       <!-- Totals -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; page-break-inside: avoid;">
         <tr>
@@ -426,6 +432,12 @@ export const generateDocumentHtml = (type, data) => {
                 <td style="padding: 4px 0;">Subtotal:</td>
                 <td style="padding: 4px 0; text-align: right;">${formatCurrency(subtotal)}</td>
               </tr>
+              ${discount && discountAmount > 0 ? `
+              <tr>
+                <td style="padding: 4px 0;">${discount.description ? discount.description : 'Discount'}:</td>
+                <td style="padding: 4px 0; text-align: right; color: #047857;">−${formatCurrency(discountAmount)}</td>
+              </tr>
+              ` : ''}
               <tr>
                 <td style="padding: 4px 0;">Tax (${taxRate}%):</td>
                 <td style="padding: 4px 0; text-align: right;">${formatCurrency(taxAmount)}</td>

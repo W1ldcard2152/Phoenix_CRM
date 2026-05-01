@@ -18,6 +18,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
   const [overridePrice, setOverridePrice] = useState(false);
 
   const multiplier = 1 + markupPercentage / 100;
+  const unitsPerPurchase = Math.max(1, parseInt(formData.unitsPerPurchase) || 1);
 
   const updateField = (field, value) => {
     onChange({ ...formData, [field]: value });
@@ -27,7 +28,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
     if (overridePrice) {
       onChange({ ...formData, cost });
     } else {
-      onChange({ ...formData, cost, price: parseFloat((cost * multiplier).toFixed(2)) });
+      onChange({ ...formData, cost, price: parseFloat(((cost / unitsPerPurchase) * multiplier).toFixed(2)) });
     }
   };
 
@@ -35,7 +36,17 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
     if (overridePrice) {
       onChange({ ...formData, price });
     } else {
-      onChange({ ...formData, price, cost: parseFloat((price / multiplier).toFixed(2)) });
+      onChange({ ...formData, price, cost: parseFloat(((price * unitsPerPurchase) / multiplier).toFixed(2)) });
+    }
+  };
+
+  const handleUnitsPerPurchaseChange = (value) => {
+    const newUpp = Math.max(1, parseInt(value) || 1);
+    if (overridePrice) {
+      onChange({ ...formData, unitsPerPurchase: newUpp });
+    } else {
+      const cost = parseFloat(formData.cost) || 0;
+      onChange({ ...formData, unitsPerPurchase: newUpp, price: parseFloat(((cost / newUpp) * multiplier).toFixed(2)) });
     }
   };
 
@@ -179,7 +190,14 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
       {/* Cost + Price row */}
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Cost</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Cost
+            {unitsPerPurchase > 1 && (
+              <span className="ml-1 text-xs text-gray-400 font-normal">
+                (per {formData.purchaseUnit || 'purchase'})
+              </span>
+            )}
+          </label>
           <input
             type="number"
             inputMode="decimal"
@@ -193,6 +211,11 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Retail Price
+            {unitsPerPurchase > 1 && (
+              <span className="ml-1 text-xs text-gray-400 font-normal">
+                (per {formData.unit || 'unit'})
+              </span>
+            )}
             {!overridePrice && (
               <span className="ml-1 text-xs text-gray-400 font-normal">({markupPercentage}% markup)</span>
             )}
@@ -270,7 +293,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             inputMode="numeric"
             min="1"
             value={formData.unitsPerPurchase}
-            onChange={(e) => updateField('unitsPerPurchase', Math.max(1, parseInt(e.target.value) || 1))}
+            onChange={(e) => handleUnitsPerPurchaseChange(e.target.value)}
             className={inputClass}
           />
         </div>

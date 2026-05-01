@@ -30,6 +30,8 @@ const DocumentService = {
   // Parts/Labor
   addPart: async (id, partData) => WorkOrderService.addPart(id, partData),
   addPartFromInventory: async (id, data) => WorkOrderService.addPartFromInventory(id, data),
+  commitPart: async (id, data) => WorkOrderService.commitPart(id, data),
+  removePart: async (id, data) => WorkOrderService.removePart(id, data),
   addServicePackage: async (id, data) => WorkOrderService.addServicePackage(id, data),
   commitServicePackage: async (id, data) => WorkOrderService.commitServicePackage(id, data),
   removeServicePackage: async (id, data) => WorkOrderService.removeServicePackage(id, data),
