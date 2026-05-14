@@ -4,7 +4,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import AppointmentService from '../../services/appointmentService';
-import { getTodayForInput, parseLocalDate, formatDate } from '../../utils/formatters';
+import { getTodayForInput, formatDate } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import FollowUpModal from '../../components/followups/FollowUpModal';
@@ -84,29 +84,10 @@ const VehicleDetail = () => {
     }
 
     try {
-      // Only send the fields being changed — avoid spreading the full populated vehicle
-      const updateData = {
-        mileageHistory: [
-          ...vehicle.mileageHistory || [],
-          newMileageRecord
-        ],
-        currentMileage: Math.max(vehicle.currentMileage || 0, parseInt(newMileageRecord.mileage))
-      };
+      const response = await VehicleService.addMileageRecord(id, newMileageRecord);
+      setVehicle(response.data.vehicle);
 
-      // Update the vehicle
-      await VehicleService.updateVehicle(id, updateData);
-      
-      // Reload the vehicle data
-      const vehicleResponse = await VehicleService.getVehicle(id);
-      setVehicle(vehicleResponse.data.vehicle);
-      
-      // Reset the form and close modal
-      setNewMileageRecord({
-        date: getTodayForInput(),
-        mileage: '',
-        notes: ''
-      });
-      
+      setNewMileageRecord({ date: getTodayForInput(), mileage: '', notes: '' });
       setMileageModalOpen(false);
     } catch (err) {
       console.error('Error adding mileage record:', err);

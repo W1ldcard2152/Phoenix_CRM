@@ -219,6 +219,7 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
                       name="vin"
                       value={values.vin}
                       onChange={(e) => {
+                        e.target.value = e.target.value.toUpperCase();
                         handleChange(e);
                         setVinError(null);
                       }}

@@ -28,6 +28,7 @@ import FollowUpModal from '../../components/followups/FollowUpModal';
 import invoiceService from '../../services/invoiceService';
 import UrlExtractButton from '../../components/common/UrlExtractButton';
 import SettingsService from '../../services/settingsService';
+import API from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { calculateDiscountAmount, describeDiscount } from '../../utils/discountUtils';
@@ -2207,12 +2208,11 @@ const DocumentDetail = () => {
                         {!isQuote && part.receiptImageUrl && (
                           <button onClick={async (e) => { e.stopPropagation();
                             try {
-                              const response = await fetch(
-                                `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
+                              const response = await API.get(
+                                `/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
                               );
-                              const data = await response.json();
-                              if (data.status === 'success') {
-                                setViewerUrl(data.data.signedUrl);
+                              if (response.data.status === 'success') {
+                                setViewerUrl(response.data.data.signedUrl);
                                 setViewerTitle(part.receiptImageUrl.split('/').pop() || 'receipt.png');
                                 setViewerModalOpen(true);
                               } else { alert('Failed to load receipt'); }
@@ -2673,7 +2673,7 @@ const DocumentDetail = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Source VIN <span className="text-xs text-gray-500">(used parts)</span></label>
                   <input type="text" placeholder="VIN of source vehicle" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    value={newPart.vin} onChange={(e) => setNewPart({ ...newPart, vin: e.target.value })} />
+                    value={newPart.vin} onChange={(e) => setNewPart({ ...newPart, vin: e.target.value.toUpperCase() })} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stock Number <span className="text-xs text-gray-500">(used parts)</span></label>

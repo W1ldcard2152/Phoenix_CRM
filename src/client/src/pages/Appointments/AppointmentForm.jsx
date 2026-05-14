@@ -281,7 +281,13 @@ const AppointmentForm = () => {
       if (response.data.hasConflicts) {
         const parts = [];
         if (response.data.conflicts?.length > 0) {
-          parts.push(`${response.data.conflicts.length} appointment conflict(s)`);
+          const apptLabels = response.data.conflicts.map(a => {
+            const customerName = a.customer?.name || 'Unknown customer';
+            const v = a.vehicle;
+            const vehicleLabel = v ? `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim() : '';
+            return vehicleLabel ? `${customerName} (${vehicleLabel})` : customerName;
+          }).join(', ');
+          parts.push(`appointment conflict(s): ${apptLabels}`);
         }
         if (response.data.scheduleBlockConflicts?.length > 0) {
           const blockConflicts = response.data.scheduleBlockConflicts;

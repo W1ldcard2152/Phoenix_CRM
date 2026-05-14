@@ -96,13 +96,35 @@ const QuoteService = {
     }
   },
 
-  // Unarchive a quote
+  // Unarchive a quote (works for both Archived and Declined)
   unarchiveQuote: async (id) => {
     try {
       const response = await API.post(`/workorders/${id}/unarchive-quote`);
       return response.data;
     } catch (error) {
       console.error(`Error unarchiving quote ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Decline a quote (terminal state)
+  declineQuote: async (id) => {
+    try {
+      const response = await API.post(`/workorders/${id}/decline-quote`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error declining quote ${id}:`, error);
+      throw error;
+    }
+  },
+
+  // Update quote communications checkboxes (sent / followed-up / 2nd followed-up)
+  updateCommunications: async (id, payload) => {
+    try {
+      const response = await API.patch(`/workorders/${id}/quote-communications`, payload);
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating quote communications for ${id}:`, error);
       throw error;
     }
   },

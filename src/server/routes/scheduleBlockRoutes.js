@@ -10,6 +10,7 @@ router.use(authController.restrictTo('admin', 'management', 'service-writer'));
 
 // Specific routes first (before /:id)
 router.get('/expanded/:startDate/:endDate', scheduleBlockController.getExpandedBlocks);
+router.post('/check-conflicts', scheduleBlockController.checkConflicts);
 
 // Exception management
 router.post('/:id/exceptions', scheduleBlockController.addException);

@@ -119,7 +119,9 @@ AppointmentSchema.statics.checkConflicts = async function(startTime, endTime, te
     query._id = { $ne: excludeId };
   }
   
-  return await this.find(query);
+  return await this.find(query)
+    .populate('customer', 'name')
+    .populate('vehicle', 'year make model');
 };
 
 // Method to create a work order from an appointment

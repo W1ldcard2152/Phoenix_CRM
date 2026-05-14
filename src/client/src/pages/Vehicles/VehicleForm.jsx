@@ -119,38 +119,12 @@ const VehicleForm = () => {
 
   const handleSubmit = async (values, { setSubmitting, setErrors }) => {
     try {
-      // Add current mileage to history if provided and no existing record for today
-      if (values.currentMileage) {
-        const today = getTodayForInput();
-        const hasTodayRecord = values.mileageHistory.some(record =>
-          formatDateForInputLocal(record.date) === today
-        );
-
-        if (!hasTodayRecord) {
-          values.mileageHistory.push({
-            date: today,
-            mileage: values.currentMileage,
-            notes: 'Auto-added from current mileage field'
-          });
-        }
-      }
-
-      // Sort mileage history by date (newest first)
-      values.mileageHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
-
       if (id) {
-        // Update existing vehicle
         await VehicleService.updateVehicle(id, values);
+        navigate(`/vehicles/${id}`);
       } else {
-        // Create new vehicle
         await VehicleService.createVehicle(values);
-      }
-
-      // Redirect to vehicle list or detail page
-      if (values.customer) {
-        navigate(`/customers/${values.customer}`);
-      } else {
-        navigate('/vehicles');
+        navigate(values.customer ? `/customers/${values.customer}` : '/vehicles');
       }
     } catch (err) {
       console.error('Error saving vehicle:', err);
@@ -411,6 +385,7 @@ const VehicleForm = () => {
                       name="vin"
                       value={values.vin}
                       onChange={(e) => {
+                        e.target.value = e.target.value.toUpperCase();
                         handleChange(e);
                         setVinError(null); // Clear error when user types
                         setDuplicateVinWarning(null); // Clear duplicate warning when VIN is changed

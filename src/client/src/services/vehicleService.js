@@ -1,226 +1,75 @@
 import API from './api';
-import { getTodayForInput } from '../utils/formatters';
 
 const VehicleService = {
   // Get all vehicles
   getAllVehicles: async (filters = {}) => {
-    try {
-      const params = new URLSearchParams();
-      
-      // Add filters to params if provided
-      if (filters.customer) params.append('customer', filters.customer);
-      if (filters.make) params.append('make', filters.make);
-      if (filters.model) params.append('model', filters.model);
-      
-      const response = await API.get(`/vehicles?${params.toString()}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching vehicles:', error);
-      throw error;
-    }
+    const params = new URLSearchParams();
+    if (filters.customer) params.append('customer', filters.customer);
+    if (filters.make) params.append('make', filters.make);
+    if (filters.model) params.append('model', filters.model);
+    const response = await API.get(`/vehicles?${params.toString()}`);
+    return response.data;
   },
 
   // Get a vehicle by ID
   getVehicle: async (id) => {
-    try {
-      const response = await API.get(`/vehicles/${id}`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error fetching vehicle with ID ${id}:`, error);
-      throw error;
-    }
+    const response = await API.get(`/vehicles/${id}`);
+    return response.data;
   },
 
   // Create a new vehicle
   createVehicle: async (vehicleData) => {
-    try {
-      // Process mileage history to ensure dates are valid
-      if (vehicleData.mileageHistory && vehicleData.mileageHistory.length > 0) {
-        vehicleData.mileageHistory = vehicleData.mileageHistory.map(record => ({
-          ...record,
-          date: record.date || getTodayForInput(),
-          mileage: parseInt(record.mileage) || 0
-        }));
-      }
-      
-      const response = await API.post('/vehicles', vehicleData);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating vehicle:', error);
-      console.log('Full error object:', error); // Added console.log
-      throw error;
-    }
+    const response = await API.post('/vehicles', vehicleData);
+    return response.data;
   },
 
   // Update a vehicle
   updateVehicle: async (id, vehicleData) => {
-    try {
-      // Process mileage history to ensure dates are valid
-      if (vehicleData.mileageHistory && vehicleData.mileageHistory.length > 0) {
-        vehicleData.mileageHistory = vehicleData.mileageHistory.map(record => ({
-          ...record,
-          date: record.date || getTodayForInput(),
-          mileage: parseInt(record.mileage) || 0
-        }));
-        
-        // Sort mileage history by date (newest first) to ensure currentMileage is updated correctly
-        vehicleData.mileageHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
-        
-        // Update current mileage if the most recent record has a higher mileage
-        if (vehicleData.mileageHistory.length > 0 && 
-            vehicleData.mileageHistory[0].mileage > (vehicleData.currentMileage || 0)) {
-          vehicleData.currentMileage = vehicleData.mileageHistory[0].mileage;
-        }
-      }
-      
-      const response = await API.patch(`/vehicles/${id}`, vehicleData);
-      return response.data;
-    } catch (error) {
-      console.error(`Error updating vehicle with ID ${id}:`, error);
-      throw error;
-    }
+    const response = await API.patch(`/vehicles/${id}`, vehicleData);
+    return response.data;
   },
 
   // Delete a vehicle
   deleteVehicle: async (id) => {
-    try {
-      const response = await API.delete(`/vehicles/${id}`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error deleting vehicle with ID ${id}:`, error);
-      throw error;
-    }
+    const response = await API.delete(`/vehicles/${id}`);
+    return response.data;
   },
 
   // Search vehicles
   searchVehicles: async (query) => {
-    try {
-      const response = await API.get(`/vehicles/search?query=${query}`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error searching vehicles with query "${query}":`, error);
-      throw error;
-    }
+    const response = await API.get(`/vehicles/search?query=${encodeURIComponent(query)}`);
+    return response.data;
   },
 
   // Get vehicle service history
   getVehicleServiceHistory: async (id) => {
-    try {
-      const response = await API.get(`/vehicles/${id}/service-history`);
-      return response.data;
-    } catch (error) {
-      console.error(`Error fetching service history for vehicle with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Add mileage record
-  addMileageRecord: async (id, mileageData) => {
-    try {
-      // Format the data
-      const formattedData = {
-        date: mileageData.date || getTodayForInput(),
-        mileage: parseInt(mileageData.mileage) || 0,
-        notes: mileageData.notes || ''
-      };
-      
-      // Get current vehicle data
-      const vehicleResponse = await API.get(`/vehicles/${id}`);
-      const vehicleData = vehicleResponse.data.vehicle || vehicleResponse.data;
-      
-      if (!vehicleData) {
-        throw new Error('Vehicle data not found in response');
-      }
-      
-      // Update mileage history
-      const updatedVehicle = {
-        ...vehicleData,
-        mileageHistory: [
-          ...(vehicleData.mileageHistory || []),
-          formattedData
-        ],
-        // Update current mileage if new record is higher
-        currentMileage: Math.max(vehicleData.currentMileage || 0, formattedData.mileage)
-      };
-      
-      // Update vehicle
-      const response = await API.patch(`/vehicles/${id}`, updatedVehicle);
-      return response.data;
-    } catch (error) {
-      console.error(`Error adding mileage record for vehicle with ID ${id}:`, error);
-      throw error;
-    }
-  },
-  
-  // Check if VIN exists in database
-  checkVinExists: async (vin) => {
-    try {
-      const response = await API.get(`/vehicles/check-vin?vin=${encodeURIComponent(vin)}`);
-      return response.data;
-    } catch (error) {
-      console.error('Error checking VIN:', error);
-      throw error;
-    }
+    const response = await API.get(`/vehicles/${id}/service-history`);
+    return response.data;
   },
 
-  // Get mileage at a specific date (estimated if exact date not available)
+  // Add a mileage record (uses the dedicated server endpoint, which handles
+  // TZ-correct date parsing and currentMileage update via the model's pre-save hook).
+  addMileageRecord: async (id, { date, mileage, notes } = {}) => {
+    const response = await API.post(`/vehicles/${id}/mileage`, { date, mileage, notes });
+    return response.data;
+  },
+
+  // Get mileage history
+  getMileageHistory: async (id) => {
+    const response = await API.get(`/vehicles/${id}/mileage-history`);
+    return response.data;
+  },
+
+  // Get estimated mileage at a given date (server interpolates between records)
   getMileageAtDate: async (id, date) => {
-    try {
-      const vehicleResponse = await API.get(`/vehicles/${id}`);
-      const vehicle = vehicleResponse.data.vehicle || vehicleResponse.data;
-      
-      if (!vehicle.mileageHistory || vehicle.mileageHistory.length === 0) {
-        return vehicle.currentMileage || 0;
-      }
-      
-      const targetDate = new Date(date);
-      const sortedHistory = [...vehicle.mileageHistory].sort((a, b) => 
-        new Date(a.date) - new Date(b.date)
-      );
-      
-      // Exact match
-      const exactMatch = sortedHistory.find(record => 
-        new Date(record.date).toDateString() === targetDate.toDateString()
-      );
-      
-      if (exactMatch) {
-        return exactMatch.mileage;
-      }
-      
-      // Find closest records before and after
-      const before = [...sortedHistory].reverse().find(record => 
-        new Date(record.date) <= targetDate
-      );
-      
-      const after = sortedHistory.find(record => 
-        new Date(record.date) >= targetDate
-      );
-      
-      // No records before, use first record or 0
-      if (!before) {
-        return after ? after.mileage : 0;
-      }
-      
-      // No records after, use last record
-      if (!after) {
-        return before.mileage;
-      }
-      
-      // Interpolate between the two closest records
-      const beforeDate = new Date(before.date);
-      const afterDate = new Date(after.date);
-      const totalDays = (afterDate - beforeDate) / (1000 * 60 * 60 * 24);
-      const daysBetween = (targetDate - beforeDate) / (1000 * 60 * 60 * 24);
-      const ratio = daysBetween / totalDays;
-      
-      // Linear interpolation
-      const estimatedMileage = before.mileage + (after.mileage - before.mileage) * ratio;
-      
-      return Math.round(estimatedMileage);
-    } catch (error) {
-      console.error(`Error estimating mileage for vehicle with ID ${id} at date ${date}:`, error);
-      throw error;
-    }
+    const response = await API.get(`/vehicles/${id}/mileage-at-date`, { params: { date } });
+    return response.data;
+  },
+
+  // Check if VIN exists in database
+  checkVinExists: async (vin) => {
+    const response = await API.get(`/vehicles/check-vin?vin=${encodeURIComponent(vin)}`);
+    return response.data;
   }
 };
 

@@ -81,6 +81,12 @@ const ScheduleBlockService = {
     }
   },
 
+  // Check for conflicts with appointments and other tasks
+  checkConflicts: async (payload) => {
+    const response = await API.post('/schedule-blocks/check-conflicts', payload);
+    return response.data;
+  },
+
   // Remove an exception from a schedule block
   removeException: async (id, exceptionId) => {
     try {

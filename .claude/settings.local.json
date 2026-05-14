@@ -81,7 +81,8 @@
       "Bash(npx --no-install eslint src/pages/Documents/DocumentDetail.jsx src/components/common/ReceiptImportModal.jsx src/App.jsx src/components/layout/Sidebar.jsx)",
       "Bash(npx --no-install eslint src/pages/WorkOrders/WorkOrderList.jsx src/pages/WorkOrders/WorkOrderForm.jsx)",
       "Bash(npx --no-install eslint src/pages/Documents/DocumentDetail.jsx src/components/invoice/InvoiceDisplay.jsx src/utils/pdfUtils.js)",
-      "Bash(npx craco *)"
+      "Bash(npx craco *)",
+      "Bash(npm test *)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

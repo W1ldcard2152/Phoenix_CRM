@@ -38,6 +38,14 @@ const generateTimeOptions = () => {
 
 const TIME_OPTIONS = generateTimeOptions();
 
+// Add one hour to an "HH:mm" string, clamped to the last available time option (20:00).
+const addHourClamped = (timeStr) => {
+  const [h, m] = timeStr.split(':').map(Number);
+  let newH = h + 1;
+  if (newH > 20 || (newH === 20 && m > 0)) return '20:00';
+  return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
 const ScheduleBlockForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -68,6 +76,8 @@ const ScheduleBlockForm = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [hasConflicts, setHasConflicts] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState('');
 
   // Default times for new day entries
   const [defaultStartTime, setDefaultStartTime] = useState('08:00');
@@ -161,10 +171,14 @@ const ScheduleBlockForm = () => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
+      // Auto-bump end time to start + 1hr for convenience on one-time blocks
+      if (name === 'oneTimeStartTime') {
+        next.oneTimeEndTime = addHourClamped(value);
+      }
+      return next;
+    });
   };
 
   const handleAddDay = (dayOfWeek) => {
@@ -188,9 +202,92 @@ const ScheduleBlockForm = () => {
 
   const handleScheduleTimeChange = (dayOfWeek, field, value) => {
     setWeeklySchedule(prev =>
-      prev.map(s => s.dayOfWeek === dayOfWeek ? { ...s, [field]: value } : s)
+      prev.map(s => {
+        if (s.dayOfWeek !== dayOfWeek) return s;
+        const updated = { ...s, [field]: value };
+        if (field === 'startTime') updated.endTime = addHourClamped(value);
+        return updated;
+      })
     );
   };
+
+  // Re-check conflicts whenever the scheduling fields change.
+  useEffect(() => {
+    if (!formData.technician) {
+      setHasConflicts(false);
+      setConflictMessage('');
+      return;
+    }
+
+    if (formData.blockType === 'one-time') {
+      if (!formData.oneTimeDate || !formData.oneTimeStartTime || !formData.oneTimeEndTime) return;
+      if (formData.oneTimeStartTime >= formData.oneTimeEndTime) return;
+    } else {
+      if (!formData.effectiveFrom || weeklySchedule.length === 0) return;
+      if (weeklySchedule.some(s => s.startTime >= s.endTime)) return;
+    }
+
+    const handle = setTimeout(async () => {
+      try {
+        const payload = {
+          technician: formData.technician,
+          blockType: formData.blockType,
+          excludeBlockId: id || undefined
+        };
+        if (formData.blockType === 'one-time') {
+          payload.oneTimeDate = formData.oneTimeDate;
+          payload.oneTimeStartTime = formData.oneTimeStartTime;
+          payload.oneTimeEndTime = formData.oneTimeEndTime;
+        } else {
+          payload.weeklySchedule = weeklySchedule;
+          payload.effectiveFrom = formData.effectiveFrom;
+          payload.effectiveUntil = formData.effectiveUntil || null;
+        }
+
+        const response = await ScheduleBlockService.checkConflicts(payload);
+        const { hasConflicts: hc, appointmentConflicts = [], scheduleBlockConflicts = [] } = response.data || {};
+        setHasConflicts(!!hc);
+
+        if (hc) {
+          const formatWhen = (t) => moment.utc(t).tz(TIMEZONE).format('ddd M/D, h:mm A');
+          const parts = [];
+          if (appointmentConflicts.length > 0) {
+            const apptLabels = appointmentConflicts.map(a => {
+              const customerName = a.customer?.name || 'Unknown customer';
+              const v = a.vehicle;
+              const vehicleLabel = v ? `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim() : '';
+              const who = vehicleLabel ? `${customerName} (${vehicleLabel})` : customerName;
+              return `${formatWhen(a.startTime)} — ${who}`;
+            }).join('; ');
+            parts.push(`appointment conflict(s): ${apptLabels}`);
+          }
+          if (scheduleBlockConflicts.length > 0) {
+            const blockLabels = scheduleBlockConflicts
+              .map(b => `${formatWhen(b.startTime)} — ${b.title}`)
+              .join('; ');
+            parts.push(`task conflict(s): ${blockLabels}`);
+          }
+          setConflictMessage(parts.length > 0 ? `Found ${parts.join(' and ')}.` : 'Scheduling conflict detected.');
+        } else {
+          setConflictMessage('');
+        }
+      } catch (err) {
+        console.error('Error checking conflicts:', err);
+      }
+    }, 350);
+
+    return () => clearTimeout(handle);
+  }, [
+    formData.technician,
+    formData.blockType,
+    formData.effectiveFrom,
+    formData.effectiveUntil,
+    formData.oneTimeDate,
+    formData.oneTimeStartTime,
+    formData.oneTimeEndTime,
+    weeklySchedule,
+    id
+  ]);
 
   const handleAddAllWeekdays = () => {
     const weekdays = [1, 2, 3, 4, 5];
@@ -328,6 +425,13 @@ const ScheduleBlockForm = () => {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded p-3 text-red-700 mb-4 text-sm">
               {error}
+            </div>
+          )}
+
+          {hasConflicts && (
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+              <p className="font-medium">Warning: Scheduling Conflict</p>
+              <p>{conflictMessage}</p>
             </div>
           )}
 
@@ -560,7 +664,11 @@ const ScheduleBlockForm = () => {
                   <span className="text-xs text-gray-600 font-medium">Default times for new days:</span>
                   <select
                     value={defaultStartTime}
-                    onChange={(e) => setDefaultStartTime(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDefaultStartTime(v);
+                      setDefaultEndTime(addHourClamped(v));
+                    }}
                     className="border border-gray-300 rounded px-2 py-1 text-xs"
                   >
                     {TIME_OPTIONS.map(opt => (

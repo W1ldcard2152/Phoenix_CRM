@@ -28,7 +28,7 @@ module.exports = {
       webSocketURL: {
         hostname: 'localhost',
         pathname: '/ws',
-        port: 3001,
+        port: 3003,
         protocol: 'ws',
       },
     },

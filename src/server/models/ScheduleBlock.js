@@ -293,6 +293,138 @@ ScheduleBlockSchema.statics.expandForDateRange = async function (rangeStart, ran
   return expanded;
 };
 
+// Appointment statuses that occupy a technician's calendar. Cancelled/completed/no-show
+// appointments don't conflict (parallel to Appointment.checkConflicts).
+const ACTIVE_APPOINTMENT_STATUSES_EXCLUDED = ['Cancelled', 'Completed', 'No-Show', 'Repair Complete - Awaiting Payment'];
+
+// How far ahead to scan recurring tasks for conflicts. Beyond this, warnings would be noise;
+// users can address future conflicts via exceptions or by editing the task again.
+const RECURRING_CONFLICT_LOOKAHEAD_DAYS = 90;
+
+/**
+ * Build the concrete time instances that a proposed (or edited) schedule block would occupy,
+ * within a sensible look-ahead window. Mirrors expandForDateRange but works on un-saved input.
+ */
+const buildProposedInstances = (blockData) => {
+  const instances = [];
+  const { blockType } = blockData;
+
+  if (blockType === 'one-time') {
+    if (!blockData.oneTimeDate || !blockData.oneTimeStartTime || !blockData.oneTimeEndTime) {
+      return instances;
+    }
+    const dateStr = moment.tz(blockData.oneTimeDate, TIMEZONE).format('YYYY-MM-DD');
+    const start = moment.tz(`${dateStr} ${blockData.oneTimeStartTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).utc().toDate();
+    const end = moment.tz(`${dateStr} ${blockData.oneTimeEndTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).utc().toDate();
+    instances.push({ start, end, dateStr });
+    return instances;
+  }
+
+  // Recurring
+  if (!Array.isArray(blockData.weeklySchedule) || blockData.weeklySchedule.length === 0) {
+    return instances;
+  }
+
+  const today = moment.tz(TIMEZONE).startOf('day');
+  const effectiveFrom = blockData.effectiveFrom
+    ? moment.tz(blockData.effectiveFrom, TIMEZONE).startOf('day')
+    : today.clone();
+  const effectiveUntil = blockData.effectiveUntil
+    ? moment.tz(blockData.effectiveUntil, TIMEZONE).endOf('day')
+    : null;
+
+  const windowStart = moment.max(today, effectiveFrom);
+  const cap = today.clone().add(RECURRING_CONFLICT_LOOKAHEAD_DAYS, 'days').endOf('day');
+  const windowEnd = effectiveUntil ? moment.min(effectiveUntil, cap) : cap;
+
+  if (windowEnd.isBefore(windowStart, 'day')) return instances;
+
+  const dayMap = {};
+  for (const entry of blockData.weeklySchedule) {
+    dayMap[entry.dayOfWeek] = entry;
+  }
+
+  const cursor = windowStart.clone();
+  while (cursor.isSameOrBefore(windowEnd, 'day')) {
+    const entry = dayMap[cursor.day()];
+    if (entry) {
+      const dateStr = cursor.format('YYYY-MM-DD');
+      const start = moment.tz(`${dateStr} ${entry.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).utc().toDate();
+      const end = moment.tz(`${dateStr} ${entry.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).utc().toDate();
+      instances.push({ start, end, dateStr });
+    }
+    cursor.add(1, 'day');
+  }
+
+  return instances;
+};
+
+const overlaps = (aStart, aEnd, bStart, bEnd) =>
+  (bStart <= aStart && bEnd > aStart) ||
+  (bStart < aEnd && bEnd >= aEnd) ||
+  (bStart >= aStart && bEnd <= aEnd);
+
+/**
+ * Check what would conflict with a proposed schedule block for a given technician.
+ * Returns appointments (status-filtered) and other active schedule blocks whose expanded
+ * instances overlap any instance of the proposed block.
+ */
+ScheduleBlockSchema.statics.checkConflicts = async function (blockData) {
+  const Appointment = mongoose.model('Appointment');
+  const technician = blockData.technician;
+  const excludeBlockId = blockData.excludeBlockId || null;
+
+  if (!technician) {
+    return { appointmentConflicts: [], scheduleBlockConflicts: [] };
+  }
+
+  const instances = buildProposedInstances(blockData);
+  if (instances.length === 0) {
+    return { appointmentConflicts: [], scheduleBlockConflicts: [] };
+  }
+
+  const windowStart = instances.reduce((min, i) => (i.start < min ? i.start : min), instances[0].start);
+  const windowEnd = instances.reduce((max, i) => (i.end > max ? i.end : max), instances[0].end);
+
+  // Pull all candidate appointments for this technician overlapping the window
+  const candidateAppointments = await Appointment.find({
+    technician,
+    status: { $nin: ACTIVE_APPOINTMENT_STATUSES_EXCLUDED },
+    startTime: { $lt: windowEnd },
+    endTime: { $gt: windowStart }
+  }).populate('customer', 'name').populate('vehicle', 'year make model');
+
+  // Pull other active schedule blocks for the same technician in the same window
+  const otherBlocks = await this.expandForDateRange(windowStart, windowEnd, technician);
+  const otherBlocksFiltered = excludeBlockId
+    ? otherBlocks.filter(b => b.scheduleBlockId.toString() !== excludeBlockId.toString())
+    : otherBlocks;
+
+  const appointmentMap = new Map();
+  const blockMap = new Map();
+
+  for (const inst of instances) {
+    for (const appt of candidateAppointments) {
+      if (overlaps(inst.start, inst.end, appt.startTime, appt.endTime)) {
+        appointmentMap.set(appt._id.toString(), appt);
+      }
+    }
+    for (const other of otherBlocksFiltered) {
+      const oStart = new Date(other.startTime);
+      const oEnd = new Date(other.endTime);
+      if (overlaps(inst.start, inst.end, oStart, oEnd)) {
+        // Key by underlying block id so one recurring task counts once
+        blockMap.set(other.scheduleBlockId.toString(), other);
+      }
+    }
+  }
+
+  return {
+    appointmentConflicts: Array.from(appointmentMap.values()),
+    scheduleBlockConflicts: Array.from(blockMap.values())
+  };
+};
+
 const ScheduleBlock = mongoose.model('ScheduleBlock', ScheduleBlockSchema);
 
 module.exports = ScheduleBlock;

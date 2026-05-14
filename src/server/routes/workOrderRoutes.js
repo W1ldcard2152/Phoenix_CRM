@@ -15,6 +15,8 @@ router.post('/:id/convert-to-work-order', authController.restrictTo('admin', 'ma
 router.post('/:id/generate-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.generateQuoteFromWorkOrder);
 router.post('/:id/archive-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.archiveQuote);
 router.post('/:id/unarchive-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.unarchiveQuote);
+router.post('/:id/decline-quote', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.declineQuote);
+router.patch('/:id/quote-communications', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.updateQuoteCommunications);
 
 // Search work orders (all authenticated)
 router.get('/search', workOrderController.searchWorkOrders);

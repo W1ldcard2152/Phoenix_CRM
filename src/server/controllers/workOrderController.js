@@ -1951,7 +1951,7 @@ exports.getAllQuotes = catchAsync(async (req, res, next) => {
   }
 
   const query = includeArchived === 'true'
-    ? { status: { $in: ['Quote', 'Quote - Archived'] } }
+    ? { status: { $in: ['Quote', 'Quote - Archived', 'Quote - Declined'] } }
     : { status: 'Quote' };
   if (customer) query.customer = customer;
   if (vehicle) query.vehicle = vehicle;
@@ -2273,12 +2273,12 @@ exports.archiveQuote = catchAsync(async (req, res, next) => {
   });
 });
 
-// Unarchive a quote
+// Unarchive a quote (restores from either Archived or Declined back to active Quote)
 exports.unarchiveQuote = catchAsync(async (req, res, next) => {
   const quote = await validateEntityExists(WorkOrder, req.params.id, 'Quote');
 
-  if (quote.status !== 'Quote - Archived') {
-    return next(new AppError('Only archived quotes can be unarchived', 400));
+  if (quote.status !== 'Quote - Archived' && quote.status !== 'Quote - Declined') {
+    return next(new AppError('Only archived or declined quotes can be restored', 400));
   }
 
   quote.status = 'Quote';
@@ -2288,6 +2288,62 @@ exports.unarchiveQuote = catchAsync(async (req, res, next) => {
 
   res.status(200).json({
     status: 'success',
-    message: 'Quote unarchived successfully'
+    message: 'Quote restored successfully'
+  });
+});
+
+// Decline a quote (terminal state, similar to archived but with declined reason)
+exports.declineQuote = catchAsync(async (req, res, next) => {
+  const quote = await validateEntityExists(WorkOrder, req.params.id, 'Quote');
+
+  if (quote.status !== 'Quote') {
+    return next(new AppError('Only active quotes can be declined', 400));
+  }
+
+  quote.status = 'Quote - Declined';
+  await quote.save();
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Quote declined successfully'
+  });
+});
+
+// Update quote communications (sent / followed-up / 2nd followed-up checkboxes)
+// Body: { sent: bool, followedUp: bool, secondFollowedUp: bool }
+// Each checkbox stamps the current time when checked, or clears the date when unchecked.
+exports.updateQuoteCommunications = catchAsync(async (req, res, next) => {
+  const quote = await validateEntityExists(WorkOrder, req.params.id, 'Quote');
+
+  if (!quote.status.startsWith('Quote')) {
+    return next(new AppError('Communications can only be updated on quotes', 400));
+  }
+
+  if (!quote.quoteCommunications) {
+    quote.quoteCommunications = { sentAt: null, followedUpAt: null, secondFollowedUpAt: null };
+  }
+
+  const now = new Date();
+  const { sent, followedUp, secondFollowedUp } = req.body;
+
+  if (sent !== undefined) {
+    quote.quoteCommunications.sentAt = sent ? (quote.quoteCommunications.sentAt || now) : null;
+  }
+  if (followedUp !== undefined) {
+    quote.quoteCommunications.followedUpAt = followedUp ? (quote.quoteCommunications.followedUpAt || now) : null;
+  }
+  if (secondFollowedUp !== undefined) {
+    quote.quoteCommunications.secondFollowedUpAt = secondFollowedUp ? (quote.quoteCommunications.secondFollowedUpAt || now) : null;
+  }
+
+  await quote.save();
+
+  cacheService.invalidateAllWorkOrders();
+
+  res.status(200).json({
+    status: 'success',
+    data: { quoteCommunications: quote.quoteCommunications }
   });
 });

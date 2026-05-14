@@ -205,6 +205,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             step="0.01"
             value={formData.cost}
             onChange={(e) => handleCostChange(parseFloat(e.target.value) || 0)}
+            onFocus={(e) => e.target.select()}
             className={inputClass}
           />
         </div>
@@ -227,6 +228,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             step="0.01"
             value={formData.price}
             onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
+            onFocus={(e) => e.target.select()}
             className={inputClass}
           />
         </div>
@@ -276,6 +278,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             min="0"
             value={formData.reorderPoint}
             onChange={(e) => updateField('reorderPoint', parseInt(e.target.value) || 0)}
+            onFocus={(e) => e.target.select()}
             className={inputClass}
           />
         </div>
@@ -294,6 +297,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             min="1"
             value={formData.unitsPerPurchase}
             onChange={(e) => handleUnitsPerPurchaseChange(e.target.value)}
+            onFocus={(e) => e.target.select()}
             className={inputClass}
           />
         </div>
@@ -328,6 +332,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
             min="0"
             value={formData.quantityOnHand}
             onChange={(e) => updateField('quantityOnHand', parseInt(e.target.value) || 0)}
+            onFocus={(e) => e.target.select()}
             className={inputClass}
           />
           {formData.unitsPerPurchase > 1 && formData.quantityOnHand > 0 && (

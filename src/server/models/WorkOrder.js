@@ -362,9 +362,15 @@ const WorkOrderSchema = new Schema(
         'On Hold',
         'No-Show',
         'Cancelled',
-        'Quote - Archived'
+        'Quote - Archived',
+        'Quote - Declined'
       ],
       default: 'Work Order Created'
+    },
+    quoteCommunications: {
+      sentAt: { type: Date, default: null },
+      followedUpAt: { type: Date, default: null },
+      secondFollowedUpAt: { type: Date, default: null }
     },
     statusChangedAt: {
       type: Date,

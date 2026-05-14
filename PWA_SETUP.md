@@ -48,12 +48,12 @@ Phoenix CRM has been successfully converted into a fully functional Progressive 
    npm run build
    ```
 
-2. Serve the build (currently running on port 3001):
+2. Serve the build (currently running on port 3003):
    ```bash
-   cd src/client && npx serve -s build -p 3001
+   cd src/client && npx serve -s build -p 3003
    ```
 
-3. Visit `http://localhost:3001` in Chrome/Edge
+3. Visit `http://localhost:3003` in Chrome/Edge
 
 ### PWA Features to Test
 

@@ -414,7 +414,26 @@ const QuoteDetail = () => {
           <span><i className="fas fa-archive mr-2"></i>This quote has been archived.</span>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleUnarchiveQuote}>
-              <i className="fas fa-undo mr-1"></i>Unarchive
+              <i className="fas fa-undo mr-1"></i>Restore
+            </Button>
+            <Button to="/quotes" variant="light" size="sm">
+              Back to Quotes
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If the quote has been declined, show a notice with restore option
+  if (quote.status === 'Quote - Declined') {
+    return (
+      <div className="container mx-auto">
+        <div className="bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded flex items-center justify-between">
+          <span><i className="fas fa-ban mr-2"></i>This quote was declined by the customer.</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleUnarchiveQuote}>
+              <i className="fas fa-undo mr-1"></i>Restore
             </Button>
             <Button to="/quotes" variant="light" size="sm">
               Back to Quotes
@@ -426,7 +445,7 @@ const QuoteDetail = () => {
   }
 
   // If the quote has been converted to a work order, show a notice
-  if (quote.status !== 'Quote' && quote.status !== 'Quote - Archived') {
+  if (quote.status !== 'Quote' && quote.status !== 'Quote - Archived' && quote.status !== 'Quote - Declined') {
     return (
       <div className="container mx-auto">
         <div className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded flex items-center justify-between">

@@ -179,6 +179,49 @@ exports.getExpandedBlocks = catchAsync(async (req, res, next) => {
   res.status(200).json(responseData);
 });
 
+// Check for scheduling conflicts a proposed/edited block would cause
+exports.checkConflicts = catchAsync(async (req, res, next) => {
+  const {
+    technician,
+    blockType,
+    weeklySchedule,
+    effectiveFrom,
+    effectiveUntil,
+    oneTimeDate,
+    oneTimeStartTime,
+    oneTimeEndTime,
+    excludeBlockId
+  } = req.body;
+
+  if (!technician) {
+    return next(new AppError('Technician is required to check conflicts', 400));
+  }
+
+  const result = await ScheduleBlock.checkConflicts({
+    technician,
+    blockType: blockType || 'recurring',
+    weeklySchedule,
+    effectiveFrom,
+    effectiveUntil,
+    oneTimeDate,
+    oneTimeStartTime,
+    oneTimeEndTime,
+    excludeBlockId
+  });
+
+  const total = result.appointmentConflicts.length + result.scheduleBlockConflicts.length;
+
+  res.status(200).json({
+    status: 'success',
+    results: total,
+    data: {
+      hasConflicts: total > 0,
+      appointmentConflicts: result.appointmentConflicts,
+      scheduleBlockConflicts: result.scheduleBlockConflicts
+    }
+  });
+});
+
 // Add an exception to a schedule block
 exports.addException = catchAsync(async (req, res, next) => {
   const { date, action, startTime, endTime } = req.body;

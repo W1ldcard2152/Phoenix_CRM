@@ -6,6 +6,28 @@ const AppError = require('../utils/appError');
 const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
 const cacheService = require('../services/cacheService');
 
+/**
+ * Normalize an inbound mileageHistory array: convert date strings (e.g. "2026-05-02")
+ * to business-timezone midnight Date objects so they don't drift to UTC midnight
+ * (which can display as the prior day in negative-offset zones).
+ * Mutates and returns the array; pass the body so we can also sync currentMileage.
+ */
+const normalizeMileageHistory = (body) => {
+  if (!Array.isArray(body.mileageHistory)) return;
+  body.mileageHistory = body.mileageHistory.map(record => ({
+    ...record,
+    date: record.date ? parseLocalDate(record.date) : todayInTz()
+  }));
+  // findByIdAndUpdate skips the model's pre-save hook, so recompute currentMileage here.
+  if (body.mileageHistory.length > 0) {
+    const max = body.mileageHistory.reduce(
+      (hi, r) => (r.mileage > hi ? r.mileage : hi),
+      0
+    );
+    if (max > (body.currentMileage || 0)) body.currentMileage = max;
+  }
+};
+
 // Get all vehicles
 exports.getAllVehicles = catchAsync(async (req, res, next) => {
   // Allow filtering by customer
@@ -81,6 +103,8 @@ exports.getVehicle = catchAsync(async (req, res, next) => {
 // Create a new vehicle
 exports.createVehicle = catchAsync(async (req, res, next) => {
   try {
+    normalizeMileageHistory(req.body);
+
     // Verify that the customer exists
     const customer = await Customer.findById(req.body.customer);
 
@@ -140,6 +164,8 @@ exports.createVehicle = catchAsync(async (req, res, next) => {
 
 // Update a vehicle
 exports.updateVehicle = catchAsync(async (req, res, next) => {
+  normalizeMileageHistory(req.body);
+
   const vehicle = await Vehicle.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
     runValidators: true

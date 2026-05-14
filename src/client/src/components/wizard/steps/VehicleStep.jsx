@@ -206,6 +206,7 @@ const VehicleStep = ({ customer, onVehicleSelect, onError, setLoading, loading }
                       name="vin"
                       value={values.vin}
                       onChange={(e) => {
+                        e.target.value = e.target.value.toUpperCase();
                         handleChange(e);
                         setVinError(null); // Clear error when user types
                       }}

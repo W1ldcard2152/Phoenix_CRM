@@ -147,6 +147,10 @@ const setWorkOrderById = (id, workOrder) => {
 
 const invalidateAllWorkOrders = () => {
   invalidateByPattern('workorder');
+  // Quotes are stored as work orders (status='Quote') under their own cache prefix.
+  // Any work order mutation can change a quote's membership in the quotes list,
+  // so clear both namespaces together to avoid stale quotes-list reads.
+  invalidateByPattern('quotes:');
 };
 
 /**
