@@ -266,7 +266,7 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
   for (const item of confirmedItems) {
     if (item.type === 'skip') continue;
 
-    const { parsedItem, type, existingId } = item;
+    const { parsedItem, type, existingId, mergedFields } = item;
     const baseCost = parseFloat(parsedItem.price) || 0;
     const cost = parseFloat((baseCost + shippingPerItem).toFixed(2));
 
@@ -277,11 +277,38 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
       const previousQty = existing.quantityOnHand;
       const unitsPerPurchase = existing.unitsPerPurchase || 1;
       const newQty = previousQty + (parsedItem.quantity || 1) * unitsPerPurchase;
-      // cost is per purchase unit (per jug); retail price is per sale unit (per quart).
-      const price = parseFloat(((cost / unitsPerPurchase) * multiplier).toFixed(2));
-      const update = { quantityOnHand: newQty, name: parsedItem.name, cost, price };
-      if (parsedItem.vendor) update.vendor = parsedItem.vendor;
-      if (parsedItem.itemNumber) update.partNumber = parsedItem.itemNumber;
+
+      // Resolve cost: merged value wins if provided; else fall back to amortized cost.
+      // If the merged cost equals incoming, recompute price normally; if it equals existing,
+      // keep existing price untouched (don't surprise the user with a sudden markup change).
+      const merged = mergedFields || {};
+      const has = (k) => Object.prototype.hasOwnProperty.call(merged, k);
+
+      let finalCost = cost;
+      let finalPrice;
+      if (has('cost')) {
+        finalCost = Number(merged.cost) || 0;
+        if (Number(merged.cost) === Number(cost)) {
+          finalPrice = parseFloat(((finalCost / unitsPerPurchase) * multiplier).toFixed(2));
+        } else {
+          finalPrice = existing.price;
+        }
+      } else {
+        finalPrice = parseFloat(((cost / unitsPerPurchase) * multiplier).toFixed(2));
+      }
+
+      const update = {
+        quantityOnHand: newQty,
+        name: has('name') ? merged.name : parsedItem.name,
+        cost: finalCost,
+        price: finalPrice
+      };
+      const vendorVal = has('vendor') ? merged.vendor : parsedItem.vendor;
+      if (vendorVal !== undefined && vendorVal !== '') update.vendor = vendorVal;
+      const partNumberVal = has('partNumber') ? merged.partNumber : parsedItem.itemNumber;
+      if (partNumberVal !== undefined && partNumberVal !== '') update.partNumber = partNumberVal;
+      if (has('brand')) update.brand = merged.brand;
+      if (has('notes')) update.notes = merged.notes;
 
       await InventoryItem.findByIdAndUpdate(existingId, {
         $set: update,

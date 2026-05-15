@@ -13,25 +13,34 @@ const TRANSITIONAL_WO_STATUSES = [
 ];
 
 /**
- * Finds today's appointments whose linked work orders are still in a
- * transitional status and moves them to 'Appointment Complete'.
- * Intended to run at close of business (6 PM ET) each day.
+ * Finds appointments whose endTime has already passed and whose linked work
+ * orders are still in a transitional status, and moves them to
+ * 'Appointment Complete'. Intended to run at close of business (6 PM ET) each
+ * day, but also covers anything that ended earlier and was missed.
  *
- * Groups appointments by work order so that each WO is transitioned once
- * and ALL of its appointments for that day are marked Completed.
+ * Uses endTime (not startTime) so multi-day appointments remain active until
+ * their actual end — a Thu 9am → Fri 11am appointment won't be marked
+ * Completed on Thursday evening.
+ *
+ * Groups appointments by work order so that each WO is transitioned once and
+ * all of its now-ended appointments are marked Completed together.
  */
 const runAppointmentCompleteJob = async () => {
   const now = moment.tz(TIMEZONE);
-  const startOfToday = now.clone().startOf('day').utc().toDate();
-  const endOfToday = now.clone().endOf('day').utc().toDate();
+  const nowUtc = now.clone().utc().toDate();
+  // Floor: only sweep up appointments that ended within the last ~1 day.
+  // Keeps the job focused on today's work and avoids retroactively touching
+  // ancient records with funky statuses if the cron hasn't run in a while.
+  const startOfYesterday = now.clone().subtract(1, 'day').startOf('day').utc().toDate();
 
   console.log(`[AppointmentCompleteJob] Running at ${now.format('YYYY-MM-DD HH:mm:ss z')}`);
 
   try {
-    // Find today's appointments that are not cancelled/no-show and have a linked work order
+    // Find appointments that have actually ended (endTime in the past) and
+    // aren't already in a terminal status, with a linked work order.
     const appointments = await Appointment.find({
-      startTime: { $gte: startOfToday, $lte: endOfToday },
-      status: { $nin: ['Cancelled', 'No-Show'] },
+      endTime: { $gte: startOfYesterday, $lte: nowUtc },
+      status: { $nin: ['Cancelled', 'No-Show', 'Completed'] },
       workOrder: { $exists: true, $ne: null }
     });
 

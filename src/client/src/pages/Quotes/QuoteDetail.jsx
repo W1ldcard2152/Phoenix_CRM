@@ -1130,6 +1130,7 @@ const QuoteDetail = () => {
         onClose={() => setReceiptModalOpen(false)}
         entityId={id}
         onSuccess={handleReceiptImportSuccess}
+        existingParts={quote?.parts || []}
       />
 
       {/* Add Part Modal */}

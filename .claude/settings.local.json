@@ -82,7 +82,10 @@
       "Bash(npx --no-install eslint src/pages/WorkOrders/WorkOrderList.jsx src/pages/WorkOrders/WorkOrderForm.jsx)",
       "Bash(npx --no-install eslint src/pages/Documents/DocumentDetail.jsx src/components/invoice/InvoiceDisplay.jsx src/utils/pdfUtils.js)",
       "Bash(npx craco *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(npx --no-install eslint src/client/src/components/common/SearchableDropdown.jsx src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx)",
+      "Bash(npx --no-install eslint src/client/src/components/common/SearchableDropdown.jsx src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx src/server/controllers/workOrderController.js src/server/controllers/inventoryController.js)",
+      "Bash(npx --no-install eslint src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

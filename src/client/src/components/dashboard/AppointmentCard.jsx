@@ -22,7 +22,7 @@ import useDragToReschedule from '../../hooks/useDragToReschedule';
  */
 const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConfig = null, onReschedule = null }) => {
   const [showPopover, setShowPopover] = useState(false);
-  const [popoverPosition, setPopoverPosition] = useState('bottom');
+  const [showApptActions, setShowApptActions] = useState(false);
   const [popoverCoords, setPopoverCoords] = useState({ top: 0, left: 0 });
   const cardRef = useRef(null);
   const popoverRef = useRef(null);
@@ -220,7 +220,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
         ? `${vehicleInfo} (${serviceType})`
         : vehicleInfo;
 
-  // Position popover relative to card, clamped within viewport
+  // Position popover beside the card so vertical neighbors stay clickable
+  // and there's no dead zone between card and popover.
   useEffect(() => {
     if (!showPopover || !cardRef.current) return;
 
@@ -228,50 +229,72 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
       const cardRect = cardRef.current.getBoundingClientRect();
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
-      const cardMiddle = cardRect.top + (cardRect.height / 2);
+      const cardCenterX = cardRect.left + (cardRect.width / 2);
       const popoverWidth = 320; // w-80 = 20rem = 320px
-      const margin = 8;
+      const edgeBuffer = 8; // keep this much room from viewport edges
+      // Respect the sticky page header so the popover can't tuck under it.
+      const headerEl = document.querySelector('header');
+      const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 0;
+      const topBound = Math.max(edgeBuffer, headerBottom + edgeBuffer);
 
-      let top;
-      let position;
+      // Prefer the side opposite the card's half of the viewport;
+      // flip if the preferred side doesn't have room and the other side does.
+      const roomRight = viewportWidth - cardRect.right;
+      const roomLeft = cardRect.left;
+      const preferRight = cardCenterX < viewportWidth / 2;
 
-      // Open upward if in bottom half of screen, downward if in top half
-      if (cardMiddle > viewportHeight / 2) {
-        position = 'top';
-        top = cardRect.top - margin;
+      let side;
+      if (preferRight) {
+        side = roomRight >= popoverWidth || roomRight >= roomLeft ? 'right' : 'left';
       } else {
-        position = 'bottom';
-        top = cardRect.bottom + margin;
+        side = roomLeft >= popoverWidth || roomLeft >= roomRight ? 'left' : 'right';
       }
 
-      // Clamp left so popover doesn't overflow right edge
-      let left = cardRect.left;
-      if (left + popoverWidth > viewportWidth - margin) {
-        left = viewportWidth - popoverWidth - margin;
+      // Flush against the card's edge (no gap), so the cursor can travel
+      // straight from card to popover without crossing any neighbor's hit-area.
+      let left;
+      if (side === 'right') {
+        left = cardRect.right;
+        if (left + popoverWidth > viewportWidth - edgeBuffer) {
+          left = Math.max(edgeBuffer, viewportWidth - popoverWidth - edgeBuffer);
+        }
+      } else {
+        left = cardRect.left - popoverWidth;
+        if (left < edgeBuffer) left = edgeBuffer;
       }
-      if (left < margin) left = margin;
 
-      setPopoverPosition(position);
+      // Vertically align with the card's top edge so the popover never
+      // overlaps the card or its vertical neighbors. Clamp to topBound so
+      // the popover doesn't slip behind the sticky header.
+      const top = Math.max(topBound, cardRect.top);
+
       setPopoverCoords({ top, left });
 
-      // After a frame, check actual popover size and clamp vertically
+      // After a frame, check actual popover height and clamp vertically.
       requestAnimationFrame(() => {
         if (!popoverRef.current) return;
         const popoverRect = popoverRef.current.getBoundingClientRect();
 
-        if (position === 'top' && popoverRect.top < margin) {
-          // Popover overflows top — push it down
-          setPopoverCoords(prev => ({ ...prev, top: prev.top + (margin - popoverRect.top) }));
-          setPopoverPosition('bottom');
-        } else if (position === 'bottom' && popoverRect.bottom > viewportHeight - margin) {
-          // Popover overflows bottom — push it up
-          setPopoverCoords(prev => ({ ...prev, top: prev.top - (popoverRect.bottom - viewportHeight + margin) }));
+        let adjustedTop = top;
+        if (popoverRect.bottom > viewportHeight - edgeBuffer) {
+          adjustedTop = Math.max(topBound, viewportHeight - popoverRect.height - edgeBuffer);
+        } else if (popoverRect.top < topBound) {
+          adjustedTop = topBound;
+        }
+
+        if (adjustedTop !== top) {
+          setPopoverCoords(prev => ({ ...prev, top: adjustedTop }));
         }
       });
     };
 
     positionPopover();
   }, [showPopover, appointment._id]);
+
+  // Reset the View/Edit choice each time the popover closes
+  useEffect(() => {
+    if (!showPopover) setShowApptActions(false);
+  }, [showPopover]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -328,11 +351,8 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
           ref={popoverRef}
           className="fixed w-80 bg-white border-2 border-gray-400 rounded-lg shadow-2xl p-4"
           style={{
-            top: popoverPosition === 'top'
-              ? `${popoverCoords.top}px`
-              : `${popoverCoords.top}px`,
+            top: `${popoverCoords.top}px`,
             left: `${popoverCoords.left}px`,
-            transform: popoverPosition === 'top' ? 'translateY(-100%)' : 'none',
             zIndex: 2147483647,
             pointerEvents: 'auto'
           }}
@@ -374,11 +394,30 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
             </>
           ) : isScheduleBlock ? (
             <>
-              {/* Full Schedule Block Popover (Admin/Management) */}
+              {/* Action Row - top of popover */}
+              <div className="flex gap-2 mb-3 pb-3 border-b border-gray-200">
+                <Link
+                  to={`/schedule-blocks/${appointment.scheduleBlockId}/edit${fromQuery ? `?${fromQuery}` : ''}`}
+                  className="flex-1 text-center bg-indigo-600 text-white px-2 py-1.5 rounded text-xs font-medium hover:bg-indigo-700 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Edit Task
+                </Link>
+              </div>
+
+              {/* Task Title */}
               <div className="mb-3">
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Task</div>
                 <div className="text-base font-semibold text-gray-900">{appointment.title}</div>
               </div>
+
+              {/* Notes - shown high so list/process is immediately visible */}
+              {displayAppointment.notes && (
+                <div className="mb-3">
+                  <div className="text-xs font-bold text-gray-500 uppercase mb-1">Notes</div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{displayAppointment.notes}</div>
+                </div>
+              )}
 
               {/* Category */}
               <div className="mb-3">
@@ -391,80 +430,114 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
               {/* Time Info */}
               <div className="mb-3">
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
-                <div className="text-base text-gray-900">
-                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
-                </div>
                 <div className="text-sm text-gray-700">
+                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
+                  {' · '}
                   {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
                 </div>
               </div>
 
               {/* Technician Info */}
-              <div className="mb-3">
+              <div>
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
-                <div className="text-base text-gray-900">
+                <div className="text-sm text-gray-900">
                   {appointment.technician?.name || 'Unassigned'}
                 </div>
-              </div>
-
-              {/* Action Links */}
-              <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
-                <Link
-                  to={`/schedule-blocks/${appointment.scheduleBlockId}/edit${fromQuery ? `?${fromQuery}` : ''}`}
-                  className="flex-1 text-center bg-indigo-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-indigo-700 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Edit Task
-                </Link>
               </div>
             </>
           ) : (
             <>
               {/* Appointment Popover */}
-              {/* Customer Info */}
+              {/* Action Row - top of popover, one line */}
+              <div className="flex gap-2 mb-3 pb-3 border-b border-gray-200">
+                {showApptActions ? (
+                  <>
+                    <Link
+                      to={`/appointments/${appointment._id}`}
+                      className="flex-1 text-center bg-blue-600 text-white px-2 py-1.5 rounded text-xs font-medium hover:bg-blue-700 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View
+                    </Link>
+                    <Link
+                      to={workOrderStatus === 'Appointment Complete'
+                        ? `/appointments/${appointment._id}/edit?reschedule=true${fromQuery ? `&${fromQuery}` : ''}`
+                        : `/appointments/${appointment._id}/edit${fromQuery ? `?${fromQuery}` : ''}`}
+                      className={`flex-1 text-center text-white px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                        workOrderStatus === 'Appointment Complete'
+                          ? 'bg-yellow-500 hover:bg-yellow-600'
+                          : 'bg-gray-500 hover:bg-gray-600'
+                      }`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {workOrderStatus === 'Appointment Complete' ? 'Reschedule' : 'Edit'}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setShowApptActions(false); }}
+                      className="px-2 py-1.5 rounded text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                      aria-label="Back"
+                    >
+                      ←
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setShowApptActions(true); }}
+                      className="flex-1 flex flex-col items-center justify-center bg-blue-600 text-white px-2 py-1.5 rounded text-xs font-medium hover:bg-blue-700 transition-colors leading-tight"
+                    >
+                      <div>View/Edit</div>
+                      <div>Appointment</div>
+                    </button>
+                    {appointment.workOrder && (
+                      <Link
+                        to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : (appointment.workOrder._id || appointment.workOrder)}`}
+                        className="flex-1 flex flex-col items-center justify-center text-center bg-green-600 text-white px-2 py-1.5 rounded text-xs font-medium hover:bg-green-700 transition-colors leading-tight"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div>View</div>
+                        <div>Work Order</div>
+                      </Link>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Customer / Vehicle */}
               <div className="mb-3">
-                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Customer</div>
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Customer / Vehicle</div>
                 <div className="text-base font-semibold text-gray-900">
                   {appointment.customer?.name}
                 </div>
                 {appointment.customer?.phone && (
-                  <div className="text-sm text-gray-600">{appointment.customer.phone}</div>
+                  <div className="text-xs text-gray-600">{appointment.customer.phone}</div>
                 )}
-              </div>
-
-              {/* Vehicle Info */}
-              <div className="mb-3">
-                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Vehicle</div>
-                <div className="text-base text-gray-900">{vehicleInfo}</div>
+                <div className="text-sm text-gray-700 mt-0.5">{vehicleInfo}</div>
                 {appointment.vehicle?.vin && (
                   <div className="text-xs text-gray-500">VIN: {appointment.vehicle.vin}</div>
                 )}
               </div>
 
-              {/* Service Info */}
+              {/* Service & Time */}
               <div className="mb-3">
-                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service</div>
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Service & Time</div>
                 <div className="text-base text-gray-900">{serviceType || 'Not specified'}</div>
                 {details && (
                   <div className="text-sm text-gray-700 mt-0.5">{details}</div>
                 )}
-              </div>
-
-              {/* Time Info */}
-              <div className="mb-3">
-                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Time</div>
-                <div className="text-base text-gray-900">
+                <div className="text-sm text-gray-700 mt-1">
                   {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
-                </div>
-                <div className="text-sm text-gray-700">
+                  {' · '}
                   {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
                 </div>
               </div>
 
-              {/* Technician Info */}
+              {/* Technician */}
               <div className="mb-3">
                 <div className="text-xs font-bold text-gray-500 uppercase mb-1">Technician</div>
-                <div className="text-base text-gray-900">
+                <div className="text-sm text-gray-900">
                   {appointment.technician?.name || 'Unassigned'}
                 </div>
               </div>
@@ -479,51 +552,9 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
 
               {/* Notes */}
               {appointment.notes && (
-                <div className="mb-3">
+                <div>
                   <div className="text-xs font-bold text-gray-500 uppercase mb-1">Notes</div>
-                  <div className="text-sm text-gray-700">{appointment.notes}</div>
-                </div>
-              )}
-
-              {/* Action Links */}
-              <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200">
-                <Link
-                  to={`/appointments/${appointment._id}`}
-                  className="flex-1 text-center bg-blue-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  View Appointment
-                </Link>
-                {appointment.workOrder && (
-                  <Link
-                    to={`/work-orders/${typeof appointment.workOrder === 'string' ? appointment.workOrder : (appointment.workOrder._id || appointment.workOrder)}`}
-                    className="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    View Work Order
-                  </Link>
-                )}
-              </div>
-              {/* Edit/Reschedule button */}
-              {workOrderStatus === 'Appointment Complete' ? (
-                <div className="pt-2">
-                  <Link
-                    to={`/appointments/${appointment._id}/edit?reschedule=true${fromQuery ? `&${fromQuery}` : ''}`}
-                    className="block w-full text-center bg-yellow-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-yellow-600 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Reschedule Appointment
-                  </Link>
-                </div>
-              ) : (
-                <div className="pt-2">
-                  <Link
-                    to={`/appointments/${appointment._id}/edit${fromQuery ? `?${fromQuery}` : ''}`}
-                    className="block w-full text-center bg-gray-500 text-white px-3 py-2 rounded text-sm font-medium hover:bg-gray-600 transition-colors"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Edit Appointment
-                  </Link>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">{appointment.notes}</div>
                 </div>
               )}
             </>

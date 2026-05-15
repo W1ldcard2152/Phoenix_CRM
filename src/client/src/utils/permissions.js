@@ -126,6 +126,7 @@ export const applyScheduleBlockVisibility = (block, user) => {
     ...block,
     title: 'Unavailable',
     category: null,
+    notes: null,
     status: 'Unavailable',
     _isRedacted: true,
   };

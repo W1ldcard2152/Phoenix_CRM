@@ -53,7 +53,7 @@ exports.getScheduleBlock = catchAsync(async (req, res, next) => {
 
 // Create a schedule block
 exports.createScheduleBlock = catchAsync(async (req, res, next) => {
-  const { technician, title, category, blockType, weeklySchedule, effectiveFrom, effectiveUntil, oneTimeDate, oneTimeStartTime, oneTimeEndTime, color } = req.body;
+  const { technician, title, category, notes, blockType, weeklySchedule, effectiveFrom, effectiveUntil, oneTimeDate, oneTimeStartTime, oneTimeEndTime, color } = req.body;
 
   // Validate technician exists
   const techExists = await Technician.findById(technician);
@@ -65,6 +65,7 @@ exports.createScheduleBlock = catchAsync(async (req, res, next) => {
     technician,
     title,
     category,
+    notes,
     blockType: blockType || 'recurring',
     color,
     createdBy: req.user._id

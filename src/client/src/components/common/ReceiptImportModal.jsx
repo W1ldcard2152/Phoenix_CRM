@@ -1,13 +1,51 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Button from './Button';
+import SearchableDropdown from './SearchableDropdown';
 import API from '../../services/api';
+import InventoryService from '../../services/inventoryService';
 import { formatCurrency } from '../../utils/formatters';
 
-const STEPS = { UPLOAD: 'upload', TYPE: 'type', REVIEW: 'review', DUPLICATES: 'duplicates' };
+const STEPS = { UPLOAD: 'upload', TYPE: 'type', REVIEW: 'review', MERGE: 'merge' };
 
-const SOURCE_LABELS = { wo: 'In this WO', inv: 'Shop Inventory' };
+// Fields shown in the side-by-side merge UI for a WO match.
+// Each entry: { key: incomingKey, existingKey, label, type }
+const WO_MERGE_FIELDS = [
+  { key: 'name',        existingKey: 'name',        label: 'Name' },
+  { key: 'partNumber',  existingKey: 'partNumber',  label: 'Part #' },
+  { key: 'vendor',      existingKey: 'vendor',      label: 'Vendor' },
+  { key: 'supplier',    existingKey: 'supplier',    label: 'Supplier' },
+  { key: 'price',       existingKey: 'cost',        label: 'Cost',     type: 'currency', inputType: 'number' },
+  { key: 'notes',       existingKey: 'notes',       label: 'Notes' },
+];
 
-const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30 }) => {
+const INV_MERGE_FIELDS = [
+  { key: 'name',        existingKey: 'name',        label: 'Name' },
+  { key: 'partNumber',  existingKey: 'partNumber',  label: 'Part #' },
+  { key: 'brand',       existingKey: 'brand',       label: 'Brand' },
+  { key: 'vendor',      existingKey: 'vendor',      label: 'Vendor' },
+  { key: 'price',       existingKey: 'cost',        label: 'Cost',     type: 'currency', inputType: 'number' },
+  { key: 'notes',       existingKey: 'notes',       label: 'Notes' },
+];
+
+const parseFieldValue = (raw, type) => {
+  if (type === 'currency') {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return raw ?? '';
+};
+
+const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+const formatVal = (v, type) => {
+  if (isBlank(v)) return <span className="text-gray-400 italic">empty</span>;
+  if (type === 'currency') {
+    const n = Number(v);
+    return Number.isFinite(n) ? formatCurrency(n) : String(v);
+  }
+  return String(v);
+};
+
+const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30, existingParts = [] }) => {
   const [step, setStep] = useState(STEPS.UPLOAD);
 
   // Upload state
@@ -22,15 +60,25 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   // Review state
   const [extractedParts, setExtractedParts] = useState(null);
   const [shippingTotal, setShippingTotal] = useState(0);
-  const [duplicates, setDuplicates] = useState([]);
+  const [aiDuplicates, setAiDuplicates] = useState([]);
   const [mediaId, setMediaId] = useState(null);
   const [mediaS3Key, setMediaS3Key] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [catalogActions, setCatalogActions] = useState({});
+  const [catalogActions, setCatalogActions] = useState({}); // { [parsedIndex]: 'inventory' | null }
   const [confirming, setConfirming] = useState(false);
 
-  // Duplicate resolution state: { [`${parsedIndex}:${source}`]: 'same' | 'different' }
-  const [dupResolutions, setDupResolutions] = useState({});
+  // Manual match overrides — null means "no match (add new)"; undefined means "use AI default"
+  const [woMatchOverrides, setWoMatchOverrides] = useState({});  // { [parsedIndex]: woPartId | null }
+  const [invMatchOverrides, setInvMatchOverrides] = useState({}); // { [parsedIndex]: inventoryItemId | null }
+
+  // Inventory items loaded for searchable dropdown + side-by-side comparison
+  const [inventoryItems, setInventoryItems] = useState([]);
+
+  // Per-field merge selections: { [`${parsedIndex}:${source}`]: { [fieldKey]: 'incoming' | 'existing' | 'custom' } }
+  const [mergeSelections, setMergeSelections] = useState({});
+
+  // Per-field custom-value overrides: { [`${parsedIndex}:${source}`]: { [fieldKey]: rawValue } }
+  const [customValues, setCustomValues] = useState({});
 
   const resetAll = () => {
     setStep(STEPS.UPLOAD);
@@ -41,19 +89,39 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     setIsOrder(null);
     setExtractedParts(null);
     setShippingTotal(0);
-    setDuplicates([]);
+    setAiDuplicates([]);
     setMediaId(null);
     setMediaS3Key(null);
     setSelected([]);
     setCatalogActions({});
     setConfirming(false);
-    setDupResolutions({});
+    setWoMatchOverrides({});
+    setInvMatchOverrides({});
+    setMergeSelections({});
+    setCustomValues({});
   };
 
   const handleClose = () => {
     resetAll();
     onClose();
   };
+
+  // Load inventory items once when modal opens (used by both inventory match dropdown and merge UI)
+  useEffect(() => {
+    if (!isOpen || inventoryItems.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await InventoryService.getAllItems({ limit: 5000, isActive: true });
+        const items = resp?.data?.items || resp?.data || [];
+        if (!cancelled) setInventoryItems(Array.isArray(items) ? items : []);
+      } catch (e) {
+        // Non-fatal — manual override and merge will still work for WO matches
+        console.error('Failed to load inventory items for receipt import modal:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, inventoryItems.length]);
 
   const handleNext = () => {
     if (!receiptFile && !receiptText.trim()) {
@@ -84,7 +152,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
 
       setExtractedParts(parts);
       setShippingTotal(shipping);
-      setDuplicates(dupes || []);
+      setAiDuplicates(dupes || []);
       setMediaId(mid);
       setMediaS3Key(mkey);
       setSelected(parts.map((_, i) => i));
@@ -98,18 +166,42 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     }
   };
 
-  // Compute which duplicates are relevant given current selections + catalog actions
-  const getRelevantDuplicates = () => {
-    if (!duplicates.length || !extractedParts) return [];
-    return duplicates.filter(dup => {
-      if (!selected.includes(dup.parsedIndex)) return false;
-      if (dup.source === 'wo') return true;
-      if (dup.source === 'inv') return catalogActions[dup.parsedIndex] === 'inventory';
-      return false;
-    });
+  // Resolve effective WO match for a parsedIndex — user override, falling back to AI guess
+  const getWoMatchId = (parsedIndex) => {
+    const override = woMatchOverrides[parsedIndex];
+    if (override !== undefined) return override; // null is a valid explicit "no match"
+    const ai = aiDuplicates.find(d => d.parsedIndex === parsedIndex && d.source === 'wo');
+    return ai ? ai.rawId : null;
   };
 
-  // Move from REVIEW to DUPLICATES (or straight to confirm if no relevant dupes)
+  const getInvMatchId = (parsedIndex) => {
+    const override = invMatchOverrides[parsedIndex];
+    if (override !== undefined) return override;
+    const ai = aiDuplicates.find(d => d.parsedIndex === parsedIndex && d.source === 'inv');
+    return ai ? ai.rawId : null;
+  };
+
+  // Build the list of matches that need the merge UI (selected rows with a resolved match)
+  const getActiveMatches = () => {
+    if (!extractedParts) return [];
+    const matches = [];
+    selected.forEach(parsedIndex => {
+      const woMatch = getWoMatchId(parsedIndex);
+      if (woMatch) {
+        const existing = existingParts.find(p => String(p._id) === String(woMatch));
+        if (existing) matches.push({ parsedIndex, source: 'wo', existingId: woMatch, existing });
+      }
+      if (catalogActions[parsedIndex] === 'inventory') {
+        const invMatch = getInvMatchId(parsedIndex);
+        if (invMatch) {
+          const existing = inventoryItems.find(i => String(i._id) === String(invMatch));
+          if (existing) matches.push({ parsedIndex, source: 'inv', existingId: invMatch, existing });
+        }
+      }
+    });
+    return matches;
+  };
+
   const handleReviewSubmit = () => {
     if (selected.length === 0) {
       setError('Please select at least one part');
@@ -117,23 +209,30 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     }
     setError(null);
 
-    const relevant = getRelevantDuplicates();
-    if (relevant.length === 0) {
+    const matches = getActiveMatches();
+    if (matches.length === 0) {
       handleConfirm({});
       return;
     }
 
-    // Initialize all relevant duplicates as 'same' by default
-    const initRes = {};
-    relevant.forEach(dup => {
-      initRes[`${dup.parsedIndex}:${dup.source}`] = 'same';
+    // Initialize merge selections — incoming if non-empty, else existing
+    const initSel = {};
+    matches.forEach(m => {
+      const fields = m.source === 'wo' ? WO_MERGE_FIELDS : INV_MERGE_FIELDS;
+      const part = extractedParts[m.parsedIndex];
+      const rowSel = {};
+      fields.forEach(f => {
+        const incomingVal = part?.[f.key];
+        rowSel[f.key] = !isBlank(incomingVal) ? 'incoming' : 'existing';
+      });
+      initSel[`${m.parsedIndex}:${m.source}`] = rowSel;
     });
-    setDupResolutions(initRes);
-    setStep(STEPS.DUPLICATES);
+    setMergeSelections(initSel);
+    setStep(STEPS.MERGE);
   };
 
-  const handleConfirm = async (resolutionsOverride) => {
-    const resolutions = resolutionsOverride !== undefined ? resolutionsOverride : dupResolutions;
+  const handleConfirm = async (mergeSelectionsOverride) => {
+    const sel = mergeSelectionsOverride !== undefined ? mergeSelectionsOverride : mergeSelections;
 
     try {
       setConfirming(true);
@@ -146,28 +245,67 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
         if (catalogActions[origIndex]) mappedCatalogActions[newIndex] = catalogActions[origIndex];
       });
 
-      // Build duplicateResolutions payload from per-duplicate decisions
-      const duplicateResolutionsPayload = {};
-      if (duplicates.length > 0) {
-        duplicates.forEach(dup => {
-          const key = `${dup.parsedIndex}:${dup.source}`;
-          const decision = resolutions[key] ?? 'same';
+      // Resolve a single field's merged value given the user's choice
+      const resolveField = (f, choice, part, existing, customRowVals) => {
+        if (choice === 'custom') {
+          const raw = customRowVals?.[f.key];
+          return parseFieldValue(raw, f.type);
+        }
+        if (choice === 'existing') return existing?.[f.existingKey];
+        return part?.[f.key]; // 'incoming' (default)
+      };
 
-          // Map from selected-parts index to original index for payload
-          const selectedIdx = selected.indexOf(dup.parsedIndex);
-          if (selectedIdx === -1) return;
+      // Build duplicateResolutions payload from per-row overrides + per-field merge selections
+      const duplicateResolutions = {};
+      selected.forEach((origIndex, newIndex) => {
+        const row = {};
 
-          if (!duplicateResolutionsPayload[selectedIdx]) duplicateResolutionsPayload[selectedIdx] = {};
-
-          if (dup.source === 'wo') {
-            duplicateResolutionsPayload[selectedIdx].woAction = decision === 'same' ? 'overwrite' : 'add_new';
-            if (decision === 'same') duplicateResolutionsPayload[selectedIdx].woMatchId = dup.rawId;
-          } else if (dup.source === 'inv') {
-            duplicateResolutionsPayload[selectedIdx].inventoryAction = decision === 'same' ? 'add_to_existing' : 'add_new';
-            if (decision === 'same') duplicateResolutionsPayload[selectedIdx].inventoryMatchId = dup.rawId;
+        // WO match
+        const woMatchId = getWoMatchId(origIndex);
+        if (woMatchId) {
+          row.woAction = 'overwrite';
+          row.woMatchId = woMatchId;
+          const existing = existingParts.find(p => String(p._id) === String(woMatchId));
+          if (existing) {
+            const part = extractedParts[origIndex];
+            const rowSel = sel[`${origIndex}:wo`] || {};
+            const customRowVals = customValues[`${origIndex}:wo`] || {};
+            const merged = {};
+            WO_MERGE_FIELDS.forEach(f => {
+              const choice = rowSel[f.key] || 'incoming';
+              merged[f.existingKey] = resolveField(f, choice, part, existing, customRowVals);
+            });
+            row.woMergedFields = merged;
           }
-        });
-      }
+        } else {
+          row.woAction = 'add_new';
+        }
+
+        // Inventory match (only when "+ Shop Inventory" was selected)
+        if (catalogActions[origIndex] === 'inventory') {
+          const invMatchId = getInvMatchId(origIndex);
+          if (invMatchId) {
+            row.inventoryAction = 'add_to_existing';
+            row.inventoryMatchId = invMatchId;
+            const existing = inventoryItems.find(i => String(i._id) === String(invMatchId));
+            if (existing) {
+              const part = extractedParts[origIndex];
+              const rowSel = sel[`${origIndex}:inv`] || {};
+              const customRowVals = customValues[`${origIndex}:inv`] || {};
+              const merged = {};
+              INV_MERGE_FIELDS.forEach(f => {
+                const choice = rowSel[f.key] || 'incoming';
+                merged[f.existingKey] = resolveField(f, choice, part, existing, customRowVals);
+              });
+              row.inventoryMergedFields = merged;
+            }
+          } else {
+            row.inventoryAction = 'add_new';
+          }
+        }
+
+        if (Object.keys(row).length > 0) duplicateResolutions[newIndex] = row;
+      });
 
       const response = await API.post(
         `/workorders/${entityId}/confirm-receipt-parts`,
@@ -179,7 +317,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           mediaId,
           mediaS3Key,
           catalogActions: mappedCatalogActions,
-          duplicateResolutions: duplicateResolutionsPayload
+          duplicateResolutions
         },
         { timeout: 30000 }
       );
@@ -214,82 +352,143 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   const totalAllUnits = (extractedParts || []).reduce((sum, p) => sum + (p.quantity || 1), 0);
   const shippingPerItem = totalAllUnits > 0 ? shippingTotal / totalAllUnits : 0;
 
+  // Options for inventory match dropdown
+  const invOptions = useMemo(() => inventoryItems.map(i => ({
+    value: String(i._id),
+    label: i.name,
+    sublabel: [i.brand, i.partNumber, `QOH ${i.quantityOnHand ?? 0}`].filter(Boolean).join(' · '),
+    keywords: [i.partNumber, i.brand, i.vendor].filter(Boolean).join(' '),
+  })), [inventoryItems]);
+
   if (!isOpen) return null;
 
-  // ──── Step 4: Duplicate resolution ────
-  if (step === STEPS.DUPLICATES && extractedParts) {
-    const relevantDuplicates = getRelevantDuplicates();
+  // ──── Step 4: Field-by-field merge ────
+  if (step === STEPS.MERGE && extractedParts) {
+    const matches = getActiveMatches();
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-          <h3 className="text-lg font-bold text-gray-900 mb-1">Confirm Matches</h3>
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-[95vw] md:w-[calc((100vw-16rem)*0.95)] min-h-[70vh] max-h-[90vh] overflow-y-auto">
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Merge Matched Parts</h3>
           <p className="text-sm text-gray-600 mb-4">
-            AI found potential duplicates. Confirm whether these are the same item.
+            For each match, pick the better value per field — or type your own in the Custom column. Defaults favor incoming when non-empty, otherwise existing.
           </p>
 
-          <div className="overflow-x-auto border rounded-md">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Receipt Item</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Found In</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Matched Item</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Decision</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {relevantDuplicates.map((dup, rowIdx) => {
-                  const key = `${dup.parsedIndex}:${dup.source}`;
-                  const decision = dupResolutions[key] ?? 'same';
-                  const part = extractedParts[dup.parsedIndex];
+          <div className="space-y-4">
+            {matches.map(m => {
+              const part = extractedParts[m.parsedIndex];
+              const fields = m.source === 'wo' ? WO_MERGE_FIELDS : INV_MERGE_FIELDS;
+              const sourceLabel = m.source === 'wo' ? 'In this WO' : 'Shop Inventory';
+              const sourceColor = m.source === 'wo' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700';
+              const rowSel = mergeSelections[`${m.parsedIndex}:${m.source}`] || {};
 
-                  const sameLabel = dup.source === 'wo' ? 'Overwrite' : 'Add to Stock';
-                  const diffLabel = 'Add as New';
+              return (
+                <div key={`${m.parsedIndex}:${m.source}`} className="border rounded-md overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
+                    <div>
+                      <div className="font-semibold text-gray-900">{part?.name}</div>
+                      <div className="text-xs text-gray-500">
+                        Matching against: <span className="font-medium text-gray-700">{m.existing?.name}</span>
+                      </div>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sourceColor}`}>
+                      {sourceLabel}
+                    </span>
+                  </div>
 
-                  return (
-                    <tr key={rowIdx} className="bg-white hover:bg-gray-50">
-                      <td className="px-3 py-2.5 font-medium text-gray-900">{part?.name}</td>
-                      <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          dup.source === 'wo' ? 'bg-orange-100 text-orange-700' :
-                          'bg-teal-100 text-teal-700'
-                        }`}>
-                          {SOURCE_LABELS[dup.source] || dup.source}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-800">{dup.existingName}</td>
-                      <td className="px-3 py-2.5 text-gray-500 text-xs">{dup.reason}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-                          <button
-                            onClick={() => setDupResolutions(prev => ({ ...prev, [key]: 'same' }))}
-                            className={`px-2.5 py-1.5 font-medium transition-colors ${
-                              decision === 'same'
-                                ? 'bg-green-600 text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            {sameLabel}
-                          </button>
-                          <button
-                            onClick={() => setDupResolutions(prev => ({ ...prev, [key]: 'different' }))}
-                            className={`px-2.5 py-1.5 font-medium border-l border-gray-300 transition-colors ${
-                              decision === 'different'
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-white text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            {diffLabel}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  <table className="w-full text-sm table-fixed">
+                    <thead className="bg-gray-50 border-b text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left w-24">Field</th>
+                        <th className="px-3 py-1.5 text-left">Existing</th>
+                        <th className="px-3 py-1.5 text-left">From receipt</th>
+                        <th className="px-3 py-1.5 text-left">Custom</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {fields.map(f => {
+                        const rowKey = `${m.parsedIndex}:${m.source}`;
+                        const existingVal = m.existing?.[f.existingKey];
+                        const incomingVal = part?.[f.key];
+                        const choice = rowSel[f.key] || 'incoming';
+                        const customVal = (customValues[rowKey] || {})[f.key] ?? '';
+                        const setChoice = (c) => setMergeSelections(prev => ({
+                          ...prev,
+                          [rowKey]: { ...(prev[rowKey] || {}), [f.key]: c }
+                        }));
+                        const setCustomVal = (v) => {
+                          setCustomValues(prev => ({
+                            ...prev,
+                            [rowKey]: { ...(prev[rowKey] || {}), [f.key]: v }
+                          }));
+                          setChoice('custom');
+                        };
+
+                        const cellCls = (active) => `px-3 py-2 cursor-pointer ${active ? 'bg-primary-50 border-l-4 border-primary-500' : 'hover:bg-gray-50 border-l-4 border-transparent'}`;
+
+                        return (
+                          <tr key={f.key}>
+                            <td className="px-3 py-2 font-medium text-gray-700 align-top">{f.label}</td>
+                            <td onClick={() => setChoice('existing')} className={cellCls(choice === 'existing')}>
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  className="mt-1"
+                                  checked={choice === 'existing'}
+                                  onChange={() => setChoice('existing')}
+                                />
+                                <span className="text-gray-800 break-words">{formatVal(existingVal, f.type)}</span>
+                              </label>
+                            </td>
+                            <td onClick={() => setChoice('incoming')} className={cellCls(choice === 'incoming')}>
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  className="mt-1"
+                                  checked={choice === 'incoming'}
+                                  onChange={() => setChoice('incoming')}
+                                />
+                                <span className="text-gray-800 break-words">{formatVal(incomingVal, f.type)}</span>
+                              </label>
+                            </td>
+                            <td onClick={() => setChoice('custom')} className={cellCls(choice === 'custom')}>
+                              <div className="flex items-start gap-2">
+                                <input
+                                  type="radio"
+                                  className="mt-2"
+                                  checked={choice === 'custom'}
+                                  onChange={() => setChoice('custom')}
+                                />
+                                <input
+                                  type={f.inputType || 'text'}
+                                  step={f.inputType === 'number' ? '0.01' : undefined}
+                                  value={customVal}
+                                  onChange={(e) => setCustomVal(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="Type your own..."
+                                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {m.source === 'wo' && (
+                    <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
+                      Quantity stays at <strong>{m.existing?.quantity}</strong> (existing). Receipt qty {part?.quantity} is discarded.
+                    </div>
+                  )}
+                  {m.source === 'inv' && (
+                    <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
+                      QOH increases by <strong>{part?.quantity || 1}</strong> (added to existing stock).
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {error && (
@@ -304,7 +503,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
             </Button>
             <div className="flex space-x-3">
               <Button variant="light" onClick={handleClose} disabled={confirming}>Cancel</Button>
-              <Button variant="primary" onClick={() => handleConfirm(dupResolutions)} disabled={confirming}>
+              <Button variant="primary" onClick={() => handleConfirm(mergeSelections)} disabled={confirming}>
                 {confirming ? 'Adding...' : `Add ${selected.length} Part${selected.length !== 1 ? 's' : ''}`}
               </Button>
             </div>
@@ -317,8 +516,8 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   // ──── Step 3: Review extracted parts ────
   if (step === STEPS.REVIEW && extractedParts) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-[95vw] md:w-[calc((100vw-16rem)*0.95)] min-h-[70vh] max-h-[90vh] overflow-y-auto">
           <h3 className="text-lg font-bold text-gray-900 mb-2">
             Select Parts to Import
           </h3>
@@ -374,14 +573,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                       className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                     />
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand / Model</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Part / Brand · Model</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+ Ship</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price ({markupPercentage}%)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Match in WO</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Also Add To</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Inventory Match</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -390,9 +589,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                   const costWithShip = part.price + (isSelected ? shippingPerItem : 0);
                   const priceWithMarkup = costWithShip * (1 + markupPercentage / 100);
 
+                  const woMatchId = getWoMatchId(index);
+                  const aiWoMatch = aiDuplicates.find(d => d.parsedIndex === index && d.source === 'wo');
+                  const aiInvMatch = aiDuplicates.find(d => d.parsedIndex === index && d.source === 'inv');
+                  const invMatchId = catalogActions[index] === 'inventory' ? getInvMatchId(index) : null;
+
                   return (
                     <tr key={index} className={isSelected ? 'bg-blue-50' : 'bg-white hover:bg-gray-50 opacity-50'}>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 align-top">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -400,13 +604,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                           className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                         />
                       </td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{part.name}</td>
-                      <td className="px-3 py-2 text-gray-500">
-                        {[part.brand, part.itemNumber].filter(Boolean).join(' · ') || '—'}
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-medium text-gray-900">{part.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {[part.brand, part.itemNumber].filter(Boolean).join(' · ') || '—'}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-gray-500">{part.vendor}{part.supplier ? ` / ${part.supplier}` : ''}</td>
-                      <td className="px-3 py-2 text-right text-gray-900">{part.quantity}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right text-gray-900 align-top">{part.quantity}</td>
+                      <td className="px-3 py-2 text-right align-top">
                         <div className="relative inline-block">
                           <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
                           <input
@@ -420,13 +625,42 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                           />
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-500">
+                      <td className="px-3 py-2 text-right text-gray-500 align-top">
                         {isSelected && shippingPerItem > 0 ? `+${formatCurrency(shippingPerItem)}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      <td className="px-3 py-2 text-right font-medium text-gray-900 align-top">
                         {isSelected ? formatCurrency(priceWithMarkup) : '—'}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 align-top w-48">
+                        {isSelected && existingParts.length > 0 ? (
+                          <div>
+                            <select
+                              value={woMatchId === null ? '__none__' : (woMatchId || '__none__')}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setWoMatchOverrides(prev => ({ ...prev, [index]: v === '__none__' ? null : v }));
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs border border-gray-300 rounded px-1.5 py-1 w-full focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            >
+                              <option value="__none__">— New part —</option>
+                              {existingParts.map(p => (
+                                <option key={String(p._id)} value={String(p._id)}>
+                                  {p.name}{p.partNumber ? ` · ${p.partNumber}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {aiWoMatch && woMatchId === aiWoMatch.rawId && (
+                              <div className="text-[10px] text-orange-600 mt-0.5" title={aiWoMatch.reason}>
+                                <i className="fas fa-robot mr-0.5"></i> AI suggested
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
                         {isSelected && (
                           <select
                             value={catalogActions[index] || ''}
@@ -440,6 +674,27 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                             <option value="">WO Only</option>
                             <option value="inventory">+ Shop Inventory</option>
                           </select>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top w-56">
+                        {isSelected && catalogActions[index] === 'inventory' ? (
+                          <div>
+                            <SearchableDropdown
+                              options={invOptions}
+                              value={invMatchId}
+                              onChange={(v) => setInvMatchOverrides(prev => ({ ...prev, [index]: v }))}
+                              placeholder="— New item —"
+                              allowClear
+                              clearLabel="— New item —"
+                            />
+                            {aiInvMatch && invMatchId === aiInvMatch.rawId && (
+                              <div className="text-[10px] text-teal-600 mt-0.5" title={aiInvMatch.reason}>
+                                <i className="fas fa-robot mr-0.5"></i> AI suggested
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
                     </tr>
@@ -497,7 +752,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   // ──── Step 2: Type choice (receipt vs quote) ────
   if (step === STEPS.TYPE) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 max-w-md w-full">
           {extracting ? (
             <div className="text-center py-8">
@@ -556,7 +811,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
 
   // ──── Step 1: Upload / paste ────
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-lg w-full">
         <h3 className="text-lg font-bold text-gray-900 mb-4">Import Parts</h3>
         <div className="space-y-4">

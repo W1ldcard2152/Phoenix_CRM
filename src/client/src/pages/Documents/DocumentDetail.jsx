@@ -2850,6 +2850,7 @@ const DocumentDetail = () => {
         entityId={id}
         onSuccess={handleReceiptImportSuccess}
         markupPercentage={markupPercentage}
+        existingParts={workOrder?.parts || []}
       />
 
       {/* Inventory & Service modals */}

@@ -1613,13 +1613,34 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
     if (resolution.woAction === 'overwrite' && resolution.woMatchId) {
       const existingPart = workOrder.parts.id(resolution.woMatchId);
       if (existingPart) {
-        existingPart.name = part.name;
-        if (part.partNumber) existingPart.partNumber = part.partNumber;
-        if (part.vendor) existingPart.vendor = part.vendor;
-        if (part.supplier) existingPart.supplier = part.supplier;
-        existingPart.quantity = part.quantity;
-        existingPart.cost = part.cost;
-        existingPart.price = part.price;
+        // Apply per-field merge selections (frontend already chose between incoming/existing per field).
+        // Quantity is intentionally preserved on a WO match — receipt qty is discarded.
+        const merged = resolution.woMergedFields || {};
+        const applyField = (key) => {
+          if (Object.prototype.hasOwnProperty.call(merged, key)) {
+            existingPart[key] = merged[key];
+          } else if (part[key] !== undefined && part[key] !== '') {
+            existingPart[key] = part[key];
+          }
+        };
+        applyField('name');
+        applyField('partNumber');
+        applyField('vendor');
+        applyField('supplier');
+        applyField('cost');
+        applyField('notes');
+        // price/cost: if merge specified cost, recompute price by reapplying markup; else use incoming price.
+        if (Object.prototype.hasOwnProperty.call(merged, 'cost')) {
+          // If merge picked existing cost, keep existing price too (don't surprise user with sudden markup change).
+          // If merge picked incoming cost, the incoming part.price already reflects markup → use it.
+          // Detect by comparing numeric value.
+          if (Number(merged.cost) === Number(part.cost)) {
+            existingPart.price = part.price;
+          }
+          // else: existing cost was chosen → leave existing price untouched.
+        } else if (part.price !== undefined) {
+          existingPart.price = part.price;
+        }
         existingPart.ordered = part.ordered;
         if (part.receiptImageUrl) existingPart.receiptImageUrl = part.receiptImageUrl;
         continue;
@@ -1657,14 +1678,33 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
       try {
         if (action === 'inventory') {
           if (resolution.inventoryAction === 'add_to_existing' && resolution.inventoryMatchId) {
-            // Same item found in inventory — add to QOH and update cost/price
+            // Same item found in inventory — add to QOH and apply user-merged fields
             const existing = await InventoryItem.findById(resolution.inventoryMatchId);
             if (existing) {
               const previousQty = existing.quantityOnHand;
               const newQty = previousQty + (part.quantity || 1);
-              const update = { quantityOnHand: newQty, name: part.name, cost: part.cost || 0, price: part.price || 0 };
-              if (part.vendor) update.vendor = part.vendor;
-              if (part.partNumber) update.partNumber = part.partNumber;
+              const merged = resolution.inventoryMergedFields || {};
+              const update = { quantityOnHand: newQty };
+              const pickField = (key, fallback) => {
+                if (Object.prototype.hasOwnProperty.call(merged, key)) return merged[key];
+                return fallback;
+              };
+              update.name = pickField('name', part.name);
+              update.cost = pickField('cost', part.cost || 0);
+              // If merge picked existing cost, keep existing price; otherwise update price from incoming.
+              if (Object.prototype.hasOwnProperty.call(merged, 'cost') && Number(merged.cost) !== Number(part.cost)) {
+                update.price = existing.price;
+              } else {
+                update.price = part.price || 0;
+              }
+              const vendorVal = pickField('vendor', part.vendor);
+              if (vendorVal !== undefined) update.vendor = vendorVal;
+              const partNumberVal = pickField('partNumber', part.partNumber);
+              if (partNumberVal !== undefined) update.partNumber = partNumberVal;
+              const brandVal = pickField('brand', undefined);
+              if (brandVal !== undefined) update.brand = brandVal;
+              const notesVal = pickField('notes', undefined);
+              if (notesVal !== undefined) update.notes = notesVal;
               await InventoryItem.findByIdAndUpdate(resolution.inventoryMatchId, {
                 $set: update,
                 $push: {

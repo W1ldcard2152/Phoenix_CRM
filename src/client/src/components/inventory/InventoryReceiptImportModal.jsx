@@ -1,11 +1,38 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Button from '../common/Button';
+import SearchableDropdown from '../common/SearchableDropdown';
 import InventoryService from '../../services/inventoryService';
 import { formatCurrency } from '../../utils/formatters';
 
-const STEPS = { UPLOAD: 'upload', REVIEW: 'review', DUPLICATES: 'duplicates' };
+const STEPS = { UPLOAD: 'upload', REVIEW: 'review', MERGE: 'merge' };
 
-const SOURCE_LABELS = { inv: 'Shop Inventory' };
+// Side-by-side merge fields (key = parsed receipt field, existingKey = inventory field)
+const INV_MERGE_FIELDS = [
+  { key: 'name',        existingKey: 'name',        label: 'Name' },
+  { key: 'itemNumber',  existingKey: 'partNumber',  label: 'Part #' },
+  { key: 'brand',       existingKey: 'brand',       label: 'Brand' },
+  { key: 'vendor',      existingKey: 'vendor',      label: 'Vendor' },
+  { key: 'price',       existingKey: 'cost',        label: 'Cost',     type: 'currency', inputType: 'number' },
+  { key: 'notes',       existingKey: 'notes',       label: 'Notes' },
+];
+
+const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+const formatVal = (v, type) => {
+  if (isBlank(v)) return <span className="text-gray-400 italic">empty</span>;
+  if (type === 'currency') {
+    const n = Number(v);
+    return Number.isFinite(n) ? formatCurrency(n) : String(v);
+  }
+  return String(v);
+};
+
+const parseFieldValue = (raw, type) => {
+  if (type === 'currency') {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return raw ?? '';
+};
 
 const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercentage = 30 }) => {
   const [step, setStep] = useState(STEPS.UPLOAD);
@@ -19,11 +46,20 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
   // Review state
   const [extractedParts, setExtractedParts] = useState(null);
   const [shippingTotal, setShippingTotal] = useState(0);
-  const [duplicates, setDuplicates] = useState([]);
+  const [aiDuplicates, setAiDuplicates] = useState([]);
   const [selected, setSelected] = useState([]);
 
-  // Duplicate resolution state: { [parsedIndex]: 'add_to_existing' | 'create_new' }
-  const [decisions, setDecisions] = useState({});
+  // Manual match overrides — null means "no match (create new)"; undefined means "use AI default"
+  const [matchOverrides, setMatchOverrides] = useState({}); // { [parsedIndex]: inventoryItemId | null }
+
+  // Full inventory items (for searchable dropdown + merge UI)
+  const [inventoryItems, setInventoryItems] = useState([]);
+
+  // Per-field merge selections: { [parsedIndex]: { [fieldKey]: 'incoming' | 'existing' | 'custom' } }
+  const [mergeSelections, setMergeSelections] = useState({});
+
+  // Per-field custom-value overrides: { [parsedIndex]: { [fieldKey]: rawValue } }
+  const [customValues, setCustomValues] = useState({});
   const [confirming, setConfirming] = useState(false);
 
   const resetAll = () => {
@@ -34,9 +70,11 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
     setError(null);
     setExtractedParts(null);
     setShippingTotal(0);
-    setDuplicates([]);
+    setAiDuplicates([]);
     setSelected([]);
-    setDecisions({});
+    setMatchOverrides({});
+    setMergeSelections({});
+    setCustomValues({});
     setConfirming(false);
   };
 
@@ -44,6 +82,22 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
     resetAll();
     onClose();
   };
+
+  // Load full inventory items when modal opens
+  useEffect(() => {
+    if (!isOpen || inventoryItems.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await InventoryService.getAllItems({ limit: 5000, isActive: true });
+        const items = resp?.data?.items || resp?.data || [];
+        if (!cancelled) setInventoryItems(Array.isArray(items) ? items : []);
+      } catch (e) {
+        console.error('Failed to load inventory items for receipt import modal:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, inventoryItems.length]);
 
   // Extract receipt on Next from upload step
   const handleExtract = async () => {
@@ -64,16 +118,8 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
 
       setExtractedParts(parts);
       setShippingTotal(shipping);
-      setDuplicates(dupes || []);
+      setAiDuplicates(dupes || []);
       setSelected(parts.map((_, i) => i));
-
-      // Default decisions: matched items → add_to_existing, others → create_new
-      const defaultDecisions = {};
-      parts.forEach((_, i) => {
-        const match = (dupes || []).find(d => d.parsedIndex === i);
-        defaultDecisions[i] = match ? 'add_to_existing' : 'create_new';
-      });
-      setDecisions(defaultDecisions);
 
       setExtracting(false);
       setStep(STEPS.REVIEW);
@@ -84,28 +130,95 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
     }
   };
 
+  // Resolve effective match for a parsed index — user override, or AI guess
+  const getMatchId = (parsedIndex) => {
+    const override = matchOverrides[parsedIndex];
+    if (override !== undefined) return override;
+    const ai = aiDuplicates.find(d => d.parsedIndex === parsedIndex);
+    return ai ? ai.existingId : null;
+  };
+
+  const getActiveMatches = () => {
+    if (!extractedParts) return [];
+    const matches = [];
+    selected.forEach(parsedIndex => {
+      const matchId = getMatchId(parsedIndex);
+      if (!matchId) return;
+      const existing = inventoryItems.find(i => String(i._id) === String(matchId));
+      if (existing) matches.push({ parsedIndex, existingId: matchId, existing });
+    });
+    return matches;
+  };
+
   const handleReviewNext = () => {
     if (selected.length === 0) {
       setError('Please select at least one item');
       return;
     }
     setError(null);
-    setStep(STEPS.DUPLICATES);
+
+    const matches = getActiveMatches();
+    if (matches.length === 0) {
+      // No matches → straight to confirm (skip merge step)
+      handleConfirm({});
+      return;
+    }
+
+    // Initialize merge selections — incoming if non-empty, else existing
+    const initSel = {};
+    matches.forEach(m => {
+      const part = extractedParts[m.parsedIndex];
+      const rowSel = {};
+      INV_MERGE_FIELDS.forEach(f => {
+        const incomingVal = part?.[f.key];
+        rowSel[f.key] = !isBlank(incomingVal) ? 'incoming' : 'existing';
+      });
+      initSel[m.parsedIndex] = rowSel;
+    });
+    setMergeSelections(initSel);
+    setStep(STEPS.MERGE);
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (mergeSelectionsOverride) => {
+    const sel = mergeSelectionsOverride !== undefined ? mergeSelectionsOverride : mergeSelections;
+
     try {
       setConfirming(true);
       setError(null);
 
+      const resolveField = (f, choice, parsedItem, existing, customRowVals) => {
+        if (choice === 'custom') {
+          const raw = customRowVals?.[f.key];
+          return parseFieldValue(raw, f.type);
+        }
+        if (choice === 'existing') return existing?.[f.existingKey];
+        return parsedItem?.[f.key];
+      };
+
       const confirmedItems = selected.map(i => {
         const parsedItem = extractedParts[i];
-        const type = decisions[i] || 'create_new';
-        const match = duplicates.find(d => d.parsedIndex === i);
+        const matchId = getMatchId(i);
+        const type = matchId ? 'add_to_existing' : 'create_new';
+
+        let mergedFields;
+        if (matchId) {
+          const existing = inventoryItems.find(it => String(it._id) === String(matchId));
+          if (existing) {
+            const rowSel = sel[i] || {};
+            const customRowVals = customValues[i] || {};
+            mergedFields = {};
+            INV_MERGE_FIELDS.forEach(f => {
+              const choice = rowSel[f.key] || 'incoming';
+              mergedFields[f.existingKey] = resolveField(f, choice, parsedItem, existing, customRowVals);
+            });
+          }
+        }
+
         return {
           parsedItem,
           type,
-          existingId: type === 'add_to_existing' && match ? match.existingId : undefined
+          existingId: matchId || undefined,
+          mergedFields,
         };
       });
 
@@ -147,12 +260,20 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
   const totalAllUnits = (extractedParts || []).reduce((sum, p) => sum + (p.quantity || 1), 0);
   const shippingPerItem = totalAllUnits > 0 ? shippingTotal / totalAllUnits : 0;
 
+  // Options for the searchable inventory dropdown
+  const invOptions = useMemo(() => inventoryItems.map(i => ({
+    value: String(i._id),
+    label: i.name,
+    sublabel: [i.brand, i.partNumber, `QOH ${i.quantityOnHand ?? 0}`].filter(Boolean).join(' · '),
+    keywords: [i.partNumber, i.brand, i.vendor].filter(Boolean).join(' '),
+  })), [inventoryItems]);
+
   if (!isOpen) return null;
 
   // ──── Extracting spinner (shown between UPLOAD and REVIEW) ────
   if (extracting) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-8 max-w-md w-full text-center">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-primary-600 border-t-transparent mb-4"></div>
           <p className="text-gray-700 font-medium text-lg">Reading receipt...</p>
@@ -162,132 +283,123 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
     );
   }
 
-  // ──── Step 3: Duplicate resolution ────
-  if (step === STEPS.DUPLICATES && extractedParts) {
-    const selectedParts = selected.map(i => ({ index: i, part: extractedParts[i] }));
-    const matchCount = selectedParts.filter(({ index }) =>
-      decisions[index] === 'add_to_existing'
-    ).length;
-    const newCount = selectedParts.filter(({ index }) =>
-      decisions[index] === 'create_new'
-    ).length;
+  // ──── Step 3: Field-by-field merge ────
+  if (step === STEPS.MERGE && extractedParts) {
+    const matches = getActiveMatches();
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-          <h3 className="text-lg font-bold text-gray-900 mb-1">Review Matches</h3>
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-[95vw] md:w-[calc((100vw-16rem)*0.95)] min-h-[70vh] max-h-[90vh] overflow-y-auto">
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Merge Matched Items</h3>
           <p className="text-sm text-gray-600 mb-4">
-            Confirm how each item should be imported. Matched items will increase the existing item's stock.
+            For each match, pick the better value per field — or type your own in the Custom column. Defaults favor incoming when non-empty, otherwise existing.
           </p>
 
-          <div className="overflow-x-auto border rounded-md">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item (from receipt)</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Inventory Match</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand / Model</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {selectedParts.map(({ index, part }) => {
-                  const match = duplicates.find(d => d.parsedIndex === index);
-                  const decision = decisions[index] || 'create_new';
-                  const costWithShip = part.price + shippingPerItem;
-                  const finalPrice = costWithShip * (1 + markupPercentage / 100);
+          <div className="space-y-4">
+            {matches.map(m => {
+              const part = extractedParts[m.parsedIndex];
+              const rowSel = mergeSelections[m.parsedIndex] || {};
 
-                  return (
-                    <tr key={index} className="bg-white hover:bg-gray-50">
-                      <td className="px-3 py-2.5">
-                        <div className="font-medium text-gray-900">{part.name}</div>
-                        {part.vendor && <div className="text-xs text-gray-400">{part.vendor}</div>}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">{part.quantity}</td>
-                      <td className="px-3 py-2.5 text-right">
-                        <div className="text-gray-900">{formatCurrency(costWithShip)}</div>
-                        <div className="text-xs text-gray-400">→ {formatCurrency(finalPrice)}</div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {match ? (
-                          <div>
-                            <div className="font-medium text-gray-800">{match.existingName}</div>
-                            <div className="text-xs text-gray-400">
-                              QOH: {match.existingQoh} · {match.reason}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            No match found
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-700">
-                        {(() => {
-                          const receiptBrandModel = [part.brand, part.itemNumber].filter(Boolean).join(' · ');
-                          if (match) {
-                            return [match.existingBrand, match.existingPartNumber].filter(Boolean).join(' · ') || receiptBrandModel || '—';
-                          }
-                          return receiptBrandModel || '—';
-                        })()}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {match ? (
-                          <div className="flex rounded-md border border-gray-300 overflow-hidden text-xs">
-                            <button
-                              onClick={() => setDecisions(prev => ({ ...prev, [index]: 'add_to_existing' }))}
-                              className={`px-2.5 py-1.5 font-medium transition-colors ${
-                                decision === 'add_to_existing'
-                                  ? 'bg-green-600 text-white'
-                                  : 'bg-white text-gray-600 hover:bg-gray-50'
-                              }`}
-                            >
-                              Add to Existing
-                            </button>
-                            <button
-                              onClick={() => setDecisions(prev => ({ ...prev, [index]: 'create_new' }))}
-                              className={`px-2.5 py-1.5 font-medium border-l border-gray-300 transition-colors ${
-                                decision === 'create_new'
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-white text-gray-600 hover:bg-gray-50'
-                              }`}
-                            >
-                              New Item
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                            New Item
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              return (
+                <div key={m.parsedIndex} className="border rounded-md overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
+                    <div>
+                      <div className="font-semibold text-gray-900">{part?.name}</div>
+                      <div className="text-xs text-gray-500">
+                        Matching against: <span className="font-medium text-gray-700">{m.existing?.name}</span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                      Shop Inventory
+                    </span>
+                  </div>
+
+                  <table className="w-full text-sm table-fixed">
+                    <thead className="bg-gray-50 border-b text-xs uppercase text-gray-500">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left w-24">Field</th>
+                        <th className="px-3 py-1.5 text-left">Existing</th>
+                        <th className="px-3 py-1.5 text-left">From receipt</th>
+                        <th className="px-3 py-1.5 text-left">Custom</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {INV_MERGE_FIELDS.map(f => {
+                        const existingVal = m.existing?.[f.existingKey];
+                        const incomingVal = part?.[f.key];
+                        const choice = rowSel[f.key] || 'incoming';
+                        const customVal = (customValues[m.parsedIndex] || {})[f.key] ?? '';
+                        const setChoice = (c) => setMergeSelections(prev => ({
+                          ...prev,
+                          [m.parsedIndex]: { ...(prev[m.parsedIndex] || {}), [f.key]: c }
+                        }));
+                        const setCustomVal = (v) => {
+                          setCustomValues(prev => ({
+                            ...prev,
+                            [m.parsedIndex]: { ...(prev[m.parsedIndex] || {}), [f.key]: v }
+                          }));
+                          setChoice('custom');
+                        };
+
+                        const cellCls = (active) => `px-3 py-2 cursor-pointer ${active ? 'bg-primary-50 border-l-4 border-primary-500' : 'hover:bg-gray-50 border-l-4 border-transparent'}`;
+
+                        return (
+                          <tr key={f.key}>
+                            <td className="px-3 py-2 font-medium text-gray-700 align-top">{f.label}</td>
+                            <td onClick={() => setChoice('existing')} className={cellCls(choice === 'existing')}>
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  className="mt-1"
+                                  checked={choice === 'existing'}
+                                  onChange={() => setChoice('existing')}
+                                />
+                                <span className="text-gray-800 break-words">{formatVal(existingVal, f.type)}</span>
+                              </label>
+                            </td>
+                            <td onClick={() => setChoice('incoming')} className={cellCls(choice === 'incoming')}>
+                              <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  className="mt-1"
+                                  checked={choice === 'incoming'}
+                                  onChange={() => setChoice('incoming')}
+                                />
+                                <span className="text-gray-800 break-words">{formatVal(incomingVal, f.type)}</span>
+                              </label>
+                            </td>
+                            <td onClick={() => setChoice('custom')} className={cellCls(choice === 'custom')}>
+                              <div className="flex items-start gap-2">
+                                <input
+                                  type="radio"
+                                  className="mt-2"
+                                  checked={choice === 'custom'}
+                                  onChange={() => setChoice('custom')}
+                                />
+                                <input
+                                  type={f.inputType || 'text'}
+                                  step={f.inputType === 'number' ? '0.01' : undefined}
+                                  value={customVal}
+                                  onChange={(e) => setCustomVal(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="Type your own..."
+                                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
+                    QOH increases by <strong>{(part?.quantity || 1) * (m.existing?.unitsPerPurchase || 1)}</strong> (added to existing stock).
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
-          <div className="mt-3 text-sm text-gray-600 flex gap-4">
-            {matchCount > 0 && (
-              <span className="text-green-700 font-medium">
-                {matchCount} item{matchCount !== 1 ? 's' : ''} will add to existing stock
-              </span>
-            )}
-            {newCount > 0 && (
-              <span className="text-blue-700 font-medium">
-                {newCount} new item{newCount !== 1 ? 's' : ''} to create
-              </span>
-            )}
-          </div>
-
-          {newCount > 0 && (
-            <div className="mt-2 p-3 bg-blue-50 rounded-md text-sm text-blue-800">
-              <strong>{newCount} new item{newCount !== 1 ? 's' : ''}</strong> will open one-by-one to fill in additional details (category, unit, reorder point, etc.).
-            </div>
-          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm mt-3">
@@ -301,7 +413,7 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
             </Button>
             <div className="flex space-x-3">
               <Button variant="light" onClick={handleClose} disabled={confirming}>Cancel</Button>
-              <Button variant="primary" onClick={handleConfirm} disabled={confirming}>
+              <Button variant="primary" onClick={() => handleConfirm(mergeSelections)} disabled={confirming}>
                 {confirming ? 'Importing...' : `Import ${selected.length} Item${selected.length !== 1 ? 's' : ''}`}
               </Button>
             </div>
@@ -311,14 +423,17 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
     );
   }
 
-  // ──── Step 2: Review extracted items ────
+  // ──── Step 2: Review extracted items (with manual match override) ────
   if (step === STEPS.REVIEW && extractedParts) {
+    const matchCount = selected.filter(i => !!getMatchId(i)).length;
+    const newCount = selected.length - matchCount;
+
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-[95vw] md:w-[calc((100vw-16rem)*0.95)] min-h-[70vh] max-h-[90vh] overflow-y-auto">
           <h3 className="text-lg font-bold text-gray-900 mb-2">Review Items</h3>
           <p className="text-sm text-gray-600 mb-1">
-            {extractedParts.length} item{extractedParts.length !== 1 ? 's' : ''} extracted. Edit costs before continuing.
+            {extractedParts.length} item{extractedParts.length !== 1 ? 's' : ''} extracted. Edit costs and confirm matches before continuing.
           </p>
 
           <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
@@ -349,13 +464,13 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
                       className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                     />
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand / Model</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item / Brand · Model</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+ Ship</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price ({markupPercentage}%)</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase w-64">Inventory Match</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -363,10 +478,12 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
                   const isSelected = selected.includes(index);
                   const costWithShip = part.price + (isSelected ? shippingPerItem : 0);
                   const priceWithMarkup = costWithShip * (1 + markupPercentage / 100);
+                  const matchId = getMatchId(index);
+                  const aiMatch = aiDuplicates.find(d => d.parsedIndex === index);
 
                   return (
                     <tr key={index} className={isSelected ? 'bg-blue-50' : 'bg-white opacity-50 hover:bg-gray-50'}>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2 align-top">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -374,22 +491,17 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
                           className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                         />
                       </td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{part.name}</td>
-                      <td className="px-3 py-2 text-gray-500">
-                        {(() => {
-                          const match = duplicates.find(d => d.parsedIndex === index);
-                          const receiptBrandModel = [part.brand, part.itemNumber].filter(Boolean).join(' · ');
-                          if (match) {
-                            return [match.existingBrand, match.existingPartNumber].filter(Boolean).join(' · ') || receiptBrandModel || '—';
-                          }
-                          return receiptBrandModel || '—';
-                        })()}
+                      <td className="px-3 py-2 align-top">
+                        <div className="font-medium text-gray-900">{part.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {[part.brand, part.itemNumber].filter(Boolean).join(' · ') || '—'}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-gray-500">
+                      <td className="px-3 py-2 text-gray-500 align-top">
                         {part.vendor}{part.supplier ? ` / ${part.supplier}` : ''}
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-900">{part.quantity}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-3 py-2 text-right text-gray-900 align-top">{part.quantity}</td>
+                      <td className="px-3 py-2 text-right align-top">
                         <div className="relative inline-block">
                           <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
                           <input
@@ -403,11 +515,30 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
                           />
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right text-gray-500">
+                      <td className="px-3 py-2 text-right text-gray-500 align-top">
                         {isSelected && shippingPerItem > 0 ? `+${formatCurrency(shippingPerItem)}` : '—'}
                       </td>
-                      <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      <td className="px-3 py-2 text-right font-medium text-gray-900 align-top">
                         {isSelected ? formatCurrency(priceWithMarkup) : '—'}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        {isSelected && (
+                          <div>
+                            <SearchableDropdown
+                              options={invOptions}
+                              value={matchId}
+                              onChange={(v) => setMatchOverrides(prev => ({ ...prev, [index]: v }))}
+                              placeholder="— Create new item —"
+                              allowClear
+                              clearLabel="— Create new item —"
+                            />
+                            {aiMatch && matchId === aiMatch.existingId && (
+                              <div className="text-[10px] text-teal-600 mt-0.5" title={aiMatch.reason}>
+                                <i className="fas fa-robot mr-0.5"></i> AI suggested
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -416,9 +547,25 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
             </table>
           </div>
 
-          <div className="mt-3 text-sm text-gray-600">
-            {selected.length} of {extractedParts.length} items selected
+          <div className="mt-3 text-sm text-gray-600 flex gap-4 flex-wrap">
+            <span>{selected.length} of {extractedParts.length} items selected</span>
+            {matchCount > 0 && (
+              <span className="text-green-700 font-medium">
+                {matchCount} will add to existing stock
+              </span>
+            )}
+            {newCount > 0 && (
+              <span className="text-blue-700 font-medium">
+                {newCount} new item{newCount !== 1 ? 's' : ''} to create
+              </span>
+            )}
           </div>
+
+          {newCount > 0 && (
+            <div className="mt-2 p-3 bg-blue-50 rounded-md text-sm text-blue-800">
+              <strong>{newCount} new item{newCount !== 1 ? 's' : ''}</strong> will open one-by-one to fill in additional details (category, unit, reorder point, etc.).
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm mt-3">
@@ -448,7 +595,7 @@ const InventoryReceiptImportModal = ({ isOpen, onClose, onSuccess, markupPercent
 
   // ──── Step 1: Upload / paste ────
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 md:left-64 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-lg w-full">
         <h3 className="text-lg font-bold text-gray-900 mb-4">Import to Shop Inventory</h3>
         <div className="space-y-4">

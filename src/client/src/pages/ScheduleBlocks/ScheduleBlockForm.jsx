@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
+import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import ScheduleBlockService from '../../services/scheduleBlockService';
 import SettingsService from '../../services/settingsService';
@@ -60,6 +61,7 @@ const ScheduleBlockForm = () => {
     technician: '',
     category: '',
     customCategory: '',
+    notes: '',
     blockType: 'recurring',
     effectiveFrom: moment().format('YYYY-MM-DD'),
     effectiveUntil: '',
@@ -133,6 +135,43 @@ const ScheduleBlockForm = () => {
     }
   };
 
+  // Hit the conflict-check API and update banner state. Used by both the
+  // debounced live-edit effect and the immediate post-fetch call so the
+  // warning appears right when an edit form loads, no 350ms wait.
+  const runConflictCheck = async (payload) => {
+    try {
+      const response = await ScheduleBlockService.checkConflicts(payload);
+      const { hasConflicts: hc, appointmentConflicts = [], scheduleBlockConflicts = [] } = response.data || {};
+      setHasConflicts(!!hc);
+
+      if (hc) {
+        const formatWhen = (t) => moment.utc(t).tz(TIMEZONE).format('ddd M/D, h:mm A');
+        const parts = [];
+        if (appointmentConflicts.length > 0) {
+          const apptLabels = appointmentConflicts.map(a => {
+            const customerName = a.customer?.name || 'Unknown customer';
+            const v = a.vehicle;
+            const vehicleLabel = v ? `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim() : '';
+            const who = vehicleLabel ? `${customerName} (${vehicleLabel})` : customerName;
+            return `${formatWhen(a.startTime)} — ${who}`;
+          }).join('; ');
+          parts.push(`appointment conflict(s): ${apptLabels}`);
+        }
+        if (scheduleBlockConflicts.length > 0) {
+          const blockLabels = scheduleBlockConflicts
+            .map(b => `${formatWhen(b.startTime)} — ${b.title}`)
+            .join('; ');
+          parts.push(`task conflict(s): ${blockLabels}`);
+        }
+        setConflictMessage(parts.length > 0 ? `Found ${parts.join(' and ')}.` : 'Scheduling conflict detected.');
+      } else {
+        setConflictMessage('');
+      }
+    } catch (err) {
+      console.error('Error checking conflicts:', err);
+    }
+  };
+
   const fetchBlock = async () => {
     try {
       setLoading(true);
@@ -145,6 +184,7 @@ const ScheduleBlockForm = () => {
           technician: block.technician?._id || '',
           category: blockCategory,
           customCategory: '',
+          notes: block.notes || '',
           blockType: block.blockType || 'recurring',
           effectiveFrom: block.effectiveFrom
             ? moment.tz(block.effectiveFrom, TIMEZONE).format('YYYY-MM-DD')
@@ -160,6 +200,33 @@ const ScheduleBlockForm = () => {
           active: block.active !== false
         });
         setWeeklySchedule(block.weeklySchedule || []);
+
+        // Run an immediate conflict check using the just-fetched block,
+        // without waiting on state updates or the 350ms debounce.
+        const techId = block.technician?._id || block.technician;
+        if (techId) {
+          const payload = {
+            technician: techId,
+            blockType: block.blockType || 'recurring',
+            excludeBlockId: id
+          };
+          if ((block.blockType || 'recurring') === 'one-time') {
+            payload.oneTimeDate = block.oneTimeDate
+              ? moment.tz(block.oneTimeDate, TIMEZONE).format('YYYY-MM-DD')
+              : null;
+            payload.oneTimeStartTime = block.oneTimeStartTime;
+            payload.oneTimeEndTime = block.oneTimeEndTime;
+          } else {
+            payload.weeklySchedule = block.weeklySchedule || [];
+            payload.effectiveFrom = block.effectiveFrom
+              ? moment.tz(block.effectiveFrom, TIMEZONE).format('YYYY-MM-DD')
+              : null;
+            payload.effectiveUntil = block.effectiveUntil
+              ? moment.tz(block.effectiveUntil, TIMEZONE).format('YYYY-MM-DD')
+              : null;
+          }
+          runConflictCheck(payload);
+        }
       }
     } catch (err) {
       console.error('Error fetching schedule block:', err);
@@ -227,53 +294,22 @@ const ScheduleBlockForm = () => {
       if (weeklySchedule.some(s => s.startTime >= s.endTime)) return;
     }
 
-    const handle = setTimeout(async () => {
-      try {
-        const payload = {
-          technician: formData.technician,
-          blockType: formData.blockType,
-          excludeBlockId: id || undefined
-        };
-        if (formData.blockType === 'one-time') {
-          payload.oneTimeDate = formData.oneTimeDate;
-          payload.oneTimeStartTime = formData.oneTimeStartTime;
-          payload.oneTimeEndTime = formData.oneTimeEndTime;
-        } else {
-          payload.weeklySchedule = weeklySchedule;
-          payload.effectiveFrom = formData.effectiveFrom;
-          payload.effectiveUntil = formData.effectiveUntil || null;
-        }
-
-        const response = await ScheduleBlockService.checkConflicts(payload);
-        const { hasConflicts: hc, appointmentConflicts = [], scheduleBlockConflicts = [] } = response.data || {};
-        setHasConflicts(!!hc);
-
-        if (hc) {
-          const formatWhen = (t) => moment.utc(t).tz(TIMEZONE).format('ddd M/D, h:mm A');
-          const parts = [];
-          if (appointmentConflicts.length > 0) {
-            const apptLabels = appointmentConflicts.map(a => {
-              const customerName = a.customer?.name || 'Unknown customer';
-              const v = a.vehicle;
-              const vehicleLabel = v ? `${v.year || ''} ${v.make || ''} ${v.model || ''}`.trim() : '';
-              const who = vehicleLabel ? `${customerName} (${vehicleLabel})` : customerName;
-              return `${formatWhen(a.startTime)} — ${who}`;
-            }).join('; ');
-            parts.push(`appointment conflict(s): ${apptLabels}`);
-          }
-          if (scheduleBlockConflicts.length > 0) {
-            const blockLabels = scheduleBlockConflicts
-              .map(b => `${formatWhen(b.startTime)} — ${b.title}`)
-              .join('; ');
-            parts.push(`task conflict(s): ${blockLabels}`);
-          }
-          setConflictMessage(parts.length > 0 ? `Found ${parts.join(' and ')}.` : 'Scheduling conflict detected.');
-        } else {
-          setConflictMessage('');
-        }
-      } catch (err) {
-        console.error('Error checking conflicts:', err);
+    const handle = setTimeout(() => {
+      const payload = {
+        technician: formData.technician,
+        blockType: formData.blockType,
+        excludeBlockId: id || undefined
+      };
+      if (formData.blockType === 'one-time') {
+        payload.oneTimeDate = formData.oneTimeDate;
+        payload.oneTimeStartTime = formData.oneTimeStartTime;
+        payload.oneTimeEndTime = formData.oneTimeEndTime;
+      } else {
+        payload.weeklySchedule = weeklySchedule;
+        payload.effectiveFrom = formData.effectiveFrom;
+        payload.effectiveUntil = formData.effectiveUntil || null;
       }
+      runConflictCheck(payload);
     }, 350);
 
     return () => clearTimeout(handle);
@@ -366,6 +402,7 @@ const ScheduleBlockForm = () => {
         title: formData.title,
         technician: formData.technician,
         category: finalCategory,
+        notes: formData.notes,
         blockType: formData.blockType,
         active: formData.active
       };
@@ -531,6 +568,16 @@ const ScheduleBlockForm = () => {
               </label>
             </div>
           </div>
+
+          {/* Notes */}
+          <TextArea
+            label="Notes"
+            name="notes"
+            value={formData.notes}
+            onChange={handleChange}
+            placeholder="Add a list, process, or any details that should go along with this task. Shown on the calendar hover."
+            rows={4}
+          />
 
           {/* Category Management (admin/management only) */}
           {canManageCategories && (

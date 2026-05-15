@@ -65,6 +65,11 @@ const ScheduleBlockSchema = new Schema(
       trim: true,
       default: ''
     },
+    notes: {
+      type: String,
+      trim: true,
+      default: ''
+    },
     blockType: {
       type: String,
       enum: ['recurring', 'one-time'],
@@ -204,6 +209,7 @@ ScheduleBlockSchema.statics.expandForDateRange = async function (rangeStart, ran
         endTime,
         title: block.title,
         category: block.category,
+        notes: block.notes,
         color: block.color,
         status: 'Schedule Block',
         isScheduleBlock: true,
@@ -279,6 +285,7 @@ ScheduleBlockSchema.statics.expandForDateRange = async function (rangeStart, ran
         endTime,
         title: block.title,
         category: block.category,
+        notes: block.notes,
         color: block.color,
         status: 'Schedule Block',
         isScheduleBlock: true,
