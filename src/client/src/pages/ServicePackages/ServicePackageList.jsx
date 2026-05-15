@@ -131,7 +131,7 @@ const ServicePackageList = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="container mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

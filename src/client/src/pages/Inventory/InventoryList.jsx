@@ -370,7 +370,7 @@ const InventoryList = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="container mx-auto flex items-center justify-center h-48">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading inventory...</p>
@@ -380,7 +380,7 @@ const InventoryList = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="container mx-auto">
       {/* Sticky Header */}
       <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="px-4 py-3">

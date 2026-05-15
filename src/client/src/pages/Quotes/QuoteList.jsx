@@ -127,11 +127,6 @@ const QuoteList = () => {
           case 'customer':
             comparison = (a.customer?.name || '').localeCompare(b.customer?.name || '');
             break;
-          case 'vehicle':
-            const vehicleA = `${a.vehicle?.year || ''} ${a.vehicle?.make || ''} ${a.vehicle?.model || ''}`;
-            const vehicleB = `${b.vehicle?.year || ''} ${b.vehicle?.make || ''} ${b.vehicle?.model || ''}`;
-            comparison = vehicleA.localeCompare(vehicleB);
-            break;
           case 'service':
             const serviceA = a.services?.[0]?.description || a.serviceRequested || '';
             const serviceB = b.services?.[0]?.description || b.serviceRequested || '';
@@ -155,13 +150,16 @@ const QuoteList = () => {
     return sorted;
   }, [filteredQuotes, sortConfig]);
 
+  // 3-state cycle per column: ascending → descending → off (removed from sort).
+  // Up to 3 active sort keys; adding a 4th drops the oldest.
   const handleSort = (key) => {
     setSortConfig(prev => {
       const existing = prev.find(s => s.key === key);
       if (existing) {
-        return prev.map(s =>
-          s.key === key ? { ...s, direction: s.direction === 'asc' ? 'desc' : 'asc' } : s
-        );
+        if (existing.direction === 'asc') {
+          return prev.map(s => s.key === key ? { ...s, direction: 'desc' } : s);
+        }
+        return prev.filter(s => s.key !== key);
       }
       const newConfig = [...prev, { key, direction: 'asc' }];
       return newConfig.length > 3 ? newConfig.slice(1) : newConfig;
@@ -361,13 +359,7 @@ const QuoteList = () => {
                       className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('customer')}
                     >
-                      Customer{getSortIndicator('customer')}
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                      onClick={() => handleSort('vehicle')}
-                    >
-                      Vehicle{getSortIndicator('vehicle')}
+                      Customer & Vehicle{getSortIndicator('customer')}
                     </th>
                     <th
                       className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -419,11 +411,11 @@ const QuoteList = () => {
                         <div className="text-sm font-medium text-gray-900">
                           {quote.customer?.name || 'Unknown Customer'}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        {quote.vehicle
-                          ? `${quote.vehicle.year} ${quote.vehicle.make} ${quote.vehicle.model}`
-                          : 'No Vehicle'}
+                        <div className="text-sm text-gray-500">
+                          {quote.vehicle
+                            ? `${quote.vehicle.year} ${quote.vehicle.make} ${quote.vehicle.model}`
+                            : 'No Vehicle'}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
                         {getServiceDisplay(quote)}

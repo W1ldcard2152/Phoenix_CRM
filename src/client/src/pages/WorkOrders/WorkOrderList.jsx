@@ -35,8 +35,9 @@ const WorkOrderList = () => {
   const navigate = useNavigate();
 
   // Multi-tier sorting state - array of sort configs [{column, direction}, ...]
-  // Default to sorting by date descending
-  const [sortConfig, setSortConfig] = usePersistedState('wo-list:sortConfig', [{ column: 'date', direction: 'desc' }]);
+  // Default sort: status ascending (lower priority number = earlier in workflow → top).
+  // Key is versioned so existing users get the new default.
+  const [sortConfig, setSortConfig] = usePersistedState('wo-list:sortConfig:v2', [{ column: 'status', direction: 'asc' }]);
 
   // Get filter parameters from URL
   const customerParam = searchParams.get('customer');
@@ -658,6 +659,21 @@ const WorkOrderList = () => {
 
       <Card>
         <div className="mb-4 space-y-4">
+          {/* Search Input */}
+          <div className="relative">
+            <Input
+              placeholder="Search by service type, notes, or status..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pr-10"
+            />
+            {isSearching && (
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                <i className="fas fa-spinner fa-spin text-gray-400"></i>
+              </div>
+            )}
+          </div>
+
           {/* Status Filter Buttons */}
           <div className="flex flex-wrap gap-2">
             {statusCategories.map((category) => (
@@ -687,21 +703,6 @@ const WorkOrderList = () => {
                 {category.label} ({statusCounts[category.key] || 0})
               </button>
             ))}
-          </div>
-          
-          {/* Search Input */}
-          <div className="relative">
-            <Input
-              placeholder="Search by service type, notes, or status..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pr-10"
-            />
-            {isSearching && (
-              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                <i className="fas fa-spinner fa-spin text-gray-400"></i>
-              </div>
-            )}
           </div>
         </div>
 
