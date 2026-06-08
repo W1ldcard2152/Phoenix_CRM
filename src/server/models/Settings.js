@@ -21,6 +21,11 @@ const SettingsSchema = new Schema(
       default: 30,
       min: 0
     },
+    defaultLaborRate: {
+      type: Number,
+      default: 75,
+      min: 0
+    },
     customVendors: {
       type: [String],
       default: [

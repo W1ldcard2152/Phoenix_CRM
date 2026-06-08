@@ -130,3 +130,16 @@ Required in `.env`:
 - Rate limiting on auth endpoints
 - CORS with credentials
 - Password reset tokens expire in 10 minutes
+
+## Changelog
+
+`CHANGELOG.md` (repo root) tracks user-visible changes by deploy date (push-to-main = deploy). The app is continuously deployed, so versioning is calver-by-date, not semver.
+
+**When the user asks you to write a commit message, also update `CHANGELOG.md` in the same edit pass:**
+
+- Add entries under today's date (`YYYY-MM-DD`) at the top of the file. If today's section already exists, append to it instead of creating a duplicate.
+- Group entries under **Added** / **Changed** / **Fixed** / **Removed**. Skip empty subsections.
+- One bullet per user-visible change. Condense related implementation details into a single bullet — don't mirror the commit message line-for-line.
+- Phrase from the user's perspective ("Receipt importer now lets users override the AI's duplicate guess") not the implementation's ("Added override prop to ReceiptImportModal").
+- Skip purely internal refactors with no behavioral impact (internal variable renames, restructuring without behavior change, test-only changes).
+- Bugfixes go under **Fixed** and should describe the symptom that was wrong, not just the code that changed.

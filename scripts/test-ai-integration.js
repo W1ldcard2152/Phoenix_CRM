@@ -37,7 +37,7 @@ const TEST_URLS = [
   }
 ];
 
-const EXPECTED_FIELDS = ['name', 'partNumber', 'price', 'cost', 'vendor', 'brand', 'warranty'];
+const EXPECTED_FIELDS = ['name', 'partNumber', 'price', 'cost', 'vendor', 'brand'];
 
 // Color helpers for console output
 const green = (s) => `\x1b[32m${s}\x1b[0m`;

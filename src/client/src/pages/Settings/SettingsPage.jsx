@@ -9,6 +9,10 @@ const SettingsPage = () => {
   const navigate = useNavigate();
   const { currentUser, updateUser, updateToken } = useAuth();
 
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management';
+
+  const [activeTab, setActiveTab] = useState('profile');
+
   // User Info State
   const [userInfo, setUserInfo] = useState({
     name: currentUser?.name || '',
@@ -29,15 +33,17 @@ const SettingsPage = () => {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
 
   // Shop Settings State (admin/management only)
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management';
-  const [shopSettings, setShopSettings] = useState({ partMarkupPercentage: 30 });
+  const [shopSettings, setShopSettings] = useState({ partMarkupPercentage: 30, defaultLaborRate: 75 });
   const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
   const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
       SettingsService.getSettings()
-        .then(res => setShopSettings(res.data.settings))
+        .then(res => setShopSettings({
+          partMarkupPercentage: res.data.settings.partMarkupPercentage ?? 30,
+          defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
+        }))
         .catch(() => {});
     }
   }, [isAdmin]);
@@ -48,9 +54,13 @@ const SettingsPage = () => {
     setShopSettingsMessage({ type: '', text: '' });
     try {
       const response = await SettingsService.updateSettings({
-        partMarkupPercentage: Number(shopSettings.partMarkupPercentage)
+        partMarkupPercentage: Number(shopSettings.partMarkupPercentage),
+        defaultLaborRate: Number(shopSettings.defaultLaborRate)
       });
-      setShopSettings(response.data.settings);
+      setShopSettings({
+        partMarkupPercentage: response.data.settings.partMarkupPercentage ?? 30,
+        defaultLaborRate: response.data.settings.defaultLaborRate ?? 75
+      });
       setShopSettingsMessage({
         type: 'success',
         text: response.message || 'Shop settings updated successfully!'
@@ -82,7 +92,6 @@ const SettingsPage = () => {
 
     try {
       const response = await AuthService.updateUserInfo(userInfo);
-      // Update the user in context
       if (response.data?.user) {
         updateUser(response.data.user);
       }
@@ -105,14 +114,12 @@ const SettingsPage = () => {
     setIsUpdatingPassword(true);
     setPasswordMessage({ type: '', text: '' });
 
-    // Validate password match
     if (passwordData.password !== passwordData.passwordConfirm) {
       setPasswordMessage({ type: 'error', text: 'Passwords do not match' });
       setIsUpdatingPassword(false);
       return;
     }
 
-    // Validate password length
     if (passwordData.password.length < 8) {
       setPasswordMessage({ type: 'error', text: 'Password must be at least 8 characters' });
       setIsUpdatingPassword(false);
@@ -121,8 +128,6 @@ const SettingsPage = () => {
 
     try {
       const response = await AuthService.updatePassword(passwordData);
-
-      // Update the token and user in context (password change returns new token)
       if (response.token) {
         updateToken(response.token);
       }
@@ -142,6 +147,18 @@ const SettingsPage = () => {
       setIsUpdatingPassword(false);
     }
   };
+
+  const tabs = [
+    { id: 'profile', label: 'My Account', icon: 'fa-user' },
+    ...(isAdmin ? [{ id: 'shop', label: 'Shop', icon: 'fa-store' }] : [])
+  ];
+
+  const tabButtonClass = (id) =>
+    `px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+      activeTab === id
+        ? 'border-blue-600 text-blue-600'
+        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+    }`;
 
   return (
     <div className="p-6">
@@ -165,273 +182,318 @@ const SettingsPage = () => {
         </div>
       </div>
 
-      <div className="max-w-4xl space-y-6">
-        {/* User Profile Section */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Profile Information</h2>
-            {!isEditingInfo && (
+      <div className="max-w-4xl">
+        {/* Tab bar */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="flex gap-2">
+            {tabs.map(tab => (
               <button
-                onClick={() => setIsEditingInfo(true)}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={tabButtonClass(tab.id)}
               >
-                <i className="fas fa-edit mr-1"></i>
-                Edit
+                <i className={`fas ${tab.icon} mr-2`}></i>
+                {tab.label}
               </button>
-            )}
-          </div>
+            ))}
+          </nav>
+        </div>
 
-          {infoMessage.text && (
-            <div className={`mb-4 p-3 rounded ${
-              infoMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-            }`}>
-              {infoMessage.text}
-            </div>
-          )}
-
-          <form onSubmit={handleUpdateInfo}>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={userInfo.name}
-                  onChange={(e) => setUserInfo({ ...userInfo, name: e.target.value })}
-                  disabled={!isEditingInfo}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={userInfo.email}
-                  onChange={(e) => setUserInfo({ ...userInfo, email: e.target.value })}
-                  disabled={!isEditingInfo}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <input
-                  type="text"
-                  value={currentUser?.role || ''}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 capitalize"
-                />
-              </div>
-
-              {isEditingInfo && (
-                <div className="flex gap-2 pt-2">
+        {activeTab === 'profile' && (
+          <div className="space-y-6">
+            {/* User Profile Section */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Profile Information</h2>
+                {!isEditingInfo && (
                   <button
-                    type="submit"
-                    disabled={isUpdatingInfo}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                    onClick={() => setIsEditingInfo(true)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                   >
-                    {isUpdatingInfo ? 'Saving...' : 'Save Changes'}
+                    <i className="fas fa-edit mr-1"></i>
+                    Edit
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingInfo(false);
-                      setUserInfo({
-                        name: currentUser?.name || '',
-                        email: currentUser?.email || ''
-                      });
-                      setInfoMessage({ type: '', text: '' });
-                    }}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  >
-                    Cancel
-                  </button>
+                )}
+              </div>
+
+              {infoMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  infoMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {infoMessage.text}
                 </div>
               )}
-            </div>
-          </form>
-        </div>
 
-        {/* Password Section */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-800">Password</h2>
-            {!showPasswordSection && (
-              <button
-                onClick={() => setShowPasswordSection(true)}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                <i className="fas fa-key mr-1"></i>
-                Change Password
-              </button>
-            )}
-          </div>
-
-          {passwordMessage.text && (
-            <div className={`mb-4 p-3 rounded ${
-              passwordMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-            }`}>
-              {passwordMessage.text}
-            </div>
-          )}
-
-          {showPasswordSection ? (
-            <form onSubmit={handleUpdatePassword}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Current Password
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordData.passwordCurrent}
-                    onChange={(e) => setPasswordData({ ...passwordData, passwordCurrent: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                    minLength={8}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    New Password
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordData.password}
-                    onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                    minLength={8}
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Confirm New Password
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordData.passwordConfirm}
-                    onChange={(e) => setPasswordData({ ...passwordData, passwordConfirm: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                    minLength={8}
-                  />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="submit"
-                    disabled={isUpdatingPassword}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
-                  >
-                    {isUpdatingPassword ? 'Updating...' : 'Update Password'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPasswordSection(false);
-                      setPasswordData({ passwordCurrent: '', password: '', passwordConfirm: '' });
-                      setPasswordMessage({ type: '', text: '' });
-                    }}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </form>
-          ) : (
-            <p className="text-gray-600 text-sm">
-              Click "Change Password" to update your password. You'll need to provide your current password for security.
-            </p>
-          )}
-        </div>
-
-        {/* Shop Settings Section (Admin/Management only) */}
-        {isAdmin && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">Shop Settings</h2>
-
-            {shopSettingsMessage.text && (
-              <div className={`mb-4 p-3 rounded ${
-                shopSettingsMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
-              }`}>
-                {shopSettingsMessage.text}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateShopSettings}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Part Markup Percentage
-                  </label>
-                  <div className="flex items-center gap-2">
+              <form onSubmit={handleUpdateInfo}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Name
+                    </label>
                     <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={shopSettings.partMarkupPercentage}
-                      onChange={(e) => setShopSettings({ ...shopSettings, partMarkupPercentage: e.target.value })}
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      type="text"
+                      value={userInfo.name}
+                      onChange={(e) => setUserInfo({ ...userInfo, name: e.target.value })}
+                      disabled={!isEditingInfo}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                      required
                     />
-                    <span className="text-gray-600">%</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Applied to part cost to calculate retail price. Currently: cost x {(1 + Number(shopSettings.partMarkupPercentage) / 100).toFixed(2)}
-                  </p>
-                </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                  <p className="text-sm text-yellow-800">
-                    <i className="fas fa-exclamation-triangle mr-1"></i>
-                    Changing this will recalculate retail prices on all quotes and work orders that do not yet have a saved invoice.
-                  </p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={userInfo.email}
+                      onChange={(e) => setUserInfo({ ...userInfo, email: e.target.value })}
+                      disabled={!isEditingInfo}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                      required
+                    />
+                  </div>
 
-                <div className="flex gap-2 pt-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Role
+                    </label>
+                    <input
+                      type="text"
+                      value={currentUser?.role || ''}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500 capitalize"
+                    />
+                  </div>
+
+                  {isEditingInfo && (
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={isUpdatingInfo}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                      >
+                        {isUpdatingInfo ? 'Saving...' : 'Save Changes'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingInfo(false);
+                          setUserInfo({
+                            name: currentUser?.name || '',
+                            email: currentUser?.email || ''
+                          });
+                          setInfoMessage({ type: '', text: '' });
+                        }}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {/* Password Section */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Password</h2>
+                {!showPasswordSection && (
                   <button
-                    type="submit"
-                    disabled={isUpdatingShopSettings}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                    onClick={() => setShowPasswordSection(true)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                   >
-                    {isUpdatingShopSettings ? 'Saving...' : 'Save Shop Settings'}
+                    <i className="fas fa-key mr-1"></i>
+                    Change Password
                   </button>
+                )}
+              </div>
+
+              {passwordMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  passwordMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {passwordMessage.text}
+                </div>
+              )}
+
+              {showPasswordSection ? (
+                <form onSubmit={handleUpdatePassword}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Current Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordData.passwordCurrent}
+                        onChange={(e) => setPasswordData({ ...passwordData, passwordCurrent: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordData.password}
+                        onChange={(e) => setPasswordData({ ...passwordData, password: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                        minLength={8}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        value={passwordData.passwordConfirm}
+                        onChange={(e) => setPasswordData({ ...passwordData, passwordConfirm: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={isUpdatingPassword}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                      >
+                        {isUpdatingPassword ? 'Updating...' : 'Update Password'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPasswordSection(false);
+                          setPasswordData({ passwordCurrent: '', password: '', passwordConfirm: '' });
+                          setPasswordMessage({ type: '', text: '' });
+                        }}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              ) : (
+                <p className="text-gray-600 text-sm">
+                  Click "Change Password" to update your password. You'll need to provide your current password for security.
+                </p>
+              )}
+            </div>
+
+            {/* Account Information Section */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Account Information</h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Account Created:</span>
+                  <span className="font-medium text-gray-800">
+                    {currentUser?.createdAt ? formatDate(currentUser.createdAt) : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Last Updated:</span>
+                  <span className="font-medium text-gray-800">
+                    {currentUser?.updatedAt ? formatDate(currentUser.updatedAt) : 'N/A'}
+                  </span>
                 </div>
               </div>
-            </form>
+            </div>
           </div>
         )}
 
-        {/* Account Information Section */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Account Information</h2>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Account Created:</span>
-              <span className="font-medium text-gray-800">
-                {currentUser?.createdAt ? formatDate(currentUser.createdAt) : 'N/A'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Last Updated:</span>
-              <span className="font-medium text-gray-800">
-                {currentUser?.updatedAt ? formatDate(currentUser.updatedAt) : 'N/A'}
-              </span>
+        {activeTab === 'shop' && isAdmin && (
+          <div className="space-y-6">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-1">Shop Settings</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Defaults applied across new work orders, quotes, and inventory items.
+              </p>
+
+              {shopSettingsMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  shopSettingsMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {shopSettingsMessage.text}
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateShopSettings}>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Default Labor Rate
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={shopSettings.defaultLaborRate}
+                        onChange={(e) => setShopSettings({ ...shopSettings, defaultLaborRate: e.target.value })}
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-gray-600">/ hr</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Pre-fills the rate field when adding labor to a work order or quote. Can be overridden per line.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Part Markup Percentage
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={shopSettings.partMarkupPercentage}
+                        onChange={(e) => setShopSettings({ ...shopSettings, partMarkupPercentage: e.target.value })}
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-gray-600">%</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Applied to part cost to calculate retail price. Currently: cost x {(1 + Number(shopSettings.partMarkupPercentage) / 100).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                    <p className="text-sm text-yellow-800">
+                      <i className="fas fa-exclamation-triangle mr-1"></i>
+                      Changing the markup will recalculate retail prices on all quotes and work orders that do not yet have a saved invoice. The labor rate only affects newly-added labor lines.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={isUpdatingShopSettings}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                    >
+                      {isUpdatingShopSettings ? 'Saving...' : 'Save Shop Settings'}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

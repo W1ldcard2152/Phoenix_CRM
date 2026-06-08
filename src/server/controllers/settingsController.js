@@ -18,6 +18,9 @@ exports.updateSettings = catchAsync(async (req, res) => {
   if (req.body.partMarkupPercentage !== undefined) {
     settings.partMarkupPercentage = req.body.partMarkupPercentage;
   }
+  if (req.body.defaultLaborRate !== undefined) {
+    settings.defaultLaborRate = req.body.defaultLaborRate;
+  }
   if (req.body.customVendors !== undefined) {
     settings.customVendors = req.body.customVendors;
   }

@@ -5,7 +5,7 @@ import aiService from '../../services/aiService';
  * Inline button placed next to URL fields that extracts product details via AI.
  * Props:
  *   url       - current URL value from the form
- *   onExtracted(data) - callback with extracted fields { name, partNumber, price, cost, vendor, brand, warranty }
+ *   onExtracted(data) - callback with extracted fields { name, partNumber, price, cost, vendor, brand }
  *   disabled  - optional, disable the button externally
  */
 const UrlExtractButton = ({ url, onExtracted, disabled }) => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import SettingsService from '../../services/settingsService';
 import UrlExtractButton from '../common/UrlExtractButton';
+import { WARRANTY_OPTIONS } from '../../utils/warrantyOptions';
 
 /**
  * Shared inventory item form used by both InventoryList and InventoryPickerModal.
@@ -249,13 +250,19 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
       {/* Warranty */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Warranty</label>
-        <input
-          type="text"
-          value={formData.warranty}
+        <select
+          value={formData.warranty || ''}
           onChange={(e) => updateField('warranty', e.target.value)}
-          placeholder="e.g., 1 year"
           className={inputClass}
-        />
+        >
+          <option value="">None</option>
+          {WARRANTY_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+          {formData.warranty && !WARRANTY_OPTIONS.includes(formData.warranty) && (
+            <option value={formData.warranty}>{formData.warranty}</option>
+          )}
+        </select>
       </div>
 
       {/* Unit + Reorder Point row */}
@@ -362,8 +369,7 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
               price: formData.price || (data.price != null ? data.price : 0),
               cost: formData.cost || (data.cost != null ? data.cost : data.price != null ? data.price : 0),
               vendor: formData.vendor || data.vendor || '',
-              partNumber: formData.partNumber || [data.brand, data.partNumber].filter(Boolean).join(' ') || '',
-              warranty: formData.warranty || data.warranty || ''
+              partNumber: formData.partNumber || [data.brand, data.partNumber].filter(Boolean).join(' ') || ''
             })}
           />
         </div>

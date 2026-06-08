@@ -7,6 +7,7 @@ import usePersistedState from '../../hooks/usePersistedState';
 import InventoryItemForm from '../../components/inventory/InventoryItemForm';
 import InventoryReceiptImportModal from '../../components/inventory/InventoryReceiptImportModal';
 import ManageBrandsModal from '../../components/inventory/ManageBrandsModal';
+import { DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
 
 const getStockStatus = (item) => {
   if (item.quantityOnHand === 0) return 'out';
@@ -29,6 +30,7 @@ const InventoryList = () => {
   const [categories, setCategories] = useState([]);
   const [categoryFilter, setCategoryFilter] = usePersistedState('inventory:categoryFilter', 'All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = usePersistedState('inventory:sortConfig:v1', [{ key: 'name', direction: 'asc' }]);
   const [shoppingListCount, setShoppingListCount] = useState(0);
 
   // Modal states
@@ -44,7 +46,7 @@ const InventoryList = () => {
   const [formData, setFormData] = useState({
     name: '', partNumber: '', category: '', quantityOnHand: 0, unit: 'each',
     unitsPerPurchase: 1, purchaseUnit: '', packageTag: '',
-    reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: '',
+    reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: DEFAULT_WARRANTY,
     url: '', notes: ''
   });
   const [packageTags, setPackageTags] = useState([]);
@@ -173,6 +175,66 @@ const InventoryList = () => {
     return filtered;
   }, [items, categoryFilter, searchQuery]);
 
+  const sortedItems = useMemo(() => {
+    const sorted = [...filteredItems];
+    sorted.sort((a, b) => {
+      for (const { key, direction } of sortConfig) {
+        let comparison = 0;
+        const multiplier = direction === 'asc' ? 1 : -1;
+        switch (key) {
+          case 'name':
+            comparison = (a.name || '').localeCompare(b.name || '');
+            break;
+          case 'category':
+            comparison = (a.category || '').localeCompare(b.category || '');
+            break;
+          case 'vendor':
+            comparison = (a.vendor || '').localeCompare(b.vendor || '');
+            break;
+          case 'price':
+            comparison = (a.price || 0) - (b.price || 0);
+            break;
+          case 'qoh':
+            comparison = (a.quantityOnHand || 0) - (b.quantityOnHand || 0);
+            break;
+          case 'unit':
+            comparison = (a.unit || '').localeCompare(b.unit || '');
+            break;
+          case 'reorder':
+            comparison = (a.reorderPoint || 0) - (b.reorderPoint || 0);
+            break;
+          default:
+            break;
+        }
+        if (comparison !== 0) return comparison * multiplier;
+      }
+      return 0;
+    });
+    return sorted;
+  }, [filteredItems, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig(prev => {
+      const existing = prev.find(s => s.key === key);
+      if (existing) {
+        if (existing.direction === 'asc') {
+          return prev.map(s => s.key === key ? { ...s, direction: 'desc' } : s);
+        }
+        return prev.filter(s => s.key !== key);
+      }
+      const newConfig = [...prev, { key, direction: 'asc' }];
+      return newConfig.length > 3 ? newConfig.slice(1) : newConfig;
+    });
+  };
+
+  const getSortIndicator = (key) => {
+    const config = sortConfig.find(s => s.key === key);
+    if (!config) return '';
+    const arrow = config.direction === 'asc' ? ' ▲' : ' ▼';
+    const priority = sortConfig.length > 1 ? ` ${sortConfig.indexOf(config) + 1}` : '';
+    return arrow + priority;
+  };
+
   const stats = useMemo(() => ({
     total: items.length,
     low: items.filter(i => i.quantityOnHand <= i.reorderPoint && i.quantityOnHand > 0).length,
@@ -184,7 +246,7 @@ const InventoryList = () => {
     setEditingItem(null);
     setFormData({ name: '', partNumber: '', category: '', quantityOnHand: 0, unit: 'each',
       unitsPerPurchase: 1, purchaseUnit: '', packageTag: '',
-      reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: '', url: '', notes: '' });
+      reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: DEFAULT_WARRANTY, url: '', notes: '' });
     setShowItemModal(true);
   };
 
@@ -592,7 +654,7 @@ const InventoryList = () => {
 
       {/* Item Cards - Mobile */}
       <div className="p-4 space-y-2 lg:hidden">
-        {filteredItems.length === 0 ? (
+        {sortedItems.length === 0 ? (
           <div className="bg-white rounded-xl p-8 text-center text-gray-400 shadow-sm">
             <svg className="mx-auto h-12 w-12 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -603,7 +665,7 @@ const InventoryList = () => {
             </button>
           </div>
         ) : (
-          filteredItems.map(item => {
+          sortedItems.map(item => {
             const status = getStockStatus(item);
             const colors = stockColors[status];
             return (
@@ -692,7 +754,7 @@ const InventoryList = () => {
       {/* Desktop Table */}
       <div className="hidden lg:block p-4">
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          {filteredItems.length === 0 ? (
+          {sortedItems.length === 0 ? (
             <div className="p-8 text-center text-gray-400">
               <p>No items found</p>
             </div>
@@ -700,40 +762,77 @@ const InventoryList = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">QOH</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Unit</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Reorder</th>
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('name')}
+                  >
+                    Name{getSortIndicator('name')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('category')}
+                  >
+                    Category{getSortIndicator('category')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('vendor')}
+                  >
+                    Vendor{getSortIndicator('vendor')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('price')}
+                  >
+                    Price{getSortIndicator('price')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('qoh')}
+                  >
+                    QOH{getSortIndicator('qoh')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('unit')}
+                  >
+                    Unit{getSortIndicator('unit')}
+                  </th>
+                  <th
+                    className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                    onClick={() => handleSort('reorder')}
+                  >
+                    Reorder{getSortIndicator('reorder')}
+                  </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Adjust</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredItems.map(item => {
+                {sortedItems.map(item => {
                   const status = getStockStatus(item);
                   const colors = stockColors[status];
                   return (
                     <tr key={item._id} className="hover:bg-gray-50">
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-2 text-sm">
                         <div className="font-medium text-gray-900">{item.name}</div>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          {(item.partNumber || item.brand) && <span>{item.partNumber || item.brand}</span>}
-                          {item.url && (
-                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">
-                              Link
-                            </a>
-                          )}
-                        </div>
+                        {((item.partNumber || item.brand) || item.url) && (
+                          <div className="flex items-center gap-2 text-xs text-gray-400 leading-tight">
+                            {(item.partNumber || item.brand) && <span>{item.partNumber || item.brand}</span>}
+                            {item.url && (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">
+                                Link
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500">{item.category || '-'}</td>
-                      <td className="px-4 py-4 text-sm text-gray-500">{item.vendor || '-'}</td>
-                      <td className="px-4 py-4 text-right text-sm text-gray-900">
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{item.category || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{item.vendor || '-'}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-right text-sm text-gray-900">
                         {item.price > 0 ? formatCurrency(item.price) : '-'}
                         {item.cost > 0 && item.price > 0 && (
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-400 leading-tight">
                             {formatCurrency(item.cost)} cost
                             {item.unitsPerPurchase > 1 && (
                               <span> / {item.purchaseUnit || 'pack'}</span>
@@ -741,30 +840,30 @@ const InventoryList = () => {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex px-2 py-1 text-sm font-bold rounded-full ${colors.badge}`}>
+                      <td className="px-4 py-2 whitespace-nowrap text-center">
+                        <span className={`inline-flex px-2 py-0.5 text-sm font-bold rounded-full ${colors.badge}`}>
                           {item.quantityOnHand}
                         </span>
                       </td>
-                      <td className="px-4 py-4 text-center text-sm text-gray-500">{item.unit}</td>
-                      <td className="px-4 py-4 text-center text-sm text-gray-500">{item.reorderPoint}</td>
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-2 whitespace-nowrap text-center text-sm text-gray-500">{item.unit}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-center text-sm text-gray-500">{item.reorderPoint}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => openAdjustModal(item, -1)}
-                            className="w-8 h-8 rounded bg-red-50 text-red-600 flex items-center justify-center font-bold hover:bg-red-100"
+                            className="w-7 h-7 rounded bg-red-50 text-red-600 flex items-center justify-center font-bold hover:bg-red-100"
                           >
                             &minus;
                           </button>
                           <button
                             onClick={() => openAdjustModal(item, 1)}
-                            className="w-8 h-8 rounded bg-green-50 text-green-600 flex items-center justify-center font-bold hover:bg-green-100"
+                            className="w-7 h-7 rounded bg-green-50 text-green-600 flex items-center justify-center font-bold hover:bg-green-100"
                           >
                             +
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-4 py-2 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button onClick={() => openEditModal(item)} className="text-gray-500 hover:text-primary-600">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -339,7 +339,7 @@ exports.confirmInventoryReceipt = catchAsync(async (req, res, next) => {
         packageTag: '',
         category: '',
         reorderPoint: 1,
-        warranty: '',
+        warranty: '90 days',
         url: '',
         notes: ''
       });

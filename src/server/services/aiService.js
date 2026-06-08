@@ -321,8 +321,7 @@ const parseAiResponse = (text) => {
     price: null,
     cost: null,
     vendor: extracted.vendor || null,
-    brand: extracted.brand || null,
-    warranty: extracted.warranty || null
+    brand: extracted.brand || null
   };
 };
 
@@ -331,7 +330,6 @@ const EXTRACTION_FIELDS = `Fields to extract:
 - partNumber: The manufacturer part number, SKU, model number, or item number
 - vendor: The retailer/marketplace name (e.g., "RockAuto", "Amazon", "eBay", "AutoZone")
 - brand: The manufacturer/brand name (e.g., "Bosch", "Mobil 1", "ACDelco")
-- warranty: Warranty information if listed
 
 IMPORTANT: Do NOT extract prices. Prices change constantly and we need the user to verify them manually. Only extract identifying information.
 
@@ -397,7 +395,7 @@ ${pageText}`;
 ${url}
 
 CRITICAL RULES:
-- You may identify the product name, part number, brand, vendor, and warranty from your knowledge.
+- You may identify the product name, part number, brand, and vendor from your knowledge.
 - You MUST set "price" to null and "cost" to null. Prices change constantly and you do not have access to the live page, so any price you provide would be wrong.
 - Do NOT guess or fabricate any field. Use null if unsure.
 
@@ -408,7 +406,6 @@ Fields to extract:
 - cost: null
 - vendor: The retailer/marketplace name (e.g., "RockAuto", "Amazon", "eBay", "AutoZone")
 - brand: The manufacturer/brand name
-- warranty: Warranty information if you are certain of it, otherwise null
 
 Return a JSON object with these fields.`;
 

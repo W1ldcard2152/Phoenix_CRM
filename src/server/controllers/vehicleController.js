@@ -233,14 +233,32 @@ exports.searchVehicles = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a search query', 400));
   }
 
-  const vehicles = await Vehicle.find({
-    $or: [
-      { make: { $regex: query, $options: 'i' } },
-      { model: { $regex: query, $options: 'i' } },
-      { vin: { $regex: query, $options: 'i' } },
-      { licensePlate: { $regex: query, $options: 'i' } }
-    ]
-  }).populate('customer', 'name phone email');
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tokens = query.trim().split(/\s+/).filter(Boolean).map(escapeRegex);
+
+  const filter = tokens.length
+    ? {
+        $and: tokens.map((token) => ({
+          $or: [
+            { make: { $regex: token, $options: 'i' } },
+            { model: { $regex: token, $options: 'i' } },
+            { vin: { $regex: token, $options: 'i' } },
+            { licensePlate: { $regex: token, $options: 'i' } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: { $toString: '$year' },
+                  regex: token,
+                  options: 'i'
+                }
+              }
+            }
+          ]
+        }))
+      }
+    : {};
+
+  const vehicles = await Vehicle.find(filter).populate('customer', 'name phone email');
 
   res.status(200).json({
     status: 'success',

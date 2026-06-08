@@ -4,11 +4,12 @@ import SettingsService from '../../services/settingsService';
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import InventoryItemForm from '../inventory/InventoryItemForm';
+import { DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
 
 const EMPTY_FORM = {
   name: '', partNumber: '', category: '', quantityOnHand: 0, unit: 'each',
   unitsPerPurchase: 1, purchaseUnit: '', packageTag: '',
-  reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: '', url: '', notes: ''
+  reorderPoint: 1, price: 0, cost: 0, vendor: '', warranty: DEFAULT_WARRANTY, url: '', notes: ''
 };
 
 const InventoryPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {

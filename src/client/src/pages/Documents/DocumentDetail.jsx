@@ -35,6 +35,7 @@ import { calculateDiscountAmount, describeDiscount } from '../../utils/discountU
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
+import { WARRANTY_OPTIONS, DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
 
 const DocumentDetail = () => {
   const { currentUser } = useAuth();
@@ -139,13 +140,14 @@ const DocumentDetail = () => {
     name: '', partNumber: '', quantity: 1,
     price: 0, cost: 0, ordered: false, received: false,
     vendor: '', supplier: '', purchaseOrderNumber: '', receiptImageUrl: '',
-    url: '', notes: '', warranty: '', category: '', coreCharge: 0, coreChargeInvoiceable: false,
+    url: '', notes: '', warranty: DEFAULT_WARRANTY, category: '', coreCharge: 0, coreChargeInvoiceable: false,
     vin: '', stockNumber: ''
   };
   const [newPart, setNewPart] = useState({ ...defaultPart });
   const [expandedPartIndex, setExpandedPartIndex] = useState(null);
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [markupPercentage, setMarkupPercentage] = useState(30);
+  const [defaultLaborRate, setDefaultLaborRate] = useState(75);
   const [overridePrice, setOverridePrice] = useState(false);
   const [partsSortConfig, setPartsSortConfig] = useState([]);
   const [vendorList, setVendorList] = useState([]);
@@ -418,13 +420,14 @@ const DocumentDetail = () => {
         // Fetch settings and document in parallel
         const [docResponse, settingsResponse] = await Promise.all([
           DocumentService.getDocument(id),
-          SettingsService.getSettings().catch(() => ({ data: { settings: { partMarkupPercentage: 30, customVendors: [], customCategories: [] } } }))
+          SettingsService.getSettings().catch(() => ({ data: { settings: { partMarkupPercentage: 30, defaultLaborRate: 75, customVendors: [], customCategories: [] } } }))
         ]);
 
         const fetchedDoc = docResponse.data.workOrder;
         const settings = settingsResponse.data.settings;
         setWorkOrder(fetchedDoc);
         setMarkupPercentage(settings.partMarkupPercentage);
+        if (typeof settings.defaultLaborRate === 'number') setDefaultLaborRate(settings.defaultLaborRate);
         setVendorList(settings.customVendors || []);
         setCategoryList(settings.customCategories || []);
         if (settings.vendorHostnames) {
@@ -1096,7 +1099,7 @@ const DocumentDetail = () => {
   // ==================== Labor Handlers ====================
   const openAddLaborModal = () => {
     setEditingLabor(null);
-    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: 75 });
+    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
     setLaborModalOpen(true);
   };
 
@@ -1104,7 +1107,7 @@ const DocumentDetail = () => {
     setEditingLabor({ ...labor, index });
     setNewLabor({
       description: labor.description || '', billingType: labor.billingType || 'hourly',
-      quantity: labor.quantity || labor.hours || 1, rate: labor.rate || 75
+      quantity: labor.quantity || labor.hours || 1, rate: labor.rate || defaultLaborRate
     });
     setLaborModalOpen(true);
   };
@@ -1114,7 +1117,7 @@ const DocumentDetail = () => {
       const response = await DocumentService.addLabor(id, newLabor);
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: 75 });
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
     } catch (err) {
       console.error('Error adding labor:', err);
       setError('Failed to add labor. Please try again later.');
@@ -1129,7 +1132,7 @@ const DocumentDetail = () => {
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
       setEditingLabor(null);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: 75 });
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
     } catch (err) {
       console.error('Error updating labor:', err);
       setError('Failed to update labor. Please try again later.');
@@ -2658,8 +2661,7 @@ const DocumentDetail = () => {
                       cost: prev.cost || (data.cost != null ? data.cost : data.price != null ? data.price : 0),
                       price: prev.price || (data.price != null ? data.price : 0),
                       vendor: prev.vendor || data.vendor || '',
-                      brand: prev.brand || data.brand || '',
-                      warranty: prev.warranty || data.warranty || ''
+                      brand: prev.brand || data.brand || ''
                     }))}
                   />
                 </div>
@@ -2735,8 +2737,16 @@ const DocumentDetail = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Part Warranty <span className="text-xs text-gray-500">(customer-facing)</span></label>
-                <input type="text" placeholder="e.g., 2 year / 24,000 mile" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newPart.warranty} onChange={(e) => setNewPart({ ...newPart, warranty: e.target.value })} />
+                <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newPart.warranty || ''} onChange={(e) => setNewPart({ ...newPart, warranty: e.target.value })}>
+                  <option value="">None</option>
+                  {WARRANTY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                  {newPart.warranty && !WARRANTY_OPTIONS.includes(newPart.warranty) && (
+                    <option value={newPart.warranty}>{newPart.warranty}</option>
+                  )}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes <span className="text-xs text-gray-500">(not shown on invoice)</span></label>
