@@ -50,6 +50,7 @@ const VehicleSchema = new Schema(
     vin: {
       type: String,
       trim: true,
+      uppercase: true,
     },
     licensePlate: {
       type: String,

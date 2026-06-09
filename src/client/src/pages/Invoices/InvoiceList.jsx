@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import invoiceService from '../../services/invoiceService';
 import workOrderNotesService from '../../services/workOrderNotesService';
@@ -39,7 +39,6 @@ const InvoiceList = () => {
   const [generatingPDFId, setGeneratingPDFId] = useState(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(null); // invoiceId
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const statusMenuRef = useRef(null);
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -72,10 +71,13 @@ const InvoiceList = () => {
   }, []);
 
   // Close the status popover when clicking outside of it.
+  // Use a data-attribute instead of a ref because renderStatusBadge runs in both the
+  // desktop table and the mobile card layout (both stay in the DOM, hidden via CSS),
+  // so a single ref would only point at one copy and report the other's clicks as outside.
   useEffect(() => {
     if (!statusMenuOpen) return;
     const onDocClick = (e) => {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target)) {
+      if (!e.target.closest('[data-invoice-status-menu]')) {
         setStatusMenuOpen(null);
       }
     };
@@ -295,7 +297,7 @@ const InvoiceList = () => {
     const meta = getStatusMeta(invoice.status);
     const isOpen = statusMenuOpen === invoice._id;
     return (
-      <div className="relative inline-block" ref={isOpen ? statusMenuRef : null}>
+      <div className="relative inline-block" data-invoice-status-menu>
         <button
           type="button"
           onClick={(ev) => { ev.stopPropagation(); setStatusMenuOpen(isOpen ? null : invoice._id); }}

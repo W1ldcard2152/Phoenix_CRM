@@ -1312,7 +1312,7 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     assignedTechnician: originalWorkOrder.assignedTechnician ? originalWorkOrder.assignedTechnician._id : null,
     date: todayInTz(),
     priority: originalWorkOrder.priority,
-    status: 'Created',
+    status: 'Work Order Created',
     serviceRequested: newWorkOrderTitle || `Split from WO ${originalWorkOrder._id.toString().slice(-6)}`,
     diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${formatDate(todayInTz())}`,
     parts: partsToMoveItems.map(part => {
@@ -1330,13 +1330,11 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
   // Calculate totals for new work order
   newWorkOrder.totalEstimate = calculateWorkOrderTotal(newWorkOrder.parts, newWorkOrder.labor, newWorkOrder.servicePackages);
 
-  // Remove moved items from original work order
-  originalWorkOrder.parts = originalWorkOrder.parts.filter(part =>
-    !partsToMoveIds.includes(part._id.toString())
-  );
-  originalWorkOrder.labor = originalWorkOrder.labor.filter(labor =>
-    !laborToMoveIds.includes(labor._id.toString())
-  );
+  // Remove moved items from original work order.
+  // Use pull() instead of reassigning filtered arrays — Mongoose doesn't reliably
+  // track DocumentArray reassignment as a change, which leaves the items orphaned on the original.
+  partsToMoveIds.forEach(partId => originalWorkOrder.parts.pull(partId));
+  laborToMoveIds.forEach(laborId => originalWorkOrder.labor.pull(laborId));
 
   // Update totals for original work order
   originalWorkOrder.totalEstimate = calculateWorkOrderTotal(originalWorkOrder.parts, originalWorkOrder.labor, originalWorkOrder.servicePackages);

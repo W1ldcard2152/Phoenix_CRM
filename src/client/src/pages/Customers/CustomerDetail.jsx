@@ -3,43 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import CustomerService from '../../services/customerService';
-import WorkOrderService from '../../services/workOrderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
-import { formatDate } from '../../utils/formatters';
 import FollowUpModal from '../../components/followups/FollowUpModal';
+import RelatedRecordsTabs from '../../components/common/RelatedRecordsTabs';
 
 const CustomerDetail = () => {
   const { currentUser } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
-  const [vehicles, setVehicles] = useState([]);
-  const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
-  const [showAllWorkOrders, setShowAllWorkOrders] = useState(false);
-  const [showAllVehicles, setShowAllVehicles] = useState(false);
 
   useEffect(() => {
     const fetchCustomerData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch customer details
         const customerResponse = await CustomerService.getCustomer(id);
         setCustomer(customerResponse.data.customer);
-        
-        // Fetch customer vehicles
-        const vehiclesResponse = await CustomerService.getCustomerVehicles(id);
-        setVehicles(vehiclesResponse.data.vehicles);
-        
-        // Fetch customer work orders
-        const workOrdersResponse = await WorkOrderService.getAllWorkOrders({ customer: id });
-        setWorkOrders(workOrdersResponse.data.workOrders);
-        
         setLoading(false);
       } catch (err) {
         console.error('Error fetching customer data:', err);
@@ -127,7 +111,7 @@ const CustomerDetail = () => {
         entityId={id}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Card title="Contact Information">
           <div className="space-y-2">
             <div>
@@ -161,150 +145,10 @@ const CustomerDetail = () => {
             {customer.notes || 'No notes available for this customer.'}
           </p>
         </Card>
-
-        <Card title="Customer Stats">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <h3 className="text-blue-800 font-medium">Vehicles</h3>
-              <p className="text-3xl font-bold">{vehicles.length}</p>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg">
-              <h3 className="text-green-800 font-medium">Work Orders</h3>
-              <p className="text-3xl font-bold">{workOrders.length}</p>
-            </div>
-          </div>
-        </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card 
-          title="Vehicles" 
-          headerActions={
-            <Button 
-              to={`/vehicles/new?customer=${id}`} 
-              variant="outline"
-              size="sm"
-            >
-              Add Vehicle
-            </Button>
-          }
-        >
-          {vehicles.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              <p>No vehicles found for this customer.</p>
-            </div>
-          ) : (
-            <>
-              <div className="divide-y divide-gray-200">
-                {(showAllVehicles ? vehicles : vehicles.slice(0, 5)).map((vehicle) => (
-                  <div key={vehicle._id} className="py-3 flex justify-between items-center">
-                    <div>
-                      <p className="font-medium">
-                        {vehicle.year} {vehicle.make} {vehicle.model}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {vehicle.vin ? `VIN: ${vehicle.vin}` : 'No VIN'}
-                        {vehicle.licensePlate ? ` • License: ${vehicle.licensePlate}` : ''}
-                      </p>
-                    </div>
-                    <div>
-                      <Button
-                        to={`/vehicles/${vehicle._id}`}
-                        variant="outline"
-                        size="sm"
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {vehicles.length > 5 && (
-                <div className="pt-3 text-center">
-                  <Button
-                    onClick={() => setShowAllVehicles(!showAllVehicles)}
-                    variant="link"
-                  >
-                    {showAllVehicles ? 'Show less' : `View ${vehicles.length - 5} more vehicle${vehicles.length - 5 > 1 ? 's' : ''}`}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </Card>
-
-        <Card 
-          title="Recent Work Orders"
-          headerActions={
-            <Button 
-              to={`/work-orders/new?customer=${id}`} 
-              variant="outline"
-              size="sm"
-            >
-              New Work Order
-            </Button>
-          }
-        >
-          {workOrders.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              <p>No work orders found for this customer.</p>
-            </div>
-          ) : (
-            <>
-              <div className="divide-y divide-gray-200">
-                {(showAllWorkOrders ? workOrders : workOrders.slice(0, 5)).map((workOrder) => (
-                  <div key={workOrder._id} className="py-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">
-                          {workOrder.vehicle?.year} {workOrder.vehicle?.make} {workOrder.vehicle?.model}
-                        </p>
-                        <p className="text-sm text-gray-600 truncate max-w-xs">
-                          {workOrder.serviceRequested}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {formatDate(workOrder.date)}
-                        </p>
-                      </div>
-                      <div>
-                        <span
-                          className={`inline-block px-2 py-1 text-xs rounded-full ${
-                            workOrder.status.includes('Completed')
-                              ? 'bg-green-100 text-green-800'
-                              : workOrder.status === 'Cancelled'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}
-                        >
-                          {workOrder.status}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex justify-end space-x-2">
-                      <Button
-                        to={`/work-orders/${workOrder._id}`}
-                        variant="outline"
-                        size="sm"
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {workOrders.length > 5 && (
-                <div className="pt-3 text-center">
-                  <Button
-                    onClick={() => setShowAllWorkOrders(!showAllWorkOrders)}
-                    variant="link"
-                  >
-                    {showAllWorkOrders ? 'Show less' : `View ${workOrders.length - 5} more work order${workOrders.length - 5 > 1 ? 's' : ''}`}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </Card>
+      <div className="mb-6">
+        <RelatedRecordsTabs customerId={id} />
       </div>
 
       {/* Delete Confirmation Modal */}

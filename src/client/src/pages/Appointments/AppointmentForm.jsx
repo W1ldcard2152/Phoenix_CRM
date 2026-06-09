@@ -465,6 +465,7 @@ const AppointmentForm = () => {
                     name="serviceType"
                     options={[
                       { value: '', label: 'Select Service Type' },
+                      { value: 'Maintenance', label: 'Maintenance' },
                       { value: 'Inspection', label: 'Inspection' },
                       { value: 'Repair', label: 'Repair' },
                       { value: 'Diagnostic Work', label: 'Diagnostic Work' },

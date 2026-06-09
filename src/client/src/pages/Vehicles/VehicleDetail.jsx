@@ -8,6 +8,7 @@ import { getTodayForInput, formatDate } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import FollowUpModal from '../../components/followups/FollowUpModal';
+import RelatedRecordsTabs from '../../components/common/RelatedRecordsTabs';
 
 const VehicleDetail = () => {
   const { currentUser } = useAuth();
@@ -15,12 +16,12 @@ const VehicleDetail = () => {
   const navigate = useNavigate();
   const [vehicle, setVehicle] = useState(null);
   const [customer, setCustomer] = useState(null);
-  const [serviceHistory, setServiceHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [mileageModalOpen, setMileageModalOpen] = useState(false);
+  const [mileageHistoryModalOpen, setMileageHistoryModalOpen] = useState(false);
   const [newMileageRecord, setNewMileageRecord] = useState({
     date: getTodayForInput(),
     mileage: '',
@@ -40,11 +41,7 @@ const VehicleDetail = () => {
         if (vehicleResponse.data.vehicle.customer && typeof vehicleResponse.data.vehicle.customer === 'object') {
           setCustomer(vehicleResponse.data.vehicle.customer);
         }
-        
-        // Fetch vehicle service history
-        const historyResponse = await VehicleService.getVehicleServiceHistory(id);
-        setServiceHistory(historyResponse.data.serviceHistory || []);
-        
+
         // Fetch vehicle appointments
         try {
           await AppointmentService.getVehicleAppointments(id);
@@ -53,7 +50,7 @@ const VehicleDetail = () => {
           console.error('Error loading appointments:', apptErr);
           // Don't fail the entire load if just appointments fail
         }
-        
+
         setLoading(false);
       } catch (err) {
         console.error('Error fetching vehicle data:', err);
@@ -201,7 +198,7 @@ const VehicleDetail = () => {
         entityId={id}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <Card title="Vehicle Information">
           <div className="space-y-2">
             <div>
@@ -222,196 +219,170 @@ const VehicleDetail = () => {
                 <p className="font-medium">{vehicle.licensePlate}</p>
               </div>
             )}
-            <div>
-              <p className="text-sm text-gray-500">Current Mileage</p>
-              <p className="font-medium">
-                {formatMileage(vehicle.currentMileage)}
-                <button 
-                  onClick={() => setMileageModalOpen(true)}
-                  className="ml-2 text-blue-600 text-sm hover:text-blue-800"
-                >
-                  Update
-                </button>
-              </p>
-            </div>
           </div>
-        </Card>
 
-        <Card title="Owner Information">
-          <div className="space-y-2">
-            {customer ? (
-              <>
-                <div>
-                  <p className="text-sm text-gray-500">Customer Name</p>
-                  <p className="font-medium">{customer.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Contact</p>
-                  <p className="font-medium">{customer.phone}</p>
-                  <p className="text-sm text-gray-600">{customer.email}</p>
-                </div>
-                <div className="pt-2">
-                  <Button
-                    to={`/customers/${customer._id}`}
-                    variant="outline"
-                    size="sm"
+          <div className="mt-4 pt-3 border-t border-gray-200">
+            <div className="flex justify-between items-center mb-2">
+              <p className="text-sm font-medium text-gray-700">
+                Mileage History
+                {vehicle.mileageHistory && vehicle.mileageHistory.length > 3 && (
+                  <button
+                    onClick={() => setMileageHistoryModalOpen(true)}
+                    className="ml-2 text-sm text-blue-600 hover:text-blue-800 font-normal"
                   >
-                    View Customer Details
-                  </Button>
-                </div>
-              </>
+                    View All ({vehicle.mileageHistory.length})
+                  </button>
+                )}
+              </p>
+              <Button
+                onClick={() => setMileageModalOpen(true)}
+                variant="outline"
+                size="sm"
+              >
+                Add
+              </Button>
+            </div>
+            {vehicle.mileageHistory && vehicle.mileageHistory.length > 0 ? (
+              <div className="space-y-1.5">
+                {[...vehicle.mileageHistory]
+                  .sort((a, b) => new Date(b.date) - new Date(a.date))
+                  .slice(0, 3)
+                  .map((record, idx) => (
+                    <div key={idx} className="text-sm flex justify-between items-baseline gap-2">
+                      <span className="text-gray-500 whitespace-nowrap">
+                        {formatDate(record.date)}
+                        {idx === 0 && (
+                          <span className="ml-2 inline-block px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-medium">
+                            Current
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-medium text-gray-900">{formatMileage(record.mileage)}</span>
+                    </div>
+                  ))}
+              </div>
+            ) : vehicle.currentMileage != null ? (
+              <div className="text-sm flex justify-between items-baseline gap-2">
+                <span className="text-gray-500">
+                  <span className="inline-block px-1.5 py-0.5 text-xs rounded bg-blue-100 text-blue-800 font-medium">
+                    Current
+                  </span>
+                </span>
+                <span className="font-medium text-gray-900">{formatMileage(vehicle.currentMileage)}</span>
+              </div>
             ) : (
-              <p className="text-gray-700">Owner information not available.</p>
+              <p className="text-sm text-gray-500">No mileage recorded yet.</p>
             )}
           </div>
         </Card>
 
-        <Card title="Vehicle Notes">
-          <p className="text-gray-700">
-            {vehicle.notes || 'No notes available for this vehicle.'}
-          </p>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Mileage History Card */}
-        <Card 
-          title="Mileage History" 
-          headerActions={
-            <Button 
-              onClick={() => setMileageModalOpen(true)} 
-              variant="outline"
-              size="sm"
-            >
-              Add Mileage
-            </Button>
-          }
-        >
-          {!vehicle.mileageHistory || vehicle.mileageHistory.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              <p>No mileage history recorded.</p>
-              <p className="text-sm mt-2">Click "Add Mileage" to record the vehicle's odometer reading.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Mileage
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Notes
-                    </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {/* Sort mileage history by date descending */}
-                  {[...vehicle.mileageHistory]
-                    .map((record, originalIndex) => ({ ...record, originalIndex }))
-                    .sort((a, b) => new Date(b.date) - new Date(a.date))
-                    .map((record, sortedIndex) => (
-                      <tr key={record.originalIndex} className={sortedIndex === 0 ? 'bg-blue-50' : ''}>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <div className="font-medium text-gray-900">
-                            {formatDate(record.date)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {formatMileage(record.mileage)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="text-sm text-gray-900">
-                            {record.notes || '-'}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <button
-                            onClick={() => handleDeleteMileageRecord(record.originalIndex)}
-                            className="text-red-600 hover:text-red-800 text-sm font-medium"
-                            title="Delete mileage record"
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-
-        <Card 
-          title="Service History" 
-          headerActions={
-            <Button 
-              to={`/work-orders/new?vehicle=${id}${customer ? `&customer=${customer._id}` : ''}`} 
-              variant="outline"
-              size="sm"
-            >
-              New Work Order
-            </Button>
-          }
-        >
-          {serviceHistory.length === 0 ? (
-            <div className="text-center py-6 text-gray-500">
-              <p>No service history found for this vehicle.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {serviceHistory.map((workOrder) => (
-                <div key={workOrder._id} className="py-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">{workOrder.serviceRequested}</p>
-                      <p className="text-sm text-gray-500">
-                        {formatDate(workOrder.mostRecentAppointmentDate || workOrder.date)}
-                      </p>
-                      {workOrder.diagnosticNotes && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          {workOrder.diagnosticNotes.substring(0, 100)}
-                          {workOrder.diagnosticNotes.length > 100 ? '...' : ''}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <span
-                        className={`inline-block px-2 py-1 text-xs rounded-full ${
-                          workOrder.status.includes('Completed')
-                            ? 'bg-green-100 text-green-800'
-                            : workOrder.status === 'Cancelled'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {workOrder.status}
-                      </span>
-                    </div>
+        <div className="space-y-6">
+          <Card title="Owner Information">
+            <div className="space-y-2">
+              {customer ? (
+                <>
+                  <div>
+                    <p className="text-sm text-gray-500">Customer Name</p>
+                    <p className="font-medium">{customer.name}</p>
                   </div>
-                  <div className="mt-2 flex justify-end space-x-2">
+                  <div>
+                    <p className="text-sm text-gray-500">Contact</p>
+                    <p className="font-medium">{customer.phone}</p>
+                    <p className="text-sm text-gray-600">{customer.email}</p>
+                  </div>
+                  <div className="pt-2">
                     <Button
-                      to={`/work-orders/${workOrder._id}`}
+                      to={`/customers/${customer._id}`}
                       variant="outline"
                       size="sm"
                     >
-                      View
+                      View Customer Details
                     </Button>
                   </div>
-                </div>
-              ))}
+                </>
+              ) : (
+                <p className="text-gray-700">Owner information not available.</p>
+              )}
             </div>
-          )}
-        </Card>
+          </Card>
+
+          <Card title="Vehicle Notes">
+            <p className="text-gray-700">
+              {vehicle.notes || 'No notes available for this vehicle.'}
+            </p>
+          </Card>
+        </div>
       </div>
+
+      <div className="mb-6">
+        <RelatedRecordsTabs vehicleId={id} customerId={customer?._id} />
+      </div>
+
+      {/* Mileage History Modal (full list) */}
+      {mileageHistoryModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[85vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-900">Mileage History</h3>
+              <button
+                onClick={() => setMileageHistoryModalOpen(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              {!vehicle.mileageHistory || vehicle.mileageHistory.length === 0 ? (
+                <div className="text-center py-6 text-gray-500">
+                  <p>No mileage history recorded.</p>
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mileage</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {[...vehicle.mileageHistory]
+                      .map((record, originalIndex) => ({ ...record, originalIndex }))
+                      .sort((a, b) => new Date(b.date) - new Date(a.date))
+                      .map((record, sortedIndex) => (
+                        <tr key={record.originalIndex} className={sortedIndex === 0 ? 'bg-blue-50' : ''}>
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <div className="font-medium text-gray-900">{formatDate(record.date)}</div>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{formatMileage(record.mileage)}</div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <div className="text-sm text-gray-900">{record.notes || '-'}</div>
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-right">
+                            <button
+                              onClick={() => handleDeleteMileageRecord(record.originalIndex)}
+                              className="text-red-600 hover:text-red-800 text-sm font-medium"
+                              title="Delete mileage record"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 flex justify-end">
+              <Button variant="light" onClick={() => setMileageHistoryModalOpen(false)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (

@@ -2,6 +2,22 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-09
+
+### Added
+- Tabbed Related Records section on Customer and Vehicle detail pages — single panel with Vehicles / Work Orders / Quotes tabs (Vehicle pages skip the Vehicles tab), counts shown in the tab labels, defaults to Work Orders, with a New action button on the right that switches per tab
+- Maintenance option in the appointment service type dropdown for oil changes and other routine work
+- Feedback button now visible on mobile (was previously hidden below the sm breakpoint, making it unreachable for users filing feedback from their phones)
+
+### Changed
+- Vehicle detail page rebalanced: Vehicle Information card now includes the last 3 mileage entries inline with the most recent flagged as **Current**, plus a View All button that opens the full history in a modal; standalone Mileage History card removed; top section is now 2 columns instead of 3, with Owner Information stacked above Vehicle Notes
+- Customer detail page cleaned up: separate Vehicles, Recent Work Orders, and Customer Stats cards removed (counts now live in the tab labels of the new Related Records section)
+- VIN normalized to uppercase at the Mongoose schema level on Vehicle records and used-part records, so any entry path (form, API, import, intake) ends up with a uppercase VIN
+
+### Fixed
+- Split work order feature was broken end-to-end — the new work order failed to save (invalid status value), and the moved parts and labor were not being removed from the original work order; now the split correctly creates the new WO with the selected items and removes them from the original
+- Invoice status dropdown on the invoices list page closed immediately when clicked, making it impossible to change the status — the click-outside detector was using a single ref but the status badge renders in both desktop and mobile layouts simultaneously (hidden via CSS), so a click on one was registered as outside the other
+
 ## 2026-06-08
 
 ### Added

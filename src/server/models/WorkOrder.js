@@ -80,7 +80,8 @@ const PartSchema = new Schema({
   },
   vin: { // VIN of source vehicle (for used parts)
     type: String,
-    trim: true
+    trim: true,
+    uppercase: true
   },
   stockNumber: { // Stock number of source vehicle (for used parts)
     type: String,

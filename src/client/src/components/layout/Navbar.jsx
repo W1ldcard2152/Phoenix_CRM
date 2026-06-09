@@ -88,10 +88,8 @@ const Navbar = ({ onMobileMenuToggle }) => {
                   </span>
                 </div>
 
-                {/* Feedback button - hidden on mobile */}
-                <div className="hidden sm:block">
-                  <FeedbackButton />
-                </div>
+                {/* Feedback button */}
+                <FeedbackButton />
 
                 {/* Logout button */}
                 <button
