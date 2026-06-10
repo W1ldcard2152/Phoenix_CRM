@@ -24,6 +24,9 @@ router.post('/inventory-categories/rename', authController.restrictTo('admin', '
 router.post('/inventory-categories/remove', authController.restrictTo('admin', 'management'), settingsController.removeInventoryCategory);
 router.post('/package-tags', authController.restrictTo('admin', 'management'), settingsController.addPackageTag);
 router.post('/package-tags/remove', authController.restrictTo('admin', 'management'), settingsController.removePackageTag);
+router.post('/labor-types', authController.restrictTo('admin', 'management'), settingsController.addLaborType);
+router.post('/labor-types/rename', authController.restrictTo('admin', 'management'), settingsController.renameLaborType);
+router.post('/labor-types/remove', authController.restrictTo('admin', 'management'), settingsController.removeLaborType);
 router.post('/brand-overrides', authController.restrictTo('admin', 'management'), settingsController.addBrandOverride);
 router.post('/brand-overrides/update', authController.restrictTo('admin', 'management'), settingsController.updateBrandOverride);
 router.post('/brand-overrides/remove', authController.restrictTo('admin', 'management'), settingsController.removeBrandOverride);

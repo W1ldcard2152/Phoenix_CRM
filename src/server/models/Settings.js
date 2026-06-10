@@ -58,6 +58,12 @@ const SettingsSchema = new Schema(
         'Motor Oil', 'Oil Filter', 'Transmission Fluid', 'Brake Fluid', 'Coolant', 'Power Steering Fluid'
       ]
     },
+    laborTypes: {
+      type: [String],
+      default: [
+        'Remove & Replace', 'Inspect/Diagnose', 'Repair'
+      ]
+    },
     vendorHostnames: {
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
@@ -110,6 +116,10 @@ SettingsSchema.statics.getSettings = async function () {
     }
     if (!settings.packageTags || settings.packageTags.length === 0) {
       settings.packageTags = ['Motor Oil', 'Oil Filter', 'Transmission Fluid', 'Brake Fluid', 'Coolant', 'Power Steering Fluid'];
+      needsSave = true;
+    }
+    if (!settings.laborTypes || settings.laborTypes.length === 0) {
+      settings.laborTypes = ['Remove & Replace', 'Inspect/Diagnose', 'Repair'];
       needsSave = true;
     }
     if (!settings.vendorHostnames || settings.vendorHostnames.length === 0) {

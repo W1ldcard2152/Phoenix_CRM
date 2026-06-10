@@ -2,6 +2,10 @@ const Settings = require('../models/Settings');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 
+// Capitalize the first letter of every word, leave the rest alone.
+// Preserves intentional caps (R&R, ABS) — only nudges the first letter of each word.
+const toLaborTypeCase = (str) => (str || '').trim().replace(/\b\w/g, c => c.toUpperCase());
+
 exports.getSettings = catchAsync(async (req, res) => {
   const settings = await Settings.getSettings();
   res.status(200).json({
@@ -397,6 +401,70 @@ exports.removePackageTag = catchAsync(async (req, res) => {
 
   const settings = await Settings.getSettings();
   settings.packageTags = settings.packageTags.filter(t => t !== tag);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.addLaborType = catchAsync(async (req, res) => {
+  const { laborType } = req.body;
+  if (!laborType || !laborType.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Labor type name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  const normalized = toLaborTypeCase(laborType);
+
+  const exists = (settings.laborTypes || []).some(
+    t => t.toLowerCase() === normalized.toLowerCase()
+  );
+  if (exists) {
+    return res.status(400).json({ status: 'fail', message: 'This labor type already exists' });
+  }
+
+  settings.laborTypes = [...(settings.laborTypes || []), normalized];
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.renameLaborType = catchAsync(async (req, res) => {
+  const { oldName, newName } = req.body;
+  if (!oldName || !newName || !newName.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Both oldName and newName are required' });
+  }
+
+  const normalized = toLaborTypeCase(newName);
+  if (oldName === normalized) {
+    return res.status(400).json({ status: 'fail', message: 'New name is the same as the old name' });
+  }
+
+  const settings = await Settings.getSettings();
+  const list = settings.laborTypes || [];
+
+  if (!list.includes(oldName)) {
+    return res.status(404).json({ status: 'fail', message: 'Labor type not found' });
+  }
+
+  const conflict = list.some(t => t !== oldName && t.toLowerCase() === normalized.toLowerCase());
+  if (conflict) {
+    return res.status(400).json({ status: 'fail', message: 'A labor type with that name already exists' });
+  }
+
+  settings.laborTypes = list.map(t => t === oldName ? normalized : t);
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+exports.removeLaborType = catchAsync(async (req, res) => {
+  const { laborType } = req.body;
+  if (!laborType) {
+    return res.status(400).json({ status: 'fail', message: 'Labor type name is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  settings.laborTypes = (settings.laborTypes || []).filter(t => t !== laborType);
   await settings.save();
 
   res.status(200).json({ status: 'success', data: { settings } });

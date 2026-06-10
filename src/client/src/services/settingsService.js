@@ -66,6 +66,21 @@ const SettingsService = {
     return response.data;
   },
 
+  addLaborType: async (laborType) => {
+    const response = await API.post('/settings/labor-types', { laborType });
+    return response.data;
+  },
+
+  renameLaborType: async (oldName, newName) => {
+    const response = await API.post('/settings/labor-types/rename', { oldName, newName });
+    return response.data;
+  },
+
+  removeLaborType: async (laborType) => {
+    const response = await API.post('/settings/labor-types/remove', { laborType });
+    return response.data;
+  },
+
   addBrandOverride: async (brand) => {
     const response = await API.post('/settings/brand-overrides', { brand });
     return response.data;

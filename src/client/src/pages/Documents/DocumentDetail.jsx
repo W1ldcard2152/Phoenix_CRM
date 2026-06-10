@@ -152,6 +152,13 @@ const DocumentDetail = () => {
   const [partsSortConfig, setPartsSortConfig] = useState([]);
   const [vendorList, setVendorList] = useState([]);
   const [categoryList, setCategoryList] = useState([]);
+  const [laborTypeList, setLaborTypeList] = useState([]);
+  const [saveLaborTypePromptOpen, setSaveLaborTypePromptOpen] = useState(false);
+  const [pendingCustomLaborType, setPendingCustomLaborType] = useState(null);
+  const [savingLaborType, setSavingLaborType] = useState(false);
+  // Custom labor types the user explicitly dismissed this session — don't re-prompt for them.
+  // Resets on page navigation. To save a dismissed type later, the user can add it from Shop settings.
+  const [dismissedLaborTypes, setDismissedLaborTypes] = useState([]);
   const [isOtherCategory, setIsOtherCategory] = useState(false);
   const [addingNewVendor, setAddingNewVendor] = useState(false);
   const [addingNewCategory, setAddingNewCategory] = useState(false);
@@ -430,6 +437,7 @@ const DocumentDetail = () => {
         if (typeof settings.defaultLaborRate === 'number') setDefaultLaborRate(settings.defaultLaborRate);
         setVendorList(settings.customVendors || []);
         setCategoryList(settings.customCategories || []);
+        setLaborTypeList(settings.laborTypes || []);
         if (settings.vendorHostnames) {
           setVendorHostnameMap(hostnameArrayToMap(settings.vendorHostnames));
         }
@@ -1097,27 +1105,79 @@ const DocumentDetail = () => {
   };
 
   // ==================== Labor Handlers ====================
+  // Split a saved description like "Remove & Replace: Front Right Caliper" into
+  // { laborType, description } when the prefix matches a known saved type. Unknown
+  // prefixes (or no prefix) leave laborType empty and keep the description intact.
+  const parseLaborDescription = (description, knownTypes) => {
+    if (!description) return { laborType: '', laborTypeCustom: '', description: '' };
+    const colonIdx = description.indexOf(': ');
+    if (colonIdx === -1) return { laborType: '', laborTypeCustom: '', description };
+    const prefix = description.slice(0, colonIdx);
+    const rest = description.slice(colonIdx + 2);
+    if (knownTypes.includes(prefix)) {
+      return { laborType: prefix, laborTypeCustom: '', description: rest };
+    }
+    return { laborType: '', laborTypeCustom: '', description };
+  };
+
+  // Capitalize the first letter of every word, leave the rest alone.
+  // Preserves intentional caps (R&R, ABS) — only nudges the first letter of each word.
+  const toLaborTypeCase = (str) => (str || '').trim().replace(/\b\w/g, c => c.toUpperCase());
+
+  const buildLaborDescription = (laborState) => {
+    const rawType = laborState.laborType === 'Other'
+      ? (laborState.laborTypeCustom || '').trim()
+      : laborState.laborType;
+    // Title-case the custom path so the saved description matches the eventual saved type
+    const effectiveType = laborState.laborType === 'Other' ? toLaborTypeCase(rawType) : rawType;
+    return effectiveType ? `${effectiveType}: ${laborState.description}` : laborState.description;
+  };
+
+  // After save, if user entered a custom type that isn't yet in the saved list, prompt to save it.
+  // Skip when the user already dismissed this exact type earlier in the session.
+  const maybePromptToSaveLaborType = (laborState) => {
+    if (laborState.laborType !== 'Other') return;
+    const custom = toLaborTypeCase(laborState.laborTypeCustom || '');
+    if (!custom) return;
+    if (laborTypeList.some(t => t.toLowerCase() === custom.toLowerCase())) return;
+    if (dismissedLaborTypes.some(t => t.toLowerCase() === custom.toLowerCase())) return;
+    setPendingCustomLaborType(custom);
+    setSaveLaborTypePromptOpen(true);
+  };
+
   const openAddLaborModal = () => {
     setEditingLabor(null);
-    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
+    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
     setLaborModalOpen(true);
   };
 
   const openEditLaborModal = (labor, index) => {
     setEditingLabor({ ...labor, index });
+    const parsed = parseLaborDescription(labor.description || '', laborTypeList);
     setNewLabor({
-      description: labor.description || '', billingType: labor.billingType || 'hourly',
-      quantity: labor.quantity || labor.hours || 1, rate: labor.rate || defaultLaborRate
+      description: parsed.description,
+      laborType: parsed.laborType,
+      laborTypeCustom: parsed.laborTypeCustom,
+      billingType: labor.billingType || 'hourly',
+      quantity: labor.quantity || labor.hours || 1,
+      rate: labor.rate || defaultLaborRate
     });
     setLaborModalOpen(true);
   };
 
   const handleAddLabor = async () => {
     try {
-      const response = await DocumentService.addLabor(id, newLabor);
+      const payload = {
+        description: buildLaborDescription(newLabor),
+        billingType: newLabor.billingType,
+        quantity: newLabor.quantity,
+        rate: newLabor.rate
+      };
+      const response = await DocumentService.addLabor(id, payload);
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
+      maybePromptToSaveLaborType(newLabor);
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
     } catch (err) {
       console.error('Error adding labor:', err);
       setError('Failed to add labor. Please try again later.');
@@ -1127,15 +1187,37 @@ const DocumentDetail = () => {
   const handleEditLabor = async () => {
     try {
       const updatedLabor = [...workOrder.labor];
-      updatedLabor[editingLabor.index] = { ...updatedLabor[editingLabor.index], ...newLabor };
+      const { laborType, laborTypeCustom, ...laborFields } = newLabor;
+      updatedLabor[editingLabor.index] = {
+        ...updatedLabor[editingLabor.index],
+        ...laborFields,
+        description: buildLaborDescription(newLabor)
+      };
       const response = await DocumentService.updateDocument(id, { labor: updatedLabor });
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
       setEditingLabor(null);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate });
+      maybePromptToSaveLaborType(newLabor);
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
     } catch (err) {
       console.error('Error updating labor:', err);
       setError('Failed to update labor. Please try again later.');
+    }
+  };
+
+  const handleSaveLaborTypeFromPrompt = async () => {
+    if (!pendingCustomLaborType) return;
+    try {
+      setSavingLaborType(true);
+      const response = await SettingsService.addLaborType(pendingCustomLaborType);
+      setLaborTypeList(response.data.settings.laborTypes || []);
+      setSaveLaborTypePromptOpen(false);
+      setPendingCustomLaborType(null);
+    } catch (err) {
+      console.error('Error saving labor type:', err);
+      alert(err.response?.data?.message || 'Failed to save labor type.');
+    } finally {
+      setSavingLaborType(false);
     }
   };
 
@@ -2786,9 +2868,47 @@ const DocumentDetail = () => {
             <h3 className="text-lg font-bold text-gray-900 mb-4">{editingLabor ? 'Edit Labor' : 'Add Labor'}</h3>
             <div className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Labor Type</label>
+                <select className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  value={newLabor.laborType}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewLabor({
+                      ...newLabor,
+                      laborType: value,
+                      // Reset custom entry when leaving Other
+                      laborTypeCustom: value === 'Other' ? newLabor.laborTypeCustom : ''
+                    });
+                  }}>
+                  <option value="">(None)</option>
+                  {laborTypeList.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                  <option value="Other">Other…</option>
+                </select>
+                {newLabor.laborType === 'Other' && (
+                  <input
+                    type="text"
+                    className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="Enter custom labor type (e.g. Prep & Paint)"
+                    value={newLabor.laborTypeCustom}
+                    onChange={(e) => setNewLabor({ ...newLabor, laborTypeCustom: e.target.value })}
+                    autoFocus
+                  />
+                )}
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  value={newLabor.description} onChange={(e) => setNewLabor({ ...newLabor, description: e.target.value })} required />
+                  value={newLabor.description} onChange={(e) => setNewLabor({ ...newLabor, description: e.target.value })}
+                  placeholder={
+                    newLabor.laborType === 'Other'
+                      ? (newLabor.laborTypeCustom ? `e.g. Front Bumper — saved as "${newLabor.laborTypeCustom}: Front Bumper"` : 'Detail')
+                      : newLabor.laborType
+                      ? `e.g. Front Right Caliper — saved as "${newLabor.laborType}: Front Right Caliper"`
+                      : 'e.g. Replace front brake pads'
+                  }
+                  required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Billing Type</label>
@@ -2829,8 +2949,48 @@ const DocumentDetail = () => {
             <div className="mt-6 flex justify-end space-x-3">
               <Button variant="light" onClick={() => { setLaborModalOpen(false); setEditingLabor(null); }}>Cancel</Button>
               <Button variant="primary" onClick={editingLabor ? handleEditLabor : handleAddLabor}
-                disabled={!newLabor.description || !newLabor.quantity || newLabor.rate < 0}>
+                disabled={
+                  !newLabor.description ||
+                  !newLabor.quantity ||
+                  newLabor.rate < 0 ||
+                  (newLabor.laborType === 'Other' && !(newLabor.laborTypeCustom || '').trim())
+                }>
                 {editingLabor ? 'Update Labor' : 'Add Labor'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Custom Labor Type Prompt */}
+      {saveLaborTypePromptOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Save Labor Type?</h3>
+            <p className="text-gray-700 mb-6">
+              Save <span className="font-medium">{pendingCustomLaborType}</span> as a Labor Type for future use?
+              You'll be able to pick it from the dropdown next time.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="light"
+                onClick={() => {
+                  if (pendingCustomLaborType) {
+                    setDismissedLaborTypes(prev => [...prev, pendingCustomLaborType]);
+                  }
+                  setSaveLaborTypePromptOpen(false);
+                  setPendingCustomLaborType(null);
+                }}
+                disabled={savingLaborType}
+              >
+                No thanks
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleSaveLaborTypeFromPrompt}
+                disabled={savingLaborType}
+              >
+                {savingLaborType ? 'Saving…' : 'Save'}
               </Button>
             </div>
           </div>

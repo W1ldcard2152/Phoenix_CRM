@@ -37,16 +37,83 @@ const SettingsPage = () => {
   const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
   const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
 
+  // Labor Types State (admin/management only)
+  const [laborTypes, setLaborTypes] = useState([]);
+  const [newLaborTypeName, setNewLaborTypeName] = useState('');
+  const [editingLaborType, setEditingLaborType] = useState(null);
+  const [editingLaborTypeValue, setEditingLaborTypeValue] = useState('');
+  const [laborTypesMessage, setLaborTypesMessage] = useState({ type: '', text: '' });
+  const [laborTypeBusy, setLaborTypeBusy] = useState(false);
+
   useEffect(() => {
     if (isAdmin) {
       SettingsService.getSettings()
-        .then(res => setShopSettings({
-          partMarkupPercentage: res.data.settings.partMarkupPercentage ?? 30,
-          defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
-        }))
+        .then(res => {
+          setShopSettings({
+            partMarkupPercentage: res.data.settings.partMarkupPercentage ?? 30,
+            defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
+          });
+          setLaborTypes(res.data.settings.laborTypes || []);
+        })
         .catch(() => {});
     }
   }, [isAdmin]);
+
+  const showLaborTypesMessage = (type, text) => {
+    setLaborTypesMessage({ type, text });
+    setTimeout(() => setLaborTypesMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleAddLaborType = async () => {
+    const trimmed = newLaborTypeName.trim();
+    if (!trimmed) return;
+    setLaborTypeBusy(true);
+    try {
+      const res = await SettingsService.addLaborType(trimmed);
+      setLaborTypes(res.data.settings.laborTypes || []);
+      setNewLaborTypeName('');
+      showLaborTypesMessage('success', `Added "${trimmed}"`);
+    } catch (err) {
+      showLaborTypesMessage('error', err.response?.data?.message || 'Failed to add labor type');
+    } finally {
+      setLaborTypeBusy(false);
+    }
+  };
+
+  const handleRenameLaborType = async () => {
+    const trimmed = editingLaborTypeValue.trim();
+    if (!editingLaborType || !trimmed || trimmed === editingLaborType) {
+      setEditingLaborType(null);
+      setEditingLaborTypeValue('');
+      return;
+    }
+    setLaborTypeBusy(true);
+    try {
+      const res = await SettingsService.renameLaborType(editingLaborType, trimmed);
+      setLaborTypes(res.data.settings.laborTypes || []);
+      setEditingLaborType(null);
+      setEditingLaborTypeValue('');
+      showLaborTypesMessage('success', `Renamed to "${trimmed}"`);
+    } catch (err) {
+      showLaborTypesMessage('error', err.response?.data?.message || 'Failed to rename labor type');
+    } finally {
+      setLaborTypeBusy(false);
+    }
+  };
+
+  const handleRemoveLaborType = async (type) => {
+    if (!window.confirm(`Remove "${type}" from the labor type list? Existing labor entries are unaffected.`)) return;
+    setLaborTypeBusy(true);
+    try {
+      const res = await SettingsService.removeLaborType(type);
+      setLaborTypes(res.data.settings.laborTypes || []);
+      showLaborTypesMessage('success', `Removed "${type}"`);
+    } catch (err) {
+      showLaborTypesMessage('error', err.response?.data?.message || 'Failed to remove labor type');
+    } finally {
+      setLaborTypeBusy(false);
+    }
+  };
 
   const handleUpdateShopSettings = async (e) => {
     e.preventDefault();
@@ -491,6 +558,97 @@ const SettingsPage = () => {
                   </div>
                 </div>
               </form>
+            </div>
+
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-1">Labor Types</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Quick prefixes for labor descriptions. Picking a type prefixes the description so it reads cleanly on invoices (e.g. <span className="font-medium">Remove &amp; Replace: Front Right Caliper</span>).
+              </p>
+
+              {laborTypesMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  laborTypesMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {laborTypesMessage.text}
+                </div>
+              )}
+
+              <div className="space-y-2 mb-4">
+                {laborTypes.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No labor types defined yet.</p>
+                ) : (
+                  laborTypes.map(type => (
+                    <div key={type} className="flex items-center justify-between py-2 px-3 border border-gray-200 rounded">
+                      {editingLaborType === type ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingLaborTypeValue}
+                            onChange={(e) => setEditingLaborTypeValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameLaborType(); }}
+                            className="flex-1 px-2 py-1 border border-gray-300 rounded mr-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleRenameLaborType}
+                              disabled={laborTypeBusy}
+                              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => { setEditingLaborType(null); setEditingLaborTypeValue(''); }}
+                              disabled={laborTypeBusy}
+                              className="text-sm text-gray-600 hover:text-gray-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-900">{type}</span>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => { setEditingLaborType(type); setEditingLaborTypeValue(type); }}
+                              className="text-sm text-blue-600 hover:text-blue-800"
+                            >
+                              Rename
+                            </button>
+                            <button
+                              onClick={() => handleRemoveLaborType(type)}
+                              disabled={laborTypeBusy}
+                              className="text-sm text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Add new labor type..."
+                  value={newLaborTypeName}
+                  onChange={(e) => setNewLaborTypeName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddLaborType(); }}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleAddLaborType}
+                  disabled={laborTypeBusy || !newLaborTypeName.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                >
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         )}
