@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
 import moment from 'moment-timezone';
@@ -20,11 +20,16 @@ const AppointmentSchema = Yup.object().shape({
 });
 
 
-const AppointmentSection = ({ customer, vehicle, workOrder, onSaved, onError }) => {
+const AppointmentSection = forwardRef(({ customer, vehicle, workOrder, onSaved, onError }, ref) => {
   const [technicians, setTechnicians] = useState([]);
   const [hasConflicts, setHasConflicts] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const formikRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    submitForm: () => formikRef.current?.submitForm()
+  }));
 
   useEffect(() => {
     const fetchTechnicians = async () => {
@@ -215,6 +220,7 @@ const AppointmentSection = ({ customer, vehicle, workOrder, onSaved, onError }) 
       )}
 
       <Formik
+        innerRef={formikRef}
         initialValues={{
           startDate: nowET.format('YYYY-MM-DD'),
           startTime: nowET.format('HH:mm'),
@@ -374,6 +380,8 @@ const AppointmentSection = ({ customer, vehicle, workOrder, onSaved, onError }) 
       </Formik>
     </div>
   );
-};
+});
+
+AppointmentSection.displayName = 'AppointmentSection';
 
 export default AppointmentSection;

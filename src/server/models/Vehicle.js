@@ -92,21 +92,28 @@ VehicleSchema.virtual('displayName').get(function() {
   return `${this.year} ${this.make} ${this.model}`;
 });
 
-// Pre-save middleware to update currentMileage from history
+// Pre-save middleware: dedupe mileage history (same calendar day + same mileage),
+// then update currentMileage from the latest record.
 VehicleSchema.pre('save', function(next) {
-  // If mileage history exists, update current mileage from the latest record
   if (this.mileageHistory && this.mileageHistory.length > 0) {
-    // Sort by date descending
-    const sortedHistory = [...this.mileageHistory].sort((a, b) => 
+    // Dedupe — first occurrence wins.
+    const seen = new Map();
+    this.mileageHistory.forEach(r => {
+      const k = `${Number(r.mileage)}|${parseLocalDate(r.date).toDateString()}`;
+      if (!seen.has(k)) seen.set(k, r);
+    });
+    if (seen.size !== this.mileageHistory.length) {
+      this.mileageHistory = Array.from(seen.values());
+    }
+
+    const sortedHistory = [...this.mileageHistory].sort((a, b) =>
       parseLocalDate(b.date) - parseLocalDate(a.date)
     );
-    
-    // Update current mileage if newest record is higher
     if (sortedHistory[0].mileage > (this.currentMileage || 0)) {
       this.currentMileage = sortedHistory[0].mileage;
     }
   }
-  
+
   next();
 });
 

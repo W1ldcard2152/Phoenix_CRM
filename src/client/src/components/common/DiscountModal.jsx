@@ -223,9 +223,13 @@ const DiscountModal = ({ isOpen, onClose, onApply, onRemove, parts, labor, servi
                     <span>Selected subtotal</span>
                     <span className="font-medium text-gray-800">{formatCurrency(selectedSubtotal)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm mb-1">
                     <span className="font-semibold text-gray-700">Discount</span>
                     <span className="font-bold text-green-700">−{formatCurrency(totalDiscountAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm pt-1 border-t border-gray-300">
+                    <span className="font-semibold text-gray-800">Subtotal after coupon</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(Math.max(0, selectedSubtotal - totalDiscountAmount))}</span>
                   </div>
                 </div>
               </>

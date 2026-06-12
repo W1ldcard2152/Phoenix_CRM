@@ -2,6 +2,23 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-11
+
+### Changed
+- Quick Entry **Done** button now saves the open Work Order or Appointment section if it has pending data, then closes — previously Done just exited and silently discarded anything that wasn't committed via "Create Work Order & Continue". Validation errors are surfaced and block the close so nothing's lost.
+- Inventory side of receipt import merge now defaults to **Existing** when the catalog already has a value, falling back to the receipt only where the existing field is blank. WO-side merge still favors the receipt (the rule that already shipped).
+- Discount modal preview, WO/Quote summary, and Invoice Generator summary now show a **Subtotal after coupon** line so the post-discount number is visible without doing the subtraction in your head.
+- Year picker on Edit Vehicle replaced with the searchable dropdown — no more accidental scroll-wheel value changes, plus typeahead for the 127-year list.
+- Receipt extraction's Gemini model is now overridable via `GEMINI_MODEL` env var (default `gemini-2.5-flash`). Errors from the AI call propagate the actual message instead of a generic 500.
+
+### Fixed
+- Receipt Importer on Work Orders returned 500 from `/api/workorders/:id/extract-receipt` — the hardcoded Gemini model alias had been retired upstream.
+- Newly-created Work Orders, Quotes, and Invoices were displaying with yesterday's date — the client sent `YYYY-MM-DD` and Mongoose cast it to UTC midnight, which renders as the previous evening in any negative-offset timezone. `date` and `invoiceDate` are now handled by the date-conversion middleware as business-timezone start-of-day.
+- Date inputs (mileage history rows, etc.) were shifting back one day after the user picked a date — `formatDateForInput` was reparsing already-formatted `YYYY-MM-DD` strings as UTC and converting to local. It now passes those through unchanged.
+- Multi-day appointments only appeared on Today's Schedule on their start day — the query now matches any appointment whose span intersects today (`startTime < tomorrow AND endTime >= today_start`).
+- Mileage records were being silently duplicated when the same date + mileage was entered twice — the controller had no dedup logic and the vehicle cache wasn't invalidated, so the page appeared to "clean up" the duplicate on refresh while the DB kept it. The server now skips inserts with matching date+mileage (merging any new notes into the existing record), the model's pre-save hook dedupes the array as a safety net so pre-existing duplicates get cleaned up on next save, and the vehicle cache is invalidated.
+- Receipt importer merge screen showed empty Part # in the FROM RECEIPT column even when the AI had pulled the SKU — the extractor returned `brand` and `itemNumber` separately while the merge UI looked up `partNumber`. The extractor now also emits a pre-joined `partNumber` matching the format used by stored records, so the merge defaults compare like-for-like.
+
 ## 2026-06-09
 
 ### Added

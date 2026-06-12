@@ -710,6 +710,9 @@ const InvoiceGenerator = () => {
                       </button>
                     </div>
                   )}
+                  {invoiceData.discount && (
+                    <div className="flex justify-between"><span className="font-medium text-gray-600">Subtotal after coupon:</span><span className="text-gray-800">{formatCurrency(Math.max(0, totals.subtotal - totals.discountAmount))}</span></div>
+                  )}
                   <div className="flex justify-between items-center"><span className="font-medium text-gray-600">Tax Rate (%):</span><Input type="number" name="taxRate" value={invoiceData.taxRate} onChange={handleTaxRateChange} min="0" step="0.01" className="w-20 text-right p-1 border-gray-300 rounded" /></div>
                   <div className="flex justify-between"><span className="font-medium text-gray-600">Tax Amount:</span><span className="text-gray-800">{formatCurrency(totals.taxAmount)}</span></div>
                   <hr className="my-1 border-t-2 border-gray-300" />

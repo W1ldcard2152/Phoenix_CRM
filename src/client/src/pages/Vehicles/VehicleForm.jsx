@@ -7,6 +7,7 @@ import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
+import SearchableDropdown from '../../components/common/SearchableDropdown';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
@@ -442,23 +443,27 @@ const VehicleForm = () => {
                 </div>
                 
                 <div>
-                  <SelectInput
-                    label="Year"
-                    name="year"
-                    options={Array.from(
-                      new Array(new Date().getFullYear() + 1 - 1900 + 1),
-                      (val, index) => {
-                        const yearValue = new Date().getFullYear() + 1 - index;
-                        return { value: yearValue, label: yearValue.toString() };
-                      }
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Year<span className="text-red-500 ml-1">*</span>
+                    </label>
+                    <SearchableDropdown
+                      options={Array.from(
+                        new Array(new Date().getFullYear() + 1 - 1900 + 1),
+                        (val, index) => {
+                          const yearValue = new Date().getFullYear() + 1 - index;
+                          return { value: yearValue, label: yearValue.toString() };
+                        }
+                      )}
+                      value={values.year || null}
+                      onChange={(v) => setFieldValue('year', v ?? '')}
+                      placeholder="Select year"
+                      size="md"
+                    />
+                    {errors.year && touched.year && (
+                      <p className="mt-1 text-sm text-red-500">{errors.year}</p>
                     )}
-                    value={values.year}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.year}
-                    touched={touched.year}
-                    required
-                  />
+                  </div>
                 </div>
                 
                 <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Formik, Form, FieldArray } from 'formik';
 import * as Yup from 'yup';
 import WorkOrderService from '../../../services/workOrderService';
@@ -23,11 +23,16 @@ const WorkOrderSchema = Yup.object().shape({
   skipDiagnostics: Yup.boolean()
 });
 
-const WorkOrderSection = ({ customer, vehicle, mode = 'workOrder', onSaved, onError }) => {
+const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', onSaved, onError }, ref) => {
   const isQuoteMode = mode === 'quote';
   const [estimatedDuration, setEstimatedDuration] = useState(1);
   const [currentServices, setCurrentServices] = useState([{ description: '' }]);
   const [saving, setSaving] = useState(false);
+  const formikRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    submitForm: () => formikRef.current?.submitForm()
+  }));
 
   useEffect(() => {
     const duration = estimateServiceDuration(currentServices);
@@ -113,6 +118,7 @@ const WorkOrderSection = ({ customer, vehicle, mode = 'workOrder', onSaved, onEr
       </div>
 
       <Formik
+        innerRef={formikRef}
         initialValues={{
           services: [{ description: '' }],
           priority: 'Normal',
@@ -302,6 +308,8 @@ const WorkOrderSection = ({ customer, vehicle, mode = 'workOrder', onSaved, onEr
       </Formik>
     </div>
   );
-};
+});
+
+WorkOrderSection.displayName = 'WorkOrderSection';
 
 export default WorkOrderSection;

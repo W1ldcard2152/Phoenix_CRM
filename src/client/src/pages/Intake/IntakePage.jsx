@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import IntakeSection from './sections/IntakeSection';
 import CustomerSection from './sections/CustomerSection';
@@ -22,8 +22,33 @@ const IntakePage = () => {
   const [intakeMode, setIntakeMode] = useState('workOrder'); // 'workOrder' or 'quote'
   const [errors, setErrors] = useState({});
 
+  // Refs for sections that can save pending data on Done.
+  // doneRequestedRef is a mutable flag (not state) so onSaved handlers see the current
+  // value synchronously inside the submit chain without re-render coupling.
+  const workOrderRef = useRef(null);
+  const appointmentRef = useRef(null);
+  const doneRequestedRef = useRef(false);
+
   const clearError = (section) => {
     setErrors(prev => ({ ...prev, [section]: null }));
+  };
+
+  const navigateToBest = (overrides = {}) => {
+    const appt = overrides.appointment ?? appointment;
+    const wo = overrides.workOrder ?? workOrder;
+    const veh = overrides.vehicle ?? vehicle;
+    const cust = overrides.customer ?? customer;
+    if (appt) {
+      navigate(`/appointments/${appt._id}`);
+    } else if (wo) {
+      navigate(intakeMode === 'quote' ? `/quotes/${wo._id}` : `/work-orders/${wo._id}`);
+    } else if (veh) {
+      navigate(`/vehicles/${veh._id}`);
+    } else if (cust) {
+      navigate(`/customers/${cust._id}`);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleCustomerSaved = (savedCustomer) => {
@@ -34,6 +59,11 @@ const IntakePage = () => {
       setVehicle(null);
       setWorkOrder(null);
       setAppointment(null);
+    }
+    if (doneRequestedRef.current) {
+      doneRequestedRef.current = false;
+      navigateToBest({ customer: savedCustomer });
+      return;
     }
     setExpandedSection('vehicle');
   };
@@ -46,6 +76,11 @@ const IntakePage = () => {
       setWorkOrder(null);
       setAppointment(null);
     }
+    if (doneRequestedRef.current) {
+      doneRequestedRef.current = false;
+      navigateToBest({ vehicle: savedVehicle });
+      return;
+    }
     setExpandedSection('workOrder');
   };
 
@@ -54,6 +89,11 @@ const IntakePage = () => {
     clearError('workOrder');
     if (workOrder && workOrder._id !== savedWorkOrder._id) {
       setAppointment(null);
+    }
+    if (doneRequestedRef.current) {
+      doneRequestedRef.current = false;
+      navigateToBest({ workOrder: savedWorkOrder });
+      return;
     }
     // Skip appointment step for quotes
     if (intakeMode === 'quote') {
@@ -66,30 +106,45 @@ const IntakePage = () => {
   const handleAppointmentSaved = (savedAppointment) => {
     setAppointment(savedAppointment);
     clearError('appointment');
+    if (doneRequestedRef.current) {
+      doneRequestedRef.current = false;
+      navigateToBest({ appointment: savedAppointment });
+      return;
+    }
     setExpandedSection(null); // Collapse all
   };
 
   const handleError = (section, message) => {
     setErrors(prev => ({ ...prev, [section]: message }));
+    // If we triggered a save via Done and it failed (validation or API error),
+    // clear the flag so the user can fix and re-click.
+    doneRequestedRef.current = false;
   };
 
   const handleToggle = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  // Done button navigates to most recently created entity
-  const handleDone = () => {
-    if (appointment) {
-      navigate(`/appointments/${appointment._id}`);
-    } else if (workOrder) {
-      navigate(intakeMode === 'quote' ? `/quotes/${workOrder._id}` : `/work-orders/${workOrder._id}`);
-    } else if (vehicle) {
-      navigate(`/vehicles/${vehicle._id}`);
-    } else if (customer) {
-      navigate(`/customers/${customer._id}`);
-    } else {
-      navigate('/');
+  // If the open section has pending data, submit it; navigation happens in the
+  // onSaved handler when doneRequestedRef is set. Otherwise navigate immediately.
+  // If validation fails (no onSubmit fires) we clear the flag here so the user's
+  // next "Create & Continue" click resumes normal advance-through behavior.
+  const handleDone = async () => {
+    const pendingSubmit = {
+      workOrder: !workOrder ? workOrderRef.current : null,
+      appointment: !appointment ? appointmentRef.current : null
+    }[expandedSection];
+
+    if (pendingSubmit?.submitForm) {
+      doneRequestedRef.current = true;
+      try {
+        await pendingSubmit.submitForm();
+      } finally {
+        doneRequestedRef.current = false;
+      }
+      return;
     }
+    navigateToBest();
   };
 
   // Build summaries for collapsed saved sections
@@ -202,6 +257,7 @@ const IntakePage = () => {
           </button>
         </div>
         <WorkOrderSection
+          ref={workOrderRef}
           customer={customer}
           vehicle={vehicle}
           mode={intakeMode}
@@ -224,6 +280,7 @@ const IntakePage = () => {
           error={errors.appointment}
         >
           <AppointmentSection
+            ref={appointmentRef}
             customer={customer}
             vehicle={vehicle}
             workOrder={workOrder}

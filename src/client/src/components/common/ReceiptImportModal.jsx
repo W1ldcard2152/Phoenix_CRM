@@ -215,7 +215,9 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
       return;
     }
 
-    // Initialize merge selections — incoming if non-empty, else existing
+    // Initialize merge selections — preference depends on context:
+    //   WO source: imported > existing > empty (the receipt is fresh authoritative data)
+    //   INV source: existing > imported > empty (catalog data is curated; receipt fills gaps)
     const initSel = {};
     matches.forEach(m => {
       const fields = m.source === 'wo' ? WO_MERGE_FIELDS : INV_MERGE_FIELDS;
@@ -223,7 +225,12 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
       const rowSel = {};
       fields.forEach(f => {
         const incomingVal = part?.[f.key];
-        rowSel[f.key] = !isBlank(incomingVal) ? 'incoming' : 'existing';
+        const existingVal = m.existing?.[f.existingKey];
+        if (m.source === 'wo') {
+          rowSel[f.key] = !isBlank(incomingVal) ? 'incoming' : 'existing';
+        } else {
+          rowSel[f.key] = !isBlank(existingVal) ? 'existing' : 'incoming';
+        }
       });
       initSel[`${m.parsedIndex}:${m.source}`] = rowSel;
     });

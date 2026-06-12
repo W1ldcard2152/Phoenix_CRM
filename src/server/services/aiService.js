@@ -1,9 +1,10 @@
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
+const AppError = require('../utils/appError');
 
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const MODEL = 'gemini-3.1-flash-lite-preview';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 // Normalize brand-name casing: words ≤3 letters stay all-caps (acronyms like BCA, NTK),
 // words ≥4 letters become Title Case ("BOSCH" → "Bosch", "MAHLE / CLEVITE" → "Mahle / Clevite").
@@ -183,22 +184,29 @@ Return a JSON array. Example format:
     const overridesMap = {};
     (settings.brandOverrides || []).forEach(b => { overridesMap[b.toLowerCase()] = b; });
 
-    const rawParts = regularParts.map(part => ({
-      name: part.name || '',
-      brand: formatBrandName(part.brand || '', overridesMap),
-      itemNumber: part.itemNumber || '',
-      vendor: part.vendor || '',
-      supplier: part.supplier || '',
-      orderNumber: part.orderNumber || '',
-      price: parseFloat(part.price) || 0,
-      quantity: part.quantity || 1
-    }));
+    const rawParts = regularParts.map(part => {
+      const brand = formatBrandName(part.brand || '', overridesMap);
+      const itemNumber = part.itemNumber || '';
+      return {
+        name: part.name || '',
+        brand,
+        itemNumber,
+        // Pre-joined partNumber matches the format used by stored WO/inventory records
+        // (and by finalizeParts on the server), so the merge UI can compare like-for-like.
+        partNumber: [brand, itemNumber].filter(Boolean).join(' '),
+        vendor: part.vendor || '',
+        supplier: part.supplier || '',
+        orderNumber: part.orderNumber || '',
+        price: parseFloat(part.price) || 0,
+        quantity: part.quantity || 1
+      };
+    });
 
     return { parts: rawParts, shippingTotal };
 
   } catch (error) {
     console.error('Error parsing receipt with Gemini:', error);
-    throw new Error(`Receipt parsing failed: ${error.message}`);
+    throw new AppError(`Receipt parsing failed: ${error.message}`, 502);
   }
 };
 

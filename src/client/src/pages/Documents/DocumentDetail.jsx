@@ -1788,6 +1788,12 @@ const DocumentDetail = () => {
                 </button>
               </div>
             )}
+            {workOrder.discount && (
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Subtotal after coupon</span>
+                <span className="font-medium">{formatCurrency(discountedSubtotal)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Tax ({taxRate * 100}%)</span>
               <span className="font-medium">{formatCurrency(taxAmount)}</span>

@@ -631,8 +631,13 @@ exports.getTodayAppointments = catchAsync(async (req, res, next) => {
   const todayStart = moment.tz(TIMEZONE).startOf('day').utc().toDate();
   const tomorrowStart = moment.tz(TIMEZONE).add(1, 'day').startOf('day').utc().toDate();
 
+  // Any appointment whose span intersects today — catches multi-day appointments
+  // that started before today but are still in progress.
   const appointments = await applyPopulation(
-    Appointment.find({ startTime: { $gte: todayStart, $lt: tomorrowStart } }).sort({ startTime: 1 }),
+    Appointment.find({
+      startTime: { $lt: tomorrowStart },
+      endTime: { $gte: todayStart }
+    }).sort({ startTime: 1 }),
     'appointment',
     'standard'
   );

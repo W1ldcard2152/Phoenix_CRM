@@ -96,6 +96,9 @@ export const capitalizeWords = (str) => {
  */
 export const formatDateForInput = (date) => {
   if (!date) return '';
+  // A plain YYYY-MM-DD string is already in display format. Reparsing it as UTC
+  // and converting to local would shift it back a day in negative-offset zones.
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   return moment.utc(date).tz(TIMEZONE).format('YYYY-MM-DD');
 };
 

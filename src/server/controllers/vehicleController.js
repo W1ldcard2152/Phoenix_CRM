@@ -339,15 +339,51 @@ exports.addMileageRecord = catchAsync(async (req, res, next) => {
     return next(new AppError('No vehicle found with that ID', 404));
   }
 
-  // Add mileage record using the model method
-  vehicle.addMileageRecord(
-    mileage,
-    date ? parseLocalDate(date) : todayInTz(),
-    notes || ''
+  const recordDate = date ? parseLocalDate(date) : todayInTz();
+  const recordMileage = Number(mileage);
+
+  // Dedupe by (calendar-day date + mileage). Also clean up any pre-existing
+  // duplicates in the history (these may exist from before dedup was added).
+  // Intentional re-entries with new notes get merged into the surviving record.
+  const sameDay = (a, b) =>
+    parseLocalDate(a).toDateString() === parseLocalDate(b).toDateString();
+
+  const dupKey = (r) => `${Number(r.mileage)}|${parseLocalDate(r.date).toDateString()}`;
+  const seen = new Map();
+  vehicle.mileageHistory.forEach(r => {
+    const k = dupKey(r);
+    if (!seen.has(k)) seen.set(k, r);
+  });
+  const dedupedHistory = Array.from(seen.values());
+  const historyChanged = dedupedHistory.length !== vehicle.mileageHistory.length;
+  if (historyChanged) {
+    vehicle.mileageHistory = dedupedHistory;
+  }
+
+  const duplicate = vehicle.mileageHistory.find(
+    r => Number(r.mileage) === recordMileage && sameDay(r.date, recordDate)
   );
 
-  // Save the updated vehicle
+  if (duplicate) {
+    if (notes && notes.trim() && notes.trim() !== (duplicate.notes || '').trim()) {
+      duplicate.notes = duplicate.notes
+        ? `${duplicate.notes}\n${notes.trim()}`
+        : notes.trim();
+    }
+    if (historyChanged || (notes && notes.trim())) await vehicle.save();
+    cacheService.invalidateAllVehicles();
+    return res.status(200).json({
+      status: 'success',
+      data: { vehicle },
+      message: historyChanged
+        ? 'Duplicate skipped; pre-existing duplicates cleaned up'
+        : 'Duplicate mileage record skipped'
+    });
+  }
+
+  vehicle.addMileageRecord(recordMileage, recordDate, notes || '');
   await vehicle.save();
+  cacheService.invalidateAllVehicles();
 
   res.status(200).json({
     status: 'success',
