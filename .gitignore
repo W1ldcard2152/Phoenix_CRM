@@ -54,6 +54,9 @@ Thumbs.db
 # Database backups
 /backups/
 
+# Graphify generated output (rebuild with `graphify update .`)
+/graphify-out/
+
 # Media uploads & user content
 /uploads/
 /public/uploads/

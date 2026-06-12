@@ -85,7 +85,11 @@
       "Bash(npm test *)",
       "Bash(npx --no-install eslint src/client/src/components/common/SearchableDropdown.jsx src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx)",
       "Bash(npx --no-install eslint src/client/src/components/common/SearchableDropdown.jsx src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx src/server/controllers/workOrderController.js src/server/controllers/inventoryController.js)",
-      "Bash(npx --no-install eslint src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx)"
+      "Bash(npx --no-install eslint src/client/src/components/common/ReceiptImportModal.jsx src/client/src/components/inventory/InventoryReceiptImportModal.jsx)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(npx react-scripts *)",
+      "Read(//c/c/Users/Wildc/Programming/Phoenix_CRM/src/server/routes/**)",
+      "Read(//c/c/Users/Wildc/Programming/Phoenix_CRM/src/server/controllers/**)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits",

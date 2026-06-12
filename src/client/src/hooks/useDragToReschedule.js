@@ -17,6 +17,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
  * @param {number} options.durationMinutes - Appointment duration in minutes
  * @param {number} options.originalPositionPx - Current position on time axis
  * @param {number} options.secondarySnapPx - Pixel width to snap secondary axis (0 = disabled)
+ * @param {number} options.overshootMinutes - Extra minutes the drag may travel past the
+ *   [0, maxMinutes] bounds (0 = hard clamp). Lets business-time flow map overshoot
+ *   past close/before open into neighboring days.
+ * @param {Function} options.onDragMove - Called with { deltaMinutes, secondarySnaps } whenever a snapped value changes
  * @param {Function} options.onDragEnd - Called with { deltaMinutes, secondarySnaps }
  * @returns {{ primaryOffset: number, secondaryOffset: number, isDragging: boolean, handleMouseDown: Function }}
  */
@@ -29,6 +33,8 @@ const useDragToReschedule = ({
   durationMinutes = 60,
   originalPositionPx = 0,
   secondarySnapPx = 0,
+  overshootMinutes = 0,
+  onDragMove = null,
   onDragEnd = null
 } = {}) => {
   const [primaryOffset, setPrimaryOffset] = useState(0);
@@ -37,6 +43,8 @@ const useDragToReschedule = ({
 
   const onDragEndRef = useRef(onDragEnd);
   onDragEndRef.current = onDragEnd;
+  const onDragMoveRef = useRef(onDragMove);
+  onDragMoveRef.current = onDragMove;
 
   const activeListenersRef = useRef(null);
 
@@ -53,7 +61,9 @@ const useDragToReschedule = ({
     const startX = e.clientX;
     const startY = e.clientY;
     const snapPx = snapMinutes * pixelsPerMinute;
-    const maxPosPx = (maxMinutes - durationMinutes) * pixelsPerMinute;
+    const overshootPx = overshootMinutes * pixelsPerMinute;
+    const minPosPx = -overshootPx;
+    const maxPosPx = (maxMinutes - durationMinutes) * pixelsPerMinute + overshootPx;
     const origPx = originalPositionPx;
     const secSnap = secondarySnapPx;
 
@@ -77,10 +87,12 @@ const useDragToReschedule = ({
         setIsDragging(true);
       }
 
-      // Primary axis: time snapping + boundary clamping
+      // Primary axis: time snapping + boundary clamping (overshoot widens the bounds)
       const snappedPrimary = Math.round(primaryRaw / snapPx) * snapPx;
       const newPosPx = origPx + snappedPrimary;
-      const clampedPosPx = Math.max(0, Math.min(newPosPx, maxPosPx));
+      const clampedPosPx = Math.max(minPosPx, Math.min(newPosPx, maxPosPx));
+      const prevPrimary = currentPrimary;
+      const prevSecondarySnaps = currentSecondarySnaps;
       currentPrimary = clampedPosPx - origPx;
 
       // Secondary axis: snap to column widths (if enabled)
@@ -91,6 +103,13 @@ const useDragToReschedule = ({
 
       setPrimaryOffset(currentPrimary);
       setSecondaryOffset(currentSecondary);
+
+      if (onDragMoveRef.current && (currentPrimary !== prevPrimary || currentSecondarySnaps !== prevSecondarySnaps)) {
+        onDragMoveRef.current({
+          deltaMinutes: Math.round(currentPrimary / pixelsPerMinute),
+          secondarySnaps: currentSecondarySnaps
+        });
+      }
     };
 
     const upHandler = () => {
@@ -104,7 +123,9 @@ const useDragToReschedule = ({
       setPrimaryOffset(0);
       setSecondaryOffset(0);
 
-      if (wasDragging && (currentPrimary !== 0 || currentSecondarySnaps !== 0) && onDragEndRef.current) {
+      // Always fire when a drag happened (even back at zero) so callers can
+      // tear down any live preview state.
+      if (wasDragging && onDragEndRef.current) {
         const deltaMinutes = Math.round(currentPrimary / pixelsPerMinute);
         onDragEndRef.current({ deltaMinutes, secondarySnaps: currentSecondarySnaps });
       }
@@ -113,7 +134,7 @@ const useDragToReschedule = ({
     activeListenersRef.current = { move: moveHandler, up: upHandler };
     document.addEventListener('mousemove', moveHandler);
     document.addEventListener('mouseup', upHandler);
-  }, [enabled, primaryAxis, pixelsPerMinute, snapMinutes, maxMinutes, durationMinutes, originalPositionPx, secondarySnapPx]);
+  }, [enabled, primaryAxis, pixelsPerMinute, snapMinutes, maxMinutes, durationMinutes, originalPositionPx, secondarySnapPx, overshootMinutes]);
 
   // Cleanup on unmount only
   useEffect(() => {

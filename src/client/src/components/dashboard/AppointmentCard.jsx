@@ -7,6 +7,7 @@ import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { applyScheduleBlockVisibility } from '../../utils/permissions';
 import useDragToReschedule from '../../hooks/useDragToReschedule';
+import { businessMinutesBetween, dayKeyOf } from '../../utils/businessTime';
 
 /**
  * AppointmentCard component - Smart card for swimming lane calendar
@@ -17,10 +18,16 @@ import useDragToReschedule from '../../hooks/useDragToReschedule';
  * - appointment: The appointment object
  * - style: Positioning styles (passed from parent)
  * - viewType: 'daily' or 'weekly' (affects layout)
- * - dragConfig: { axis, pixelsPerMinute, snapMinutes, maxMinutes, durationMinutes, originalPositionPx }
- * - onReschedule: (appointmentId, deltaMinutes) => void
+ * - dragConfig: { axis, pixelsPerMinute, snapMinutes, maxMinutes, durationMinutes, originalPositionPx, secondarySnapPx, overshootMinutes }
+ * - onReschedule: legacy delta path — (appointmentId, deltaMinutes, secondarySnaps) => void
+ * - onDragMove / onDragEnd: flow path — ({ deltaMinutes, secondarySnaps }) => void; when
+ *   onDragEnd is provided it replaces onReschedule and always fires so the parent can
+ *   clear its live preview
+ * - block: { start, end, isFirst, isLast, raw } when this card renders one day-block of
+ *   a flowed appointment (times shown come from the block)
+ * - shopHoursMap: Settings.shopHours keyed by dayOfWeek, for shop-time duration display
  */
-const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConfig = null, onReschedule = null }) => {
+const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConfig = null, onReschedule = null, onDragMove = null, onDragEnd = null, block = null, shopHoursMap = null }) => {
   const [showPopover, setShowPopover] = useState(false);
   const [showApptActions, setShowApptActions] = useState(false);
   const [popoverCoords, setPopoverCoords] = useState({ top: 0, left: 0 });
@@ -83,66 +90,17 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
     return moment.utc(dateTime).tz(TIMEZONE).format('h:mm A');
   };
 
-  // Calculate duration in minutes, excluding closed hours (6pm-8am) for multi-day appointments
+  const isMultiDay = !moment.utc(appointment.startTime).tz(TIMEZONE)
+    .isSame(moment.utc(appointment.endTime).tz(TIMEZONE), 'day');
+
+  // Duration in shop-open minutes (flows around lunch, overnight gaps,
+  // closed days). Falls back to raw duration for legacy appointments
+  // sitting entirely outside open hours.
   const getDurationMinutes = () => {
     const startET = moment.utc(appointment.startTime).tz(TIMEZONE);
     const endET = moment.utc(appointment.endTime).tz(TIMEZONE);
-
-    // Business hours: 8 AM to 6 PM (18:00)
-    const BUSINESS_START_HOUR = 8;
-    const BUSINESS_END_HOUR = 18;
-
-    // If appointment is within the same day, calculate normally
-    if (startET.isSame(endET, 'day')) {
-      return endET.diff(startET, 'minutes');
-    }
-
-    // Multi-day appointment: exclude closed hours (6pm-8am)
-    let totalMinutes = 0;
-
-    // Iterate through each day
-    let currentDay = startET.clone().startOf('day');
-    const lastDay = endET.clone().startOf('day');
-
-    while (currentDay.isSameOrBefore(lastDay, 'day')) {
-      // Determine the start time for this day
-      let dayStart;
-      if (currentDay.isSame(startET, 'day')) {
-        // First day: use actual start time
-        dayStart = startET.clone();
-      } else {
-        // Subsequent days: start at business hours
-        dayStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
-      }
-
-      // Determine the end time for this day
-      let dayEnd;
-      if (currentDay.isSame(endET, 'day')) {
-        // Last day: use actual end time
-        dayEnd = endET.clone();
-      } else {
-        // Not last day: end at close of business
-        dayEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
-      }
-
-      // Calculate business hours for this day
-      const businessStart = currentDay.clone().hour(BUSINESS_START_HOUR).minute(0).second(0);
-      const businessEnd = currentDay.clone().hour(BUSINESS_END_HOUR).minute(0).second(0);
-
-      // Clamp the day's start and end to business hours
-      const effectiveStart = moment.max(dayStart, businessStart);
-      const effectiveEnd = moment.min(dayEnd, businessEnd);
-
-      // Add minutes if there's any overlap with business hours
-      if (effectiveStart.isBefore(effectiveEnd)) {
-        totalMinutes += effectiveEnd.diff(effectiveStart, 'minutes');
-      }
-
-      // Move to next day
-      currentDay.add(1, 'day');
-    }
-
-    return totalMinutes;
+    const businessMinutes = businessMinutesBetween(startET, endET, shopHoursMap, dayKeyOf(startET));
+    return businessMinutes > 0 ? businessMinutes : endET.diff(startET, 'minutes');
   };
 
   // Calculate duration formatted
@@ -163,7 +121,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
 
   // Drag-to-reschedule logic — all appointments and non-redacted schedule blocks are draggable
   const canDrag = !!dragConfig
-    && !!onReschedule
+    && (!!onReschedule || !!onDragEnd)
     && !(isScheduleBlock && displayAppointment._isRedacted);
 
   const { primaryOffset, secondaryOffset, isDragging, handleMouseDown } = useDragToReschedule({
@@ -175,9 +133,15 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
     durationMinutes: dragConfig?.durationMinutes || 60,
     originalPositionPx: dragConfig?.originalPositionPx || 0,
     secondarySnapPx: dragConfig?.secondarySnapPx || 0,
-    onDragEnd: ({ deltaMinutes, secondarySnaps }) => {
-      if ((deltaMinutes !== 0 || secondarySnaps !== 0) && onReschedule) {
-        onReschedule(appointment._id, deltaMinutes, secondarySnaps || 0);
+    overshootMinutes: dragConfig?.overshootMinutes || 0,
+    onDragMove,
+    onDragEnd: (deltas) => {
+      if (onDragEnd) {
+        // Flow path: parent computes the new times and clears its preview
+        onDragEnd(deltas);
+      } else if ((deltas.deltaMinutes !== 0 || deltas.secondarySnaps !== 0) && onReschedule) {
+        // Legacy delta path (schedule blocks)
+        onReschedule(appointment._id, deltas.deltaMinutes, deltas.secondarySnaps || 0);
       }
     }
   });
@@ -212,13 +176,18 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
   // Build display title: "ServiceType: Details" if details exist, else "Vehicle (ServiceType)"
   const serviceType = appointment.serviceType ? String(appointment.serviceType) : '';
   const details = appointment.details ? String(appointment.details) : '';
-  const displayTitle = isScheduleBlock
+  const baseTitle = isScheduleBlock
     ? displayAppointment.title
     : details
       ? `${serviceType}: ${details}`
       : serviceType
         ? `${vehicleInfo} (${serviceType})`
         : vehicleInfo;
+  // Continuation blocks of a flowed multi-day appointment get a marker
+  const displayTitle = block && !block.isFirst ? `↪ ${baseTitle}` : baseTitle;
+
+  // Time shown on the card: this block's start (continuations show where they resume)
+  const cardStartTime = block ? block.start : appointment.startTime;
 
   // Position popover beside the card so vertical neighbors stay clickable
   // and there's no dead zone between card and popover.
@@ -333,7 +302,7 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
         {/* Time and Duration - Hide for 30min appointments */}
         {getDurationMinutes() > 30 && (
           <div className="text-xs leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
-            {formatTime(appointment.startTime)} ({getDuration()})
+            {formatTime(cardStartTime)} ({getDuration()})
           </div>
         )}
 
@@ -527,11 +496,20 @@ const AppointmentCard = ({ appointment, style = {}, viewType = 'daily', dragConf
                 {details && (
                   <div className="text-sm text-gray-700 mt-0.5">{details}</div>
                 )}
-                <div className="text-sm text-gray-700 mt-1">
-                  {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
-                  {' · '}
-                  {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
-                </div>
+                {isMultiDay ? (
+                  <div className="text-sm text-gray-700 mt-1">
+                    {formatDateTimeToET(appointment.startTime, 'ddd, MMM D')} · {formatTime(appointment.startTime)}
+                    {' → '}
+                    {formatDateTimeToET(appointment.endTime, 'ddd, MMM D')} · {formatTime(appointment.endTime)}
+                    <span className="text-gray-500"> ({getDuration()} shop time)</span>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-700 mt-1">
+                    {formatDateTimeToET(appointment.startTime, 'MMM D, YYYY')}
+                    {' · '}
+                    {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
+                  </div>
+                )}
               </div>
 
               {/* Technician */}

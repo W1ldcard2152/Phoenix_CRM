@@ -75,6 +75,25 @@ const SettingsSchema = new Schema(
     showServiceAdvisorOnInvoice: {
       type: Boolean,
       default: false
+    },
+    shopHours: {
+      type: [{
+        dayOfWeek: { type: Number, required: true },
+        open: { type: String, default: '08:00' },
+        close: { type: String, default: '18:00' },
+        closed: { type: Boolean, default: false },
+        lunchStart: { type: String, default: '' },
+        lunchDuration: { type: Number, default: 0 }
+      }],
+      default: () => [
+        { dayOfWeek: 0, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 1, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 2, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 3, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 4, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 5, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 6, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 }
+      ]
     }
   },
   {
@@ -128,6 +147,18 @@ SettingsSchema.statics.getSettings = async function () {
     }
     if (!settings.brandOverrides) {
       settings.brandOverrides = ['ACDelco'];
+      needsSave = true;
+    }
+    if (!settings.shopHours || settings.shopHours.length === 0) {
+      settings.shopHours = [
+        { dayOfWeek: 0, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 1, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 2, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 3, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 4, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 5, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+        { dayOfWeek: 6, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 }
+      ];
       needsSave = true;
     }
     if (needsSave) await settings.save();

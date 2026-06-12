@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import moment from 'moment-timezone';
 import AppointmentService from '../../services/appointmentService';
 import ScheduleBlockService from '../../services/scheduleBlockService';
+import SettingsService from '../../services/settingsService';
 import DailyView from './DailyView';
 import WeeklyView from './WeeklyView';
 import Card from '../common/Card';
@@ -24,7 +25,22 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
   const [showWeekends, setShowWeekends] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [shopHoursMap, setShopHoursMap] = useState(null);
   const { user } = useAuth();
+
+  // Fetch shop hours once on mount
+  useEffect(() => {
+    SettingsService.getSettings()
+      .then(res => {
+        const hours = res.data?.settings?.shopHours;
+        if (hours && hours.length > 0) {
+          const map = {};
+          hours.forEach(d => { map[d.dayOfWeek] = d; });
+          setShopHoursMap(map);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch appointments based on current view
   useEffect(() => {
@@ -91,7 +107,7 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
   }, [currentDate, viewType]);
 
   /**
-   * Handle appointment time reschedule from drag-and-drop.
+   * Handle schedule-block reschedule from drag-and-drop (delta-based).
    * Optimistically updates local state, then persists to backend.
    * Rolls back on API failure.
    */
@@ -140,7 +156,7 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
           await ScheduleBlockService.update(event.scheduleBlockId, updateData);
         }
       } else {
-        // Regular appointment
+        // Regular appointment (fallback; flow drags use handleAppointmentMove)
         const newStartLocal = newStart.tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss');
         const newEndLocal = newEnd.tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss');
         await AppointmentService.updateAppointment(eventId, {
@@ -153,6 +169,43 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
       if (!showWeekends && viewType === 'weekly') {
         const newDay = newStart.tz(TIMEZONE).day();
         if (newDay === 0 || newDay === 6) {
+          setShowWeekends(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to reschedule:', err);
+      setAppointments(previousAppointments);
+      setError('Failed to reschedule. Changes have been reverted.');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  /**
+   * Handle appointment move from business-time flow drag.
+   * Receives absolute new times (the view computes the flow through shop
+   * hours). Optimistic update + rollback, like the delta path.
+   */
+  const handleAppointmentMove = async (eventId, startISO, endISO) => {
+    const event = appointments.find(a => a._id === eventId);
+    if (!event || event.isScheduleBlock) return;
+    if (event.startTime === startISO && event.endTime === endISO) return;
+
+    const previousAppointments = [...appointments];
+    setAppointments(prev => prev.map(a =>
+      a._id === eventId ? { ...a, startTime: startISO, endTime: endISO } : a
+    ));
+
+    try {
+      await AppointmentService.updateAppointment(eventId, {
+        startTime: moment.utc(startISO).tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss'),
+        endTime: moment.utc(endISO).tz(TIMEZONE).format('YYYY-MM-DDTHH:mm:ss')
+      });
+
+      // If any part of the new range touches a weekend in 5-day mode, expand to 7-day
+      if (!showWeekends && viewType === 'weekly') {
+        const startDay = moment.utc(startISO).tz(TIMEZONE).day();
+        const endDay = moment.utc(endISO).tz(TIMEZONE).day();
+        if (startDay === 0 || startDay === 6 || endDay === 0 || endDay === 6) {
           setShowWeekends(true);
         }
       }
@@ -290,9 +343,9 @@ const SwimmingLaneCalendar = ({ embedded = false, compact = false, initialDate =
       {!loading && !error && (
         <>
           {viewType === 'daily' ? (
-            <DailyView date={currentDate} appointments={appointments} onAppointmentReschedule={handleAppointmentReschedule} />
+            <DailyView date={currentDate} appointments={appointments} onAppointmentReschedule={handleAppointmentReschedule} onAppointmentMove={handleAppointmentMove} shopHoursMap={shopHoursMap} />
           ) : (
-            <WeeklyView week={currentDate} appointments={appointments} showWeekends={showWeekends} onAppointmentReschedule={handleAppointmentReschedule} />
+            <WeeklyView week={currentDate} appointments={appointments} showWeekends={showWeekends} onAppointmentReschedule={handleAppointmentReschedule} onAppointmentMove={handleAppointmentMove} shopHoursMap={shopHoursMap} />
           )}
         </>
       )}

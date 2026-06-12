@@ -520,7 +520,10 @@ describe('useDragToReschedule', () => {
       });
     });
 
-    it('does not fire when returning to original position', () => {
+    // Once a drag exceeds the dead zone, onDragEnd always fires (even at
+    // zero deltas) so callers can tear down live preview state; callers
+    // are responsible for treating zero deltas as a no-op.
+    it('fires with zero deltas when returning to original position', () => {
       const onDragEnd = jest.fn();
       const { result } = renderHook(() =>
         useDragToReschedule({
@@ -548,7 +551,7 @@ describe('useDragToReschedule', () => {
         document.dispatchEvent(mouseEvent('mouseup'));
       });
 
-      expect(onDragEnd).not.toHaveBeenCalled();
+      expect(onDragEnd).toHaveBeenCalledWith({ deltaMinutes: 0, secondarySnaps: 0 });
     });
 
     it('does not fire when mouse up without exceeding dead zone', () => {

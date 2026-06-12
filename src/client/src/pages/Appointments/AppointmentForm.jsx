@@ -14,9 +14,11 @@ import AppointmentService from '../../services/appointmentService';
 import CustomerService from '../../services/customerService';
 import WorkOrderService from '../../services/workOrderService';
 import technicianService from '../../services/technicianService';
+import SettingsService from '../../services/settingsService';
 import { TIMEZONE } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { isAdminOrManagement } from '../../utils/permissions';
+import { getOpenIntervals, addBusinessMinutes, businessMinutesBetween } from '../../utils/businessTime';
 
 const AppointmentSchema = Yup.object().shape({
   customer: Yup.string().required('Customer is required'),
@@ -28,11 +30,24 @@ const AppointmentSchema = Yup.object().shape({
   serviceType: Yup.string().required('Service type is required'),
   startDate: Yup.string().required('Start date is required'),
   startTime: Yup.string().required('Start time is required'),
-  endDate: Yup.string().required('End date is required'),
-  endTime: Yup.string().required('End time is required'),
+  duration: Yup.number().min(15, 'Duration is required').required('Duration is required'),
   status: Yup.string().required('Status is required'),
   technician: Yup.string().required('Technician is required')
 });
+
+// Duration choices: 15-min steps to 2h, 30-min to 8h, then hourly to 16h
+const DURATION_OPTIONS = (() => {
+  const opts = [];
+  for (let m = 15; m <= 120; m += 15) opts.push(m);
+  for (let m = 150; m <= 480; m += 30) opts.push(m);
+  for (let m = 540; m <= 960; m += 60) opts.push(m);
+  return opts.map(m => {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    const label = h > 0 ? (mm > 0 ? `${h}h ${mm}m` : `${h}h`) : `${mm}m`;
+    return { value: m, label };
+  });
+})();
 
 const AppointmentForm = () => {
   const { id } = useParams(); 
@@ -50,6 +65,7 @@ const AppointmentForm = () => {
   const [conflictMessage, setConflictMessage] = useState('');
   const [workOrderContext, setWorkOrderContext] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [shopHoursMap, setShopHoursMap] = useState(null);
   const { user } = useAuth();
 
 
@@ -67,8 +83,7 @@ const AppointmentForm = () => {
     details: '',
     startDate: '', // Will be set in useEffect
     startTime: '', // Will be set in useEffect
-    endDate: '',   // Will be set in useEffect
-    endTime: '',   // Will be set in useEffect
+    duration: 60,  // Shop-time minutes; end time is computed by flowing through shop hours
     technician: '',
     status: 'Scheduled',
     notes: '',
@@ -76,23 +91,52 @@ const AppointmentForm = () => {
     createWorkOrder: false
   });
 
-  const generateTimeOptions = () => {
+  const minutesToTimeOption = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours);
+    return {
+      value: `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`,
+      label: `${hour12}:${String(mins).padStart(2, '0')} ${period}`
+    };
+  };
+
+  /**
+   * Start-time choices for the selected date: 15-min steps within that
+   * day's open intervals (excludes lunch). A closed date falls back to
+   * default 8-6 hours, so appointments can still be placed there.
+   */
+  const generateTimeOptions = (dateStr, currentValue = '') => {
+    const day = dateStr ? moment.tz(dateStr, 'YYYY-MM-DD', TIMEZONE) : moment.tz(TIMEZONE);
+    const intervals = getOpenIntervals(day, shopHoursMap, day.format('YYYY-MM-DD'));
     const options = [];
-    const start = 8 * 60;
-    const end = 18 * 60;
-    const increment = 15;
-    for (let i = start; i <= end; i += increment) {
-      const hours = Math.floor(i / 60);
-      const minutes = i % 60;
-      const period = hours >= 12 ? 'PM' : 'AM';
-      const hour12 = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours);
-      const timeValue = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-      const timeLabel = `${hour12}:${minutes.toString().padStart(2, '0')} ${period}`;
-      options.push({ value: timeValue, label: timeLabel });
+    intervals.forEach(({ start, end }) => {
+      const startMin = start.hour() * 60 + start.minute();
+      const endMin = end.hour() * 60 + end.minute();
+      for (let m = startMin; m < endMin; m += 15) {
+        options.push(minutesToTimeOption(m));
+      }
+    });
+    // Keep a legacy/out-of-hours value selectable so editing doesn't blank it
+    if (currentValue && !options.some(o => o.value === currentValue)) {
+      const [h, m] = currentValue.split(':').map(Number);
+      options.push(minutesToTimeOption(h * 60 + m));
+      options.sort((a, b) => a.value.localeCompare(b.value));
     }
     return options;
   };
-  const timeOptions = generateTimeOptions();
+
+  /**
+   * Computed end: start + duration flowed through shop hours (wraps past
+   * close into the next open day, skips lunch and closed days).
+   */
+  const computeEnd = (startDate, startTime, duration) => {
+    if (!startDate || !startTime || !duration) return null;
+    const start = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE);
+    if (!start.isValid()) return null;
+    return addBusinessMinutes(start, Number(duration), shopHoursMap, startDate);
+  };
 
   const fetchVehiclesForCustomer = async (customerId) => {
     console.log('fetchVehiclesForCustomer - customerId:', customerId);
@@ -131,10 +175,9 @@ const AppointmentForm = () => {
       setLoading(true);
       setError(null);
 
-      // Define nowET and laterTimeET inside the effect
+      // Define nowET inside the effect
       const nowET = moment.tz(TIMEZONE);
       nowET.minutes(Math.ceil(nowET.minutes() / 15) * 15).seconds(0).milliseconds(0);
-      const laterTimeET = nowET.clone().add(1, 'hour');
 
       try {
         const customerListResponse = await CustomerService.getAllCustomers();
@@ -142,6 +185,20 @@ const AppointmentForm = () => {
 
         const technicianListResponse = await technicianService.getAllTechnicians(true);
         setTechnicians(technicianListResponse.data.data.technicians || []);
+
+        // Shop hours drive start-time options and end-time flow computation
+        let hoursMap = null;
+        try {
+          const settingsRes = await SettingsService.getSettings();
+          const hours = settingsRes.data?.settings?.shopHours;
+          if (hours && hours.length > 0) {
+            hoursMap = {};
+            hours.forEach(d => { hoursMap[d.dayOfWeek] = d; });
+          }
+        } catch (settingsErr) {
+          console.error('Failed to load shop hours, using defaults:', settingsErr);
+        }
+        setShopHoursMap(hoursMap);
 
         // Default initial values based on current date/time
         let currentInitialValues = {
@@ -151,8 +208,7 @@ const AppointmentForm = () => {
             details: '',
             startDate: formatDateForField(nowET), // Use nowET defined in effect
             startTime: formatTimeForField(nowET), // Use nowET defined in effect
-            endDate: formatDateForField(laterTimeET),   // Use laterTimeET defined in effect
-            endTime: formatTimeForField(laterTimeET),   // Use laterTimeET defined in effect
+            duration: 60,
             technician: '',
             status: 'Scheduled',
             notes: '',
@@ -173,16 +229,24 @@ const AppointmentForm = () => {
           // If reschedule=true, override status to 'Scheduled' so the user reschedules the appointment
           const isReschedule = searchParams.get('reschedule') === 'true';
 
+          // Seed duration from the existing range, measured in shop-open time
+          const apptStartET = moment.utc(appt.startTime).tz(TIMEZONE);
+          const apptEndET = moment.utc(appt.endTime).tz(TIMEZONE);
+          let editDuration = businessMinutesBetween(apptStartET, apptEndET, hoursMap, apptStartET.format('YYYY-MM-DD'));
+          if (editDuration <= 0) {
+            editDuration = apptEndET.diff(apptStartET, 'minutes'); // legacy range outside open hours
+          }
+          editDuration = Math.max(15, Math.round(editDuration / 15) * 15);
+
           currentInitialValues = {
             ...currentInitialValues, // Keep date/time defaults unless overwritten
             customer: apptCustomerId || '',
             vehicle: appt.vehicle?._id || appt.vehicle || '',
             serviceType: appt.serviceType || '',
             details: appt.details || '',
-            startDate: formatDateForField(isReschedule ? nowET : moment.utc(appt.startTime).tz(TIMEZONE)),
-            startTime: formatTimeForField(isReschedule ? nowET : moment.utc(appt.startTime).tz(TIMEZONE)),
-            endDate: formatDateForField(isReschedule ? laterTimeET : moment.utc(appt.endTime).tz(TIMEZONE)),
-            endTime: formatTimeForField(isReschedule ? laterTimeET : moment.utc(appt.endTime).tz(TIMEZONE)),
+            startDate: formatDateForField(isReschedule ? nowET : apptStartET),
+            startTime: formatTimeForField(isReschedule ? nowET : apptStartET),
+            duration: editDuration,
             technician: appt.technician?._id || appt.technician || '',
             status: isReschedule ? 'Scheduled' : (appt.status || 'Scheduled'),
             notes: appt.notes || '',
@@ -212,6 +276,7 @@ const AppointmentForm = () => {
             notes: wo.diagnosticNotes || '',
             workOrder: wo._id,
             technician: wo.assignedTechnician?._id || wo.assignedTechnician || '',
+            duration: Math.min(960, Math.max(15, Math.round(estimateAppointmentDuration(wo) * 60 / 15) * 15)),
           };
         } else if (customerIdFromEffect) { 
             console.log('useEffect - New appointment with customer ID:', customerIdFromEffect);
@@ -255,14 +320,20 @@ const AppointmentForm = () => {
   };
 
   const checkForConflicts = async (values) => {
-    const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
-    const endDateTime = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
-
-    if (!values.startDate || !values.startTime || !values.endDate || !values.endTime || !values.technician) {
+    if (!values.startDate || !values.startTime || !values.duration || !values.technician) {
       setHasConflicts(false);
       setConflictMessage('');
       return false;
     }
+
+    const startDateTime = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+    const computedEnd = computeEnd(values.startDate, values.startTime, values.duration);
+    if (!computedEnd) {
+      setHasConflicts(false);
+      setConflictMessage('');
+      return false;
+    }
+    const endDateTime = computedEnd.toISOString();
     try {
       const conflictCheckData = {
         startTime: startDateTime,
@@ -316,9 +387,9 @@ const AppointmentForm = () => {
   };
 
   const handleSubmit = async (values, { setSubmitting }) => {
-    // Combine date and time, then format as ISO string (UTC) for the server
+    // Combine date and time; the end flows through shop hours from start + duration
     const startTimeForServer = moment.tz(`${values.startDate} ${values.startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
-    const endTimeForServer = moment.tz(`${values.endDate} ${values.endTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE).toISOString();
+    const endTimeForServer = computeEnd(values.startDate, values.startTime, values.duration).toISOString();
 
     const formattedValues = {
       ...values,
@@ -328,7 +399,7 @@ const AppointmentForm = () => {
       serviceType: values.serviceType === 'Other' ? values.serviceTypeCustom : values.serviceType
     };
     delete formattedValues.startDate;
-    delete formattedValues.endDate;
+    delete formattedValues.duration;
     delete formattedValues.serviceTypeCustom; // Don't send this to server
 
     // Call checkForConflicts to update the warning message, but don't block submission
@@ -373,15 +444,6 @@ const AppointmentForm = () => {
     return durationHours;
   };
 
-  const calculateEndTime = (startDate, startTime, durationHours) => {
-    const startMoment = moment.tz(`${startDate} ${startTime}`, 'YYYY-MM-DD HH:mm', TIMEZONE);
-    const endMoment = startMoment.clone().add(durationHours, 'hours');
-    return {
-      date: formatDateForField(endMoment),
-      time: formatTimeForField(endMoment)
-    };
-  };
-
   if (loading) {
     return <div className="container mx-auto flex justify-center items-center h-48"><p>Loading form...</p></div>;
   }
@@ -405,7 +467,6 @@ const AppointmentForm = () => {
     { value: 'No-Show', label: 'No-Show' }
   ];
   const technicianOptions = [{ value: '', label: 'Select Technician' }, ...technicians.map(t => ({ value: t._id, label: `${t.name}${t.specialization ? ` (${t.specialization})` : ''}` }))];
-  const validateTimes = (startD, startT, endD, endT) => !startD || !startT || !endD || !endT || new Date(`${startD}T${startT}`) < new Date(`${endD}T${endT}`);
 
   return (
     <div className="container mx-auto">
@@ -517,33 +578,54 @@ const AppointmentForm = () => {
 
                 <div className="md:col-span-2">
                   <h3 className="font-medium text-gray-700 mb-2">Appointment Time</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Start Date <span className="text-red-500">*</span></label>
-                        <Input type="date" name="startDate" value={values.startDate} onChange={(e) => { const newDate = e.target.value; setFieldValue('startDate', newDate); if (new Date(newDate) > new Date(values.endDate)) setFieldValue('endDate', newDate); }} onBlur={handleBlur} error={errors.startDate} touched={touched.startDate} required />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Start Time <span className="text-red-500">*</span></label>
-                        <SelectInput name="startTime" options={timeOptions} value={values.startTime} onChange={(e) => { const newTime = e.target.value; setFieldValue('startTime', newTime); const duration = workOrderContext ? estimateAppointmentDuration(workOrderContext) : 1; const newEnd = calculateEndTime(values.startDate, newTime, duration); setFieldValue('endDate', newEnd.date); setFieldValue('endTime', newEnd.time); if (values.technician) checkForConflicts({...values, startTime: newTime, endDate: newEnd.date, endTime: newEnd.time }); }} onBlur={handleBlur} error={errors.startTime} touched={touched.startTime} required />
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Start Date <span className="text-red-500">*</span></label>
+                      <Input type="date" name="startDate" value={values.startDate} onChange={(e) => { const newDate = e.target.value; setFieldValue('startDate', newDate); if (values.technician) checkForConflicts({ ...values, startDate: newDate }); }} onBlur={handleBlur} error={errors.startDate} touched={touched.startDate} required />
                     </div>
                     <div>
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">End Date <span className="text-red-500">*</span></label>
-                        <Input type="date" name="endDate" value={values.endDate} min={values.startDate} onChange={(e) => { const newDate = e.target.value; setFieldValue('endDate', newDate); if (values.technician) checkForConflicts({...values, endDate: newDate}); }} onBlur={handleBlur} error={errors.endDate} touched={touched.endDate} required />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">End Time <span className="text-red-500">*</span></label>
-                        <SelectInput name="endTime" options={timeOptions} value={values.endTime} onChange={(e) => { const newTime = e.target.value; setFieldValue('endTime', newTime); if (values.technician) checkForConflicts({...values, endTime: newTime}); }} onBlur={handleBlur} error={errors.endTime} touched={touched.endTime} required />
-                      </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Start Time <span className="text-red-500">*</span></label>
+                      <SelectInput name="startTime" options={generateTimeOptions(values.startDate, values.startTime)} value={values.startTime} onChange={(e) => { const newTime = e.target.value; setFieldValue('startTime', newTime); if (values.technician) checkForConflicts({ ...values, startTime: newTime }); }} onBlur={handleBlur} error={errors.startTime} touched={touched.startTime} required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Duration <span className="text-red-500">*</span></label>
+                      <SelectInput
+                        name="duration"
+                        options={(() => {
+                          // Keep an out-of-range seeded duration (e.g. a long multi-day edit) selectable
+                          const current = Number(values.duration);
+                          if (!current || DURATION_OPTIONS.some(o => o.value === current)) return DURATION_OPTIONS;
+                          const h = Math.floor(current / 60);
+                          const mm = current % 60;
+                          const label = h > 0 ? (mm > 0 ? `${h}h ${mm}m` : `${h}h`) : `${mm}m`;
+                          return [...DURATION_OPTIONS, { value: current, label }].sort((a, b) => a.value - b.value);
+                        })()}
+                        value={values.duration}
+                        onChange={(e) => { const newDuration = Number(e.target.value); setFieldValue('duration', newDuration); if (values.technician) checkForConflicts({ ...values, duration: newDuration }); }}
+                        onBlur={handleBlur}
+                        error={errors.duration}
+                        touched={touched.duration}
+                        required
+                      />
                     </div>
                   </div>
-                  {values.startDate && values.startTime && values.endDate && values.endTime && !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime) && <div className="text-red-500 text-sm mt-2">End time must be after start time.</div>}
+                  {(() => {
+                    const end = computeEnd(values.startDate, values.startTime, values.duration);
+                    if (!end) return null;
+                    const wraps = end.format('YYYY-MM-DD') !== values.startDate;
+                    return (
+                      <div className="text-sm mt-2 text-gray-700">
+                        Ends: <span className="font-medium">{end.format('ddd, MMM D · h:mm A')}</span>
+                        {wraps && (
+                          <span className="text-amber-600"> — wraps past close into the next open day</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 
                 <div>
-                  <SelectInput label="Technician" name="technician" options={technicianOptions} value={values.technician} onChange={(e) => { const newTech = e.target.value; setFieldValue('technician', newTech); if (values.startDate && values.startTime && values.endDate && values.endTime) checkForConflicts({...values, technician: newTech}); }} onBlur={handleBlur} error={errors.technician} touched={touched.technician} required />
+                  <SelectInput label="Technician" name="technician" options={technicianOptions} value={values.technician} onChange={(e) => { const newTech = e.target.value; setFieldValue('technician', newTech); if (values.startDate && values.startTime && values.duration) checkForConflicts({...values, technician: newTech}); }} onBlur={handleBlur} error={errors.technician} touched={touched.technician} required />
                 </div>
                 <div>
                   <SelectInput label="Status" name="status" options={statusOptions} value={values.status} onChange={handleChange} onBlur={handleBlur} error={errors.status} touched={touched.status} required />
@@ -562,7 +644,7 @@ const AppointmentForm = () => {
               
               <div className="mt-6 flex justify-end space-x-3">
                 <Button type="button" variant="light" onClick={() => navigate(searchParams.get('from') || (id ? `/appointments/${id}` : '/appointments'))}>Cancel</Button>
-                <Button type="submit" variant="primary" disabled={isSubmitting || !validateTimes(values.startDate, values.startTime, values.endDate, values.endTime)}>{isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}</Button>
+                <Button type="submit" variant="primary" disabled={isSubmitting || !computeEnd(values.startDate, values.startTime, values.duration)}>{isSubmitting ? 'Saving...' : (id ? 'Update Appointment' : 'Schedule Appointment')}</Button>
               </div>
             </Form>
           )}

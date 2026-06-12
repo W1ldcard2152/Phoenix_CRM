@@ -104,6 +104,11 @@ const SettingsService = {
   applyAllBrandOverridesToInventory: async () => {
     const response = await API.post('/settings/brand-overrides/apply', { applyAll: true });
     return response.data;
+  },
+
+  updateShopHours: async (shopHours) => {
+    const response = await API.patch('/settings', { shopHours });
+    return response.data;
   }
 };
 

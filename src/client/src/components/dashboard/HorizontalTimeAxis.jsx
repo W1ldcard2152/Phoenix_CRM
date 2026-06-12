@@ -1,26 +1,15 @@
 import React from 'react';
 
 /**
- * HorizontalTimeAxis component - Displays time slots horizontally for daily swimming lane view
- * Shows hours from 8am to 6pm across the top of the calendar
+ * HorizontalTimeAxis - hour markers for the daily swimming-lane view.
+ * openHour/closeHour props are optional; defaults to 8am–6pm.
  */
-const HorizontalTimeAxis = () => {
-  const SHOP_OPEN_HOUR = 8;  // 8am
-  const SHOP_CLOSE_HOUR = 18; // 6pm
-  const PIXELS_PER_HOUR = 120; // Width in pixels for each hour
-
-  // Generate hour markers
+const HorizontalTimeAxis = ({ openHour = 8, closeHour = 18 }) => {
   const hours = [];
-  for (let hour = SHOP_OPEN_HOUR; hour <= SHOP_CLOSE_HOUR; hour++) {
+  for (let hour = openHour; hour <= closeHour; hour++) {
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     const period = hour >= 12 ? 'PM' : 'AM';
-    const timeString = `${displayHour.toString().padStart(2, '0')}:00`;
-
-    hours.push({
-      hour,
-      timeString,
-      period
-    });
+    hours.push({ hour, label: `${String(displayHour).padStart(2, '0')}:00`, period });
   }
 
   return (
@@ -30,14 +19,14 @@ const HorizontalTimeAxis = () => {
 
       {/* Hour markers */}
       <div className="flex flex-1 relative">
-        {hours.map((hourData, index) => (
+        {hours.map((hourData) => (
           <div
             key={hourData.hour}
             className="border-r border-gray-300"
             style={{ width: `${PIXELS_PER_HOUR}px` }}
           >
             <div className="px-2 py-2 text-sm font-semibold text-gray-700 text-center">
-              {hourData.timeString}
+              {hourData.label}
             </div>
           </div>
         ))}
@@ -48,8 +37,9 @@ const HorizontalTimeAxis = () => {
 
 export default HorizontalTimeAxis;
 
-// Export constants for use in other components
-export const SHOP_OPEN_HOUR = 8;
-export const SHOP_CLOSE_HOUR = 18;
+// Constants for use in other components
 export const PIXELS_PER_HOUR = 120;
 export const PIXELS_PER_MINUTE = PIXELS_PER_HOUR / 60; // 2 pixels per minute
+// Legacy fallback exports (prefer passing props or deriving from shopHoursMap)
+export const SHOP_OPEN_HOUR = 8;
+export const SHOP_CLOSE_HOUR = 18;

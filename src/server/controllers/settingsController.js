@@ -37,6 +37,9 @@ exports.updateSettings = catchAsync(async (req, res) => {
   if (req.body.showServiceAdvisorOnInvoice !== undefined) {
     settings.showServiceAdvisorOnInvoice = req.body.showServiceAdvisorOnInvoice;
   }
+  if (req.body.shopHours !== undefined) {
+    settings.shopHours = req.body.shopHours;
+  }
 
   await settings.save();
 

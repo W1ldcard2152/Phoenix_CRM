@@ -5,6 +5,38 @@ import AuthService from '../../services/authService';
 import SettingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon–Sun display order
+
+const HOUR_OPTIONS = (() => {
+  const opts = [];
+  for (let h = 6; h <= 22; h++) {
+    const hh = String(h).padStart(2, '0');
+    const displayH = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    const period = h >= 12 ? 'PM' : 'AM';
+    opts.push({ value: `${hh}:00`, label: `${displayH}:00 ${period}` });
+  }
+  return opts;
+})();
+
+const LUNCH_DURATION_OPTIONS = [
+  { value: 0, label: 'None' },
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 45, label: '45 min' },
+  { value: 60, label: '1 hr' },
+];
+
+const DEFAULT_SHOP_HOURS = [
+  { dayOfWeek: 0, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 1, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 2, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 3, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 4, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 5, open: '08:00', close: '18:00', closed: false, lunchStart: '', lunchDuration: 0 },
+  { dayOfWeek: 6, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 },
+];
+
 const SettingsPage = () => {
   const navigate = useNavigate();
   const { currentUser, updateUser, updateToken } = useAuth();
@@ -37,6 +69,11 @@ const SettingsPage = () => {
   const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
   const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
 
+  // Shop Hours State (admin/management only)
+  const [shopHours, setShopHours] = useState(null);
+  const [shopHoursMessage, setShopHoursMessage] = useState({ type: '', text: '' });
+  const [shopHoursBusy, setShopHoursBusy] = useState(false);
+
   // Labor Types State (admin/management only)
   const [laborTypes, setLaborTypes] = useState([]);
   const [newLaborTypeName, setNewLaborTypeName] = useState('');
@@ -54,10 +91,32 @@ const SettingsPage = () => {
             defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
           });
           setLaborTypes(res.data.settings.laborTypes || []);
+          setShopHours(res.data.settings.shopHours || DEFAULT_SHOP_HOURS);
         })
         .catch(() => {});
     }
   }, [isAdmin]);
+
+  const updateDayHours = (dayOfWeek, field, value) => {
+    setShopHours(prev => prev.map(d =>
+      d.dayOfWeek === dayOfWeek ? { ...d, [field]: value } : d
+    ));
+  };
+
+  const handleSaveShopHours = async () => {
+    setShopHoursBusy(true);
+    setShopHoursMessage({ type: '', text: '' });
+    try {
+      const res = await SettingsService.updateShopHours(shopHours);
+      setShopHours(res.data.settings.shopHours || shopHours);
+      setShopHoursMessage({ type: 'success', text: 'Shop hours saved.' });
+      setTimeout(() => setShopHoursMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      setShopHoursMessage({ type: 'error', text: err.response?.data?.message || 'Failed to save shop hours' });
+    } finally {
+      setShopHoursBusy(false);
+    }
+  };
 
   const showLaborTypesMessage = (type, text) => {
     setLaborTypesMessage({ type, text });
@@ -558,6 +617,104 @@ const SettingsPage = () => {
                   </div>
                 </div>
               </form>
+            </div>
+
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-1">Shop Hours</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Sets the calendar viewport and multi-day appointment clipping. Times must be on the hour.
+              </p>
+
+              {shopHoursMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  shopHoursMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {shopHoursMessage.text}
+                </div>
+              )}
+
+              {shopHours && (
+                <div className="space-y-2 mb-4">
+                  {/* Header row */}
+                  <div className="flex items-center gap-3 text-xs font-medium text-gray-500 uppercase tracking-wide px-1 pb-1 border-b border-gray-200">
+                    <div className="w-24">Day</div>
+                    <div className="w-16 text-center">Closed</div>
+                    <div className="w-24 text-center">Open</div>
+                    <div className="w-4 text-center"></div>
+                    <div className="w-24 text-center">Close</div>
+                    <div className="w-24 text-center">Lunch at</div>
+                    <div className="w-28 text-center">Lunch length</div>
+                  </div>
+                  {DAY_ORDER.map(dow => {
+                    const day = shopHours.find(d => d.dayOfWeek === dow);
+                    if (!day) return null;
+                    const disabled = day.closed;
+                    return (
+                      <div key={dow} className={`flex items-center gap-3 px-1 py-1.5 rounded ${disabled ? 'opacity-50' : ''}`}>
+                        <div className="w-24 text-sm font-medium text-gray-700">{DAY_NAMES[dow]}</div>
+                        <div className="w-16 flex justify-center">
+                          <input
+                            type="checkbox"
+                            checked={day.closed}
+                            onChange={e => updateDayHours(dow, 'closed', e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </div>
+                        <select
+                          value={day.open}
+                          disabled={disabled}
+                          onChange={e => updateDayHours(dow, 'open', e.target.value)}
+                          className="w-24 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                        >
+                          {HOUR_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <span className="text-gray-400 text-sm w-4 text-center">–</span>
+                        <select
+                          value={day.close}
+                          disabled={disabled}
+                          onChange={e => updateDayHours(dow, 'close', e.target.value)}
+                          className="w-24 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                        >
+                          {HOUR_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={day.lunchStart || ''}
+                          disabled={disabled}
+                          onChange={e => updateDayHours(dow, 'lunchStart', e.target.value)}
+                          className="w-24 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                        >
+                          <option value="">No lunch</option>
+                          {HOUR_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={day.lunchDuration || 0}
+                          disabled={disabled || !day.lunchStart}
+                          onChange={e => updateDayHours(dow, 'lunchDuration', Number(e.target.value))}
+                          className="w-28 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                        >
+                          {LUNCH_DURATION_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                onClick={handleSaveShopHours}
+                disabled={shopHoursBusy || !shopHours}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+              >
+                {shopHoursBusy ? 'Saving...' : 'Save Shop Hours'}
+              </button>
             </div>
 
             <div className="bg-white shadow rounded-lg p-6">

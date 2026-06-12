@@ -2,6 +2,22 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-12
+
+### Added
+- **Shop Hours** setting in the Shop tab — per-day open/close time (6 AM–10 PM, whole-hour increments), Closed toggle, and optional lunch start + duration. Defaults to Mon–Fri 8 AM–6 PM, Sat–Sun closed.
+- **Multi-day appointment dragging** — appointments are now chains of 15-minute segments occupying shop-open time. Drag one toward close and the overflow flows onto the next open day (and dragging toward open flows backward); a live dashed-blue ghost shows exactly where every segment will land before you drop. Any day-block of a multi-day appointment can be grabbed and the whole chain moves together. The daily view announces off-screen overflow with an edge chip (e.g. "+45m → Mon 8:00 AM").
+- Lunch breaks from Shop Hours now appear as a gray band on the calendar, and appointments automatically split and flow around them — same for scheduling in the form.
+- **Now indicator** — when viewing today, each technician's lane shows a soft yellow highlight on the current hour plus a red line at the exact current minute, refreshing every minute.
+- Calendar viewport now dynamically bounds to the earliest open and latest close time across all visible days — no more hardcoded 8 AM–6 PM ceiling.
+- Closed days in the weekly calendar now show a "Closed" label and a gray background instead of a blank column.
+
+### Changed
+- Appointment form is now duration-driven: pick a start date/time and a duration, and the end time is computed by flowing through shop hours (wrapping past close into the next open day, skipping lunch and closed days). Start-time choices come from that day's actual open hours.
+- Appointment cards and hover popovers show shop-time durations based on the configured hours instead of an assumed 8–6 schedule; multi-day popovers show the full span (e.g. Fri 1:00 PM → Mon 9:00 AM).
+- Dropping an appointment directly on a Closed day still works (that day is treated as open 8–6 for the appointment), but overflow from neighboring days skips closed days.
+- Technician rows on both calendar views are now separated by a gray spacer strip so it's clear where one tech's lane ends and the next begins.
+
 ## 2026-06-11
 
 ### Changed
