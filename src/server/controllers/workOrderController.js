@@ -30,6 +30,19 @@ const STATUS_ALIASES = {
   'Quote - Archived': ['Quote - Archived']
 };
 
+// A work order sitting at "Parts Received" should drop back to "Parts Ordered" when it gains
+// a part that hasn't been received yet (e.g. a newly added or imported line). Parts that are
+// added and marked received in the same action keep the WO at "Parts Received".
+const revertPartsReceivedIfIncomplete = (workOrder) => {
+  if (
+    workOrder.status === 'Parts Received' &&
+    Array.isArray(workOrder.parts) && workOrder.parts.length > 0 &&
+    !workOrder.parts.every(part => part.received === true)
+  ) {
+    workOrder.status = 'Parts Ordered';
+  }
+};
+
 // Get all work orders
 exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   const { status, customer, vehicle, startDate, endDate, excludeStatuses } = req.query;
@@ -446,6 +459,12 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     if (allPartsReceived && preReceivedStatuses.includes(currentStatus)) {
       workOrderData.status = 'Parts Received';
     }
+
+    // Reverse trigger: a "Parts Received" WO that gains a not-yet-received part drops back to
+    // "Parts Ordered". Skipped when the status is being explicitly set to something else.
+    if (currentStatus === 'Parts Received' && !allPartsReceived) {
+      workOrderData.status = 'Parts Ordered';
+    }
   }
 
   // Check if diagnosticNotes have been updated and create a customer-facing note if they have
@@ -647,6 +666,7 @@ exports.addPart = catchAsync(async (req, res, next) => {
 
   workOrder.parts.push(req.body);
   workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  revertPartsReceivedIfIncomplete(workOrder);
   await workOrder.save();
 
   const populatedWorkOrderAfterAdd = await applyPopulation(
@@ -1661,6 +1681,9 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
       workOrder.status = 'Parts Ordered';
     }
   }
+
+  // If newly imported parts aren't all received, a "Parts Received" WO drops back to "Parts Ordered".
+  revertPartsReceivedIfIncomplete(workOrder);
 
   await workOrder.save();
 

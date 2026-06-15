@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Formik, Form, getIn } from 'formik';
 import * as Yup from 'yup';
@@ -50,7 +50,9 @@ const CustomerForm = () => {
   const [newCustomerId, setNewCustomerId] = useState(null);
   const [duplicatePhoneWarning, setDuplicatePhoneWarning] = useState(null);
   const [existingCustomerId, setExistingCustomerId] = useState(null);
-  const [allowSubmitDespiteDuplicate, setAllowSubmitDespiteDuplicate] = useState(false);
+  // Ref (not state) so the value is read synchronously inside handleSubmit on the same click
+  // that sets it — avoids the race where a stale state value re-blocks the submit.
+  const allowDuplicateRef = useRef(false);
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
@@ -105,9 +107,10 @@ const CustomerForm = () => {
     setSubmitting(true);
     setError(null); // Clear previous errors
 
-    // If creating a new customer and a duplicate warning exists, prevent submission
-    if (!id && duplicatePhoneWarning) {
-      setError('Phone numbers must be unique. Please resolve the duplicate phone number warning before saving.');
+    // For a new customer with a duplicate phone, require one explicit confirmation first.
+    // The warning box shows "View Existing Customer" and "Create New Anyway"; only the latter
+    // sets the ref and lets the submit through.
+    if (!id && duplicatePhoneWarning && !allowDuplicateRef.current) {
       setSubmitting(false);
       return;
     }
@@ -122,7 +125,7 @@ const CustomerForm = () => {
         const response = await CustomerService.createCustomer(values); // Send values directly, phone is already formatted
         setDuplicatePhoneWarning(null);
         setExistingCustomerId(null);
-        setAllowSubmitDespiteDuplicate(false);
+        allowDuplicateRef.current = false;
         if (response.data && response.data.customer && response.data.customer._id) {
           setNewCustomerId(response.data.customer._id);
           setShowAddVehiclePrompt(true);
@@ -336,6 +339,7 @@ const CustomerForm = () => {
                       if (duplicatePhoneWarning) {
                         setDuplicatePhoneWarning(null);
                         setExistingCustomerId(null);
+                        allowDuplicateRef.current = false;
                       }
                     }}
                     onBlur={(e) => {
@@ -349,15 +353,22 @@ const CustomerForm = () => {
                   {duplicatePhoneWarning && (
                     <div className="mt-2 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
                       <p>{duplicatePhoneWarning}</p>
-                      <div className="mt-2">
+                      <div className="mt-2 flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           onClick={() => navigate(`/customers/${existingCustomerId}`)}
-                          className="mr-2"
                         >
                           View Existing Customer
+                        </Button>
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          size="sm"
+                          onClick={() => { allowDuplicateRef.current = true; }}
+                        >
+                          Create New Anyway
                         </Button>
                       </div>
                     </div>

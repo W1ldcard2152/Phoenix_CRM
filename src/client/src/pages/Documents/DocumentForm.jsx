@@ -14,8 +14,8 @@ import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - skipDiagnostics only for work orders
 const getValidationSchema = (isQuote) => Yup.object().shape({
-  customer: Yup.string().required('Customer is required'),
-  vehicle: Yup.string(),
+  customer: Yup.string().required('Please select a customer'),
+  vehicle: Yup.string().required('Please select a vehicle'),
   currentMileage: Yup.number()
     .typeError('Mileage must be a number')
     .nullable()
@@ -126,10 +126,16 @@ const DocumentForm = ({ mode = 'workorder' }) => {
           }
         } else {
           if (customerIdParam) {
-            await fetchVehiclesForCustomer(customerIdParam);
+            const fetchedVehicles = await fetchVehiclesForCustomer(customerIdParam);
             if (vehicleIdParam) {
               await fetchAndSetLatestMileage(vehicleIdParam, (mileage) => {
                 setInitialValues(prev => ({ ...prev, vehicle: vehicleIdParam, currentMileage: mileage }));
+              });
+            } else if (fetchedVehicles.length === 1) {
+              // Pre-fill the vehicle when the customer has exactly one in their garage.
+              const onlyVehicleId = fetchedVehicles[0]._id;
+              await fetchAndSetLatestMileage(onlyVehicleId, (mileage) => {
+                setInitialValues(prev => ({ ...prev, vehicle: onlyVehicleId, currentMileage: mileage }));
               });
             }
           }
@@ -189,10 +195,12 @@ const DocumentForm = ({ mode = 'workorder' }) => {
     if (customerId) {
       try {
         const fetchedVehicles = await fetchVehiclesForCustomer(customerId);
-        if (fetchedVehicles.length > 0) {
-          const firstVehicleId = fetchedVehicles[0]._id;
-          setFieldValue('vehicle', firstVehicleId);
-          await fetchAndSetLatestMileage(firstVehicleId, (mileage) => {
+        // Auto-select only when the customer has exactly one vehicle; otherwise leave
+        // it blank so the user makes a deliberate choice.
+        if (fetchedVehicles.length === 1) {
+          const onlyVehicleId = fetchedVehicles[0]._id;
+          setFieldValue('vehicle', onlyVehicleId);
+          await fetchAndSetLatestMileage(onlyVehicleId, (mileage) => {
             setFieldValue('currentMileage', mileage);
           });
         }
@@ -240,7 +248,10 @@ const DocumentForm = ({ mode = 'workorder' }) => {
       }
     } catch (err) {
       console.error(`Error saving ${typeLabel.toLowerCase()}:`, err);
-      setError(`Failed to save ${typeLabel.toLowerCase()}. Please try again later.`);
+      // Surface the specific server-side message (e.g. "Please select a vehicle") instead of
+      // a generic failure, so the user knows exactly which required field is missing.
+      const serverMessage = err.response?.data?.message;
+      setError(serverMessage || `Failed to save ${typeLabel.toLowerCase()}. Please try again later.`);
       setSubmitting(false);
     }
   };
@@ -315,8 +326,9 @@ const DocumentForm = ({ mode = 'workorder' }) => {
 
                 <div>
                   <SelectInput
-                    label="Vehicle (Optional)"
+                    label="Vehicle"
                     name="vehicle"
+                    required
                     options={vehicleOptions}
                     value={values.vehicle}
                     onChange={(e) => handleVehicleChange(e, setFieldValue)}

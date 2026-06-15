@@ -384,8 +384,17 @@ const WorkflowSummary = () => {
           followUpId={selectedFollowUp._id}
           followUpData={selectedFollowUp}
           onUpdated={(updated) => {
-            setFollowUps(prev => prev.map(fu => fu._id === updated._id ? updated : fu));
-            setSelectedFollowUp(updated);
+            // A closed/resolved follow-up no longer belongs on the dashboard card — drop it
+            // and decrement the count immediately instead of holding stale data until refresh.
+            if (updated.status !== 'open') {
+              setFollowUps(prev => prev.filter(fu => fu._id !== updated._id));
+              setFollowUpCount(prev => Math.max(0, prev - 1));
+              setDetailModalOpen(false);
+              setSelectedFollowUp(null);
+            } else {
+              setFollowUps(prev => prev.map(fu => fu._id === updated._id ? updated : fu));
+              setSelectedFollowUp(updated);
+            }
           }}
           onDeleted={(id) => {
             setFollowUps(prev => prev.filter(fu => fu._id !== id));

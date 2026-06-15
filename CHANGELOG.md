@@ -2,6 +2,21 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-15
+
+### Added
+- Follow-up notes now have an **Add & Resolve** button that logs the note and marks the follow-up resolved in one step — handy since the first note on a follow-up is usually the one that closes it.
+
+### Changed
+- Creating a Work Order or Quote now auto-selects the vehicle only when the customer has exactly one in their garage (instead of always picking the first), and the Vehicle field is now required.
+- Saving a Work Order or Quote that's missing a required field now shows the specific reason (e.g. "Please select a vehicle") instead of a generic "Failed to save work order".
+- Adding a customer whose phone number already exists now warns and links to the existing customer, but still lets you create the new one with **Create New Anyway** — and the warning can no longer be skipped by saving before the duplicate check finishes.
+
+### Fixed
+- Importing or adding a not-yet-received part to a Work Order that had already flipped to "Parts Received" now drops it back to "Parts Ordered" (unless the part is added and marked received in the same action), so the status reflects that something is still on order.
+- The invoice status dropdown was being clipped at the bottom edge of the table; it now floats above the table so all options are reachable.
+- Resolving a follow-up from the dashboard now removes it from the Follow-Ups card and updates the count immediately, instead of leaving stale follow-ups until the page is refreshed.
+
 ## 2026-06-12
 
 ### Added

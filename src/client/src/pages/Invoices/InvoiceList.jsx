@@ -38,6 +38,9 @@ const InvoiceList = () => {
   const [sortConfig, setSortConfig] = usePersistedState('invoices:sortConfig:v1', [{ key: 'status', direction: 'asc' }]);
   const [generatingPDFId, setGeneratingPDFId] = useState(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(null); // invoiceId
+  // Fixed-position coords for the open status menu so it escapes the table's overflow
+  // clipping (the menu was getting cut off at the bottom edge of the table).
+  const [statusMenuPos, setStatusMenuPos] = useState({ top: 0, right: 0 });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
@@ -300,7 +303,13 @@ const InvoiceList = () => {
       <div className="relative inline-block" data-invoice-status-menu>
         <button
           type="button"
-          onClick={(ev) => { ev.stopPropagation(); setStatusMenuOpen(isOpen ? null : invoice._id); }}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            if (isOpen) { setStatusMenuOpen(null); return; }
+            const rect = ev.currentTarget.getBoundingClientRect();
+            setStatusMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+            setStatusMenuOpen(invoice._id);
+          }}
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition ${meta.className}`}
           title="Change status"
         >
@@ -310,7 +319,8 @@ const InvoiceList = () => {
         </button>
         {isOpen && (
           <div
-            className="absolute z-20 mt-1 right-0 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]"
+            className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]"
+            style={{ top: statusMenuPos.top, right: statusMenuPos.right }}
             onClick={(ev) => ev.stopPropagation()}
           >
             {STATUS_OPTIONS.map(opt => {

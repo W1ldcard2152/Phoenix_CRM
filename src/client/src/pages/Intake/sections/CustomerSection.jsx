@@ -256,7 +256,7 @@ const CustomerSection = ({ onSaved, onError }) => {
                 <Button
                   type="submit"
                   variant="primary"
-                  disabled={isSubmitting || saving || !!duplicateWarning}
+                  disabled={isSubmitting || saving}
                 >
                   {isSubmitting || saving ? (
                     <>

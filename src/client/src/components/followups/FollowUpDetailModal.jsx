@@ -84,6 +84,28 @@ const FollowUpDetailModal = ({ isOpen, onClose, followUpId, followUpData, onUpda
     }
   };
 
+  // "Add & Resolve" — log the note and close the follow-up in one action, using the note
+  // text as the resolution. The first note on a follow-up is usually also the one that
+  // resolves it, so this saves a second trip through the close form.
+  const handleAddAndResolve = async () => {
+    if (!newNoteText.trim()) return;
+    try {
+      setAddingNote(true);
+      await followUpService.addNote(followUp._id, {
+        text: newNoteText.trim(),
+        timestamp: newNoteTimestamp || undefined
+      });
+      const result = await followUpService.closeFollowUp(followUp._id, newNoteText.trim());
+      refreshFollowUp(result.data.followUp);
+      setNewNoteText('');
+      setNewNoteTimestamp('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to add note and resolve follow-up');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
   const startEditNote = (note) => {
     setEditingNoteId(note._id);
     setEditNoteText(note.text);
@@ -373,10 +395,15 @@ const FollowUpDetailModal = ({ isOpen, onClose, followUpId, followUpData, onUpda
                     className="mt-1"
                   />
                 </div>
-                <Button size="sm" variant="primary" onClick={handleAddNote} disabled={addingNote || !newNoteText.trim()}
-                  className="self-start">
-                  {addingNote ? '...' : 'Add'}
-                </Button>
+                <div className="flex flex-col gap-2 self-start">
+                  <Button size="sm" variant="primary" onClick={handleAddNote} disabled={addingNote || !newNoteText.trim()}>
+                    {addingNote ? '...' : 'Add'}
+                  </Button>
+                  <Button size="sm" variant="success" onClick={handleAddAndResolve} disabled={addingNote || !newNoteText.trim()}
+                    title="Add this note and mark the follow-up resolved">
+                    {addingNote ? '...' : 'Add & Resolve'}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
