@@ -16,6 +16,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - Invoice and quote line items now read like a standard receipt: column headers (Qty · Unit Price · Amount), columns aligned across jobs, and a **Total** line at the bottom of each job. Fixed-price labor now shows "ea" units (e.g. "4 ea" at "$25.00/ea") to match hourly's "1.5 hr".
 
 ### Fixed
+- Production deploys were failing to build because the hosting environment treats lint warnings as errors; the production build no longer fails on warnings, so deploys go through again.
 - Importing or adding a not-yet-received part to a Work Order that had already flipped to "Parts Received" now drops it back to "Parts Ordered" (unless the part is added and marked received in the same action), so the status reflects that something is still on order.
 - The invoice status dropdown was being clipped at the bottom edge of the table; it now floats above the table so all options are reachable.
 - Resolving a follow-up from the dashboard now removes it from the Follow-Ups card and updates the count immediately, instead of leaving stale follow-ups until the page is refreshed.
