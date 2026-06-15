@@ -21,7 +21,9 @@ const WorkOrderList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = usePersistedState('wo-list:statusFilter', 'All');
+  // Tab/status filter intentionally NOT persisted — the table should always open on "All".
+  // (Hierarchical sorting below stays persisted via usePersistedState.)
+  const [statusFilter, setStatusFilter] = useState('All');
   const [isSearching, setIsSearching] = useState(false);
   const [showInvoicedTable, setShowInvoicedTable] = usePersistedState('wo-list:showInvoiced', false);
   const [showCancelledTable, setShowCancelledTable] = usePersistedState('wo-list:showCancelled', false);
