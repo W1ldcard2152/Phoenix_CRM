@@ -8,6 +8,7 @@ import Input from '../../components/common/Input';
 import { MobileCard, MobileSection, MobileContainer } from '../../components/common/ResponsiveTable';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { normalizeInvoiceGroups } from '../../utils/jobGrouping';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import settingsService from '../../services/settingsService';
 import usePersistedState from '../../hooks/usePersistedState';
@@ -217,6 +218,7 @@ const InvoiceList = () => {
       parts,
       labor,
       servicePackages,
+      jobGroups: items.length > 0 ? normalizeInvoiceGroups(items) : undefined,
       discount: invoice.discount || null,
       customerFacingNotes,
       taxRate: invoice.taxRate || 0,

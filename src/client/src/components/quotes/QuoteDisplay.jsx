@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters';
 import workOrderNotesService from '../../services/workOrderNotesService';
+import JobGroups from '../common/JobGroups';
+import { normalizeLiveGroups } from '../../utils/jobGrouping';
 
 const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost, laborCost, subtotal, taxRate = 0, taxAmount, total }, ref) => {
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
@@ -24,8 +26,10 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
     return <div>Loading quote data...</div>;
   }
 
-  const { customer, vehicle, currentMileage, parts = [], labor = [] } = quoteData;
+  const { customer, vehicle, currentMileage, parts = [], labor = [], servicePackages = [], services = [] } = quoteData;
   const custAddr = customer?.address;
+
+  const jobGroups = normalizeLiveGroups({ services, parts, labor, servicePackages });
 
   // Calculate totals from data if not provided as props
   const calculatedPartsCost = partsCost !== undefined ? partsCost
@@ -35,7 +39,10 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
         const qty = parseFloat(l.quantity) || parseFloat(l.hours) || 0;
         return sum + (qty * (parseFloat(l.rate) || 0));
       }, 0);
-  const calculatedSubtotal = subtotal !== undefined ? subtotal : calculatedPartsCost + calculatedLaborCost;
+  const calculatedServicesCost = servicePackages
+    .filter(pkg => pkg.committed !== false)
+    .reduce((sum, pkg) => sum + (parseFloat(pkg.price) || 0), 0);
+  const calculatedSubtotal = subtotal !== undefined ? subtotal : calculatedPartsCost + calculatedLaborCost + calculatedServicesCost;
   const calculatedTaxAmount = taxAmount !== undefined ? taxAmount : calculatedSubtotal * (parseFloat(taxRate) / 100);
   const calculatedTotal = total !== undefined ? total : calculatedSubtotal + calculatedTaxAmount;
 
@@ -97,65 +104,8 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
         </div>
       )}
 
-      {/* Parts */}
-      {parts && parts.length > 0 && (
-        <div className="mb-4">
-          <h3 className="font-semibold text-md mb-1 text-gray-700">Parts:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Part #</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Unit Price</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parts.map((part, index) => (
-                <tr key={part._id || `part-${index}`}>
-                  <td className="border border-gray-300 p-2">{part.name || part.description}</td>
-                  <td className="border border-gray-300 p-2">{part.partNumber}</td>
-                  <td className="border border-gray-300 p-2 text-right">{part.quantity}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.price)}</td>
-                  <td className="border border-gray-300 p-2 text-right">{formatCurrency((parseFloat(part.price) || 0) * (parseFloat(part.quantity) || 0))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Labor */}
-      {labor && labor.length > 0 && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-md mb-1 text-gray-700">Labor:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Rate</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {labor.map((laborItem, index) => {
-                const qty = parseFloat(laborItem.quantity) || parseFloat(laborItem.hours) || 0;
-                const isHourly = laborItem.billingType !== 'fixed';
-                return (
-                  <tr key={laborItem._id || `labor-${index}`}>
-                    <td className="border border-gray-300 p-2">{laborItem.description}</td>
-                    <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : '/ea'}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(qty * (parseFloat(laborItem.rate) || 0))}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Line items grouped by job */}
+      <JobGroups groups={jobGroups} />
 
       {/* Totals */}
       <div className="flex justify-end mb-6">

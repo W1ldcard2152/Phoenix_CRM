@@ -1,6 +1,109 @@
 import html2canvas from 'html2canvas';
 import businessConfig from '../config/businessConfig';
 import { formatCurrency, formatDate } from './formatters';
+import { normalizeLiveGroups } from './jobGrouping';
+
+/**
+ * Render job-grouped line items as HTML for the document body.
+ * Each job (service, service package, or General bucket) is its own block
+ * with its parts, labor, and a per-job total.
+ */
+const renderJobGroupsHtml = (groups) => {
+  if (!groups || groups.length === 0) return '';
+
+  const cellL = 'padding: 4px 8px; vertical-align: top;';
+  const cellR = 'padding: 4px 8px; text-align: right; vertical-align: top; white-space: nowrap;';
+  const sectionRow = (label) =>
+    `<tr><td colspan="4" style="padding: 6px 8px 2px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280;">${label}</td></tr>`;
+
+  const partRow = (p) => `
+    <tr style="border-top: 1px solid #f3f4f6;">
+      <td style="${cellL}">${p.description || ''}${p.partNumber ? ` <span style="color:#6b7280;">(${p.partNumber})</span>` : ''}${p.warranty ? `<div style="font-size: 11px; color: #4b5563; font-style: italic;">Part Warranty: ${p.warranty}</div>` : ''}</td>
+      <td style="${cellR} color: #4b5563;">${p.quantity}</td>
+      <td style="${cellR} color: #4b5563;">${formatCurrency(p.unitPrice)}</td>
+      <td style="${cellR}">${formatCurrency(p.lineTotal)}</td>
+    </tr>
+    ${(p.coreChargeInvoiceable && p.coreCharge > 0) ? `
+    <tr style="font-size: 12px; color: #6b7280;">
+      <td style="padding: 2px 8px 2px 24px;">Core Charge - ${p.description || ''}</td>
+      <td></td>
+      <td></td>
+      <td style="padding: 2px 8px; text-align: right; white-space: nowrap;">${formatCurrency(p.coreCharge)}</td>
+    </tr>` : ''}`;
+
+  const laborRow = (l) => {
+    const isHourly = l.billingType !== 'fixed';
+    return `
+    <tr style="border-top: 1px solid #f3f4f6;">
+      <td style="${cellL}">${l.description || ''}</td>
+      <td style="${cellR} color: #4b5563;">${l.quantity}${isHourly ? ' hr' : ' ea'}</td>
+      <td style="${cellR} color: #4b5563;">${formatCurrency(l.rate)}${isHourly ? '/hr' : '/ea'}</td>
+      <td style="${cellR}">${formatCurrency(l.lineTotal)}</td>
+    </tr>`;
+  };
+
+  const includedItemsHtml = (pkg) => (pkg.includedItems && pkg.includedItems.length > 0) ? `
+    <ul style="margin: 8px 10px; padding-left: 18px; font-size: 11px; color: #4b5563;">
+      ${pkg.includedItems.map(i => {
+        const qty = i.quantity || 0;
+        const unit = i.unit ? ` ${i.unit}` : '';
+        const brand = i.brand ? `${i.brand} ` : '';
+        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
+      }).join('')}
+    </ul>` : '';
+
+  const totalRow = (group) =>
+    `<tr style="border-top: 2px solid #d1d5db; font-weight: 700; color: #111827;">
+      <td style="padding: 6px 8px;">Total</td>
+      <td></td>
+      <td></td>
+      <td style="${cellR}">${formatCurrency(group.total)}</td>
+    </tr>`;
+
+  return groups.map(group => {
+    const hasParts = group.parts && group.parts.length > 0;
+    const hasLabor = group.labor && group.labor.length > 0;
+    const hasTable = hasParts || hasLabor;
+    const lineTable = hasTable ? `
+      <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;">
+        <colgroup>
+          <col />
+          <col style="width: 56px;" />
+          <col style="width: 96px;" />
+          <col style="width: 88px;" />
+        </colgroup>
+        <tr style="border-bottom: 1px solid #e5e7eb; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280;">
+          <th style="padding: 4px 8px; text-align: left; font-weight: 500;"></th>
+          <th style="${cellR} font-weight: 500;">Qty</th>
+          <th style="${cellR} font-weight: 500;">Unit Price</th>
+          <th style="${cellR} font-weight: 500;">Amount</th>
+        </tr>
+        ${hasParts ? sectionRow('Parts') + group.parts.map(partRow).join('') : ''}
+        ${hasLabor ? sectionRow('Labor') + group.labor.map(laborRow).join('') : ''}
+        ${totalRow(group)}
+      </table>` : '';
+    // Package-only groups (no line table) still show a Total line.
+    const pkgTotal = !hasTable ? `
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <tr style="border-top: 2px solid #d1d5db; font-weight: 700; color: #111827;">
+          <td style="padding: 6px 8px;">Total</td>
+          <td style="padding: 6px 8px; text-align: right; white-space: nowrap;">${formatCurrency(group.total)}</td>
+        </tr>
+      </table>` : '';
+    return `
+    <div style="margin-bottom: 24px; border: 1px solid #d1d5db; page-break-inside: avoid;">
+      <table style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
+        <tr>
+          <td style="padding: 6px 10px; font-weight: 700; border-bottom: 1px solid #d1d5db;">${group.name}</td>
+        </tr>
+      </table>
+      ${group.pkg ? includedItemsHtml(group.pkg) : ''}
+      ${lineTable}
+      ${pkgTotal}
+    </div>`;
+  }).join('');
+};
 
 /**
  * Generate a filename based on customer/vehicle info
@@ -170,6 +273,8 @@ export const generateDocumentHtml = (type, data) => {
     vehicleMileage,
     serviceRequested,
     diagnosticNotes,
+    services = [],
+    jobGroups: jobGroupsOverride,
     parts = [],
     labor = [],
     servicePackages = [],
@@ -221,6 +326,13 @@ export const generateDocumentHtml = (type, data) => {
   };
 
   const servicesHtml = serviceRequested ? formatServices(serviceRequested) : null;
+
+  // Job-grouped line items (parts/labor under their service, packages as their own job, then General).
+  // Saved-invoice surfaces pass a pre-computed jobGroups (grouped by denormalized jobName);
+  // live work-order/quote surfaces pass services + serviceId-tagged lines.
+  const jobGroupsHtml = renderJobGroupsHtml(
+    jobGroupsOverride || normalizeLiveGroups({ services, parts, labor, servicePackages: committedServicePackages })
+  );
 
   // Customer address formatting
   const custAddr = customer?.address;
@@ -309,118 +421,8 @@ export const generateDocumentHtml = (type, data) => {
       </div>
       ` : ''}
 
-      <!-- Services -->
-      ${committedServicePackages.length > 0 ? `
-      <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Services:</p>
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #d1d5db; font-size: 13px;">
-          <thead>
-            <tr style="background-color: #f3f4f6;">
-              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-weight: 600;">Description</th>
-              <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; font-weight: 600; width: 100px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${committedServicePackages.map(pkg => `
-              <tr>
-                <td style="border: 1px solid #d1d5db; padding: 6px 8px;">
-                  <div style="font-weight: 600;">${pkg.name}</div>
-                  ${(pkg.includedItems && pkg.includedItems.length > 0) ? `
-                    <ul style="margin: 4px 0 0 0; padding-left: 18px; font-size: 11px; color: #4b5563;">
-                      ${pkg.includedItems.map(i => {
-                        const qty = i.quantity || 0;
-                        const unit = i.unit ? ` ${i.unit}` : '';
-                        const brand = i.brand ? `${i.brand} ` : '';
-                        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
-                        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
-                      }).join('')}
-                    </ul>
-                  ` : ''}
-                </td>
-                <td style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: right; vertical-align: top;">${formatCurrency(pkg.price)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
-
-      <!-- Parts -->
-      ${parts.length > 0 ? `
-      <div style="margin-bottom: 16px; page-break-inside: avoid;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Parts:</p>
-        <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
-          <thead>
-            <tr style="background-color: #f3f4f6;">
-              <th style="border: 1px solid #d1d5db; text-align: left; font-weight: 600;">Description</th>
-              <th style="border: 1px solid #d1d5db; text-align: left; font-weight: 600;">Part #</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600;">Qty</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600; white-space: nowrap;">Unit Price</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${parts.map(part => {
-              const unitPrice = part.price || part.unitPrice || 0;
-              const qty = part.quantity || 1;
-              const lineTotal = unitPrice * qty;
-              const hasWarranty = part.warranty && part.warranty.trim();
-              const hasCoreCharge = part.coreChargeInvoiceable && part.coreCharge > 0;
-              return `
-              <tr>
-                <td style="border: 1px solid #d1d5db;">
-                  ${part.name || part.description || ''}
-                  ${hasWarranty ? `<div style="font-size: 11px; color: #4b5563; font-style: italic; margin-top: 2px;">Part Warranty: ${part.warranty}</div>` : ''}
-                </td>
-                <td style="border: 1px solid #d1d5db;">${part.partNumber || ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${qty}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(unitPrice)}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(lineTotal)}</td>
-              </tr>
-              ${hasCoreCharge ? `
-              <tr>
-                <td style="border: 1px solid #d1d5db; padding-left: 24px; font-size: 12px; color: #6b7280;" colspan="3">Core Charge - ${part.name || part.description || ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right; font-size: 12px;">${formatCurrency(part.coreCharge)}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right; font-size: 12px;">${formatCurrency(part.coreCharge)}</td>
-              </tr>
-              ` : ''}`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
-
-      <!-- Labor -->
-      ${labor.length > 0 ? `
-      <div style="margin-bottom: 24px; page-break-inside: avoid;">
-        <p style="font-weight: 600; font-size: 16px; margin: 0 0 4px 0; color: #111827;">Labor:</p>
-        <table style="width: 100%; border: 1px solid #d1d5db; font-size: 14px;" cellspacing="0" cellpadding="8">
-          <thead>
-            <tr style="background-color: #f3f4f6;">
-              <th style="border: 1px solid #d1d5db; text-align: left; font-weight: 600;">Description</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600;">Qty</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600;">Rate</th>
-              <th style="border: 1px solid #d1d5db; text-align: right; font-weight: 600;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${labor.map(item => {
-              const qty = item.quantity || item.hours || 0;
-              const rate = item.rate || item.unitPrice || 0;
-              const itemTotal = qty * rate;
-              const isHourly = item.billingType !== 'fixed';
-              return `
-              <tr>
-                <td style="border: 1px solid #d1d5db;">${item.description || ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${qty}${isHourly ? ' hrs' : ''}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(rate)}${isHourly ? '/hr' : '/ea'}</td>
-                <td style="border: 1px solid #d1d5db; text-align: right;">${formatCurrency(itemTotal)}</td>
-              </tr>
-            `;}).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
+      <!-- Line items grouped by job -->
+      ${jobGroupsHtml}
 
       <!-- Totals -->
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; page-break-inside: avoid;">

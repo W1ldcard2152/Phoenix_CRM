@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -15,6 +15,7 @@ import FileUpload from '../../components/common/FileUpload';
 import { formatDate, formatDateTime } from '../../utils/formatters';
 import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
+import JobServiceSelect from '../../components/common/JobServiceSelect';
 import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
 import ServicePackageModal from '../../components/workorder/ServicePackageModal';
 import ServicePackageCommitModal from '../../components/workorder/ServicePackageCommitModal';
@@ -141,7 +142,7 @@ const DocumentDetail = () => {
     price: 0, cost: 0, ordered: false, received: false,
     vendor: '', supplier: '', purchaseOrderNumber: '', receiptImageUrl: '',
     url: '', notes: '', warranty: DEFAULT_WARRANTY, category: '', coreCharge: 0, coreChargeInvoiceable: false,
-    vin: '', stockNumber: ''
+    vin: '', stockNumber: '', serviceId: null
   };
   const [newPart, setNewPart] = useState({ ...defaultPart });
   const [expandedPartIndex, setExpandedPartIndex] = useState(null);
@@ -170,12 +171,16 @@ const DocumentDetail = () => {
   const [vendorHostnameMap, setVendorHostnameMap] = useState(defaultVendorHostnames);
   const [detectedHostname, setDetectedHostname] = useState(null); // { hostname, suggestedName } when URL has unrecognized domain
 
-  // Add Part dropdown menu (From Inventory / Manual Entry)
-  const [addPartMenuOpen, setAddPartMenuOpen] = useState(false);
-  const addPartMenuRef = useRef(null);
+  // Job container context: the service (job) an add/import action was launched from.
+  const [activeServiceId, setActiveServiceId] = useState(null);
+  // Inline "Add Job/Service" form
+  const [addingJob, setAddingJob] = useState(false);
+  const [newJobName, setNewJobName] = useState('');
+  // Totals summary: toggle parts/labor breakdown within each job
+  const [showJobBreakdown, setShowJobBreakdown] = useState(false);
 
   const [newLabor, setNewLabor] = useState({
-    description: '', billingType: 'hourly', quantity: 1, rate: 75
+    description: '', billingType: 'hourly', quantity: 1, rate: 75, serviceId: null
   });
 
   // Derived state
@@ -528,18 +533,6 @@ const DocumentDetail = () => {
     }
   }, [workOrder, fetchNotes, fetchInteractionNotes, fetchAttachedFiles, isQuote]);
 
-  // Close Add Part menu on outside click
-  useEffect(() => {
-    if (!addPartMenuOpen) return;
-    const handleClickOutside = (e) => {
-      if (addPartMenuRef.current && !addPartMenuRef.current.contains(e.target)) {
-        setAddPartMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [addPartMenuOpen]);
-
   // ==================== Notes Handlers ====================
   const handleAddNote = async () => {
     if (!newNote.content.trim()) return;
@@ -796,10 +789,11 @@ const DocumentDetail = () => {
   };
 
   // ==================== Parts Handlers ====================
-  const openAddPartModal = () => {
+  const openAddPartModal = (serviceId = null) => {
     setEditingPart(null);
     setOverridePrice(false);
-    setNewPart({ ...defaultPart });
+    setActiveServiceId(serviceId);
+    setNewPart({ ...defaultPart, serviceId });
     setPartModalOpen(true);
   };
 
@@ -818,7 +812,8 @@ const DocumentDetail = () => {
       url: part.url || '', notes: part.notes || '', warranty: part.warranty || '',
       category: part.category || '', coreCharge: part.coreCharge || 0,
       coreChargeInvoiceable: part.coreChargeInvoiceable || false,
-      vin: part.vin || '', stockNumber: part.stockNumber || ''
+      vin: part.vin || '', stockNumber: part.stockNumber || '',
+      serviceId: part.serviceId || null
     });
     setIsOtherVendor(isCustomVendor);
     const cat = part.category || '';
@@ -917,7 +912,7 @@ const DocumentDetail = () => {
   const handleAddFromInventory = async ({ inventoryItemId, quantity }) => {
     setInventoryModalLoading(true);
     try {
-      const response = await DocumentService.addPartFromInventory(id, { inventoryItemId, quantity });
+      const response = await DocumentService.addPartFromInventory(id, { inventoryItemId, quantity, serviceId: activeServiceId });
       setWorkOrder(response.data.workOrder);
       setInventoryModalOpen(false);
     } catch (err) {
@@ -1145,9 +1140,10 @@ const DocumentDetail = () => {
     setSaveLaborTypePromptOpen(true);
   };
 
-  const openAddLaborModal = () => {
+  const openAddLaborModal = (serviceId = null) => {
     setEditingLabor(null);
-    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
+    setActiveServiceId(serviceId);
+    setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '', serviceId });
     setLaborModalOpen(true);
   };
 
@@ -1160,9 +1156,20 @@ const DocumentDetail = () => {
       laborTypeCustom: parsed.laborTypeCustom,
       billingType: labor.billingType || 'hourly',
       quantity: labor.quantity || labor.hours || 1,
-      rate: labor.rate || defaultLaborRate
+      rate: labor.rate || defaultLaborRate,
+      serviceId: labor.serviceId || null
     });
     setLaborModalOpen(true);
+  };
+
+  // Create a new service (job) inline and return its _id for assignment
+  const handleCreateService = async (description) => {
+    const updatedServices = [...(workOrder.services || []), { description }];
+    const response = await DocumentService.updateDocument(id, { services: updatedServices });
+    setWorkOrder(response.data.workOrder);
+    const services = response.data.workOrder.services || [];
+    const match = [...services].reverse().find(s => s.description === description);
+    return match ? match._id : null;
   };
 
   const handleAddLabor = async () => {
@@ -1171,13 +1178,14 @@ const DocumentDetail = () => {
         description: buildLaborDescription(newLabor),
         billingType: newLabor.billingType,
         quantity: newLabor.quantity,
-        rate: newLabor.rate
+        rate: newLabor.rate,
+        serviceId: newLabor.serviceId || null
       };
       const response = await DocumentService.addLabor(id, payload);
       setWorkOrder(response.data.workOrder);
       setLaborModalOpen(false);
       maybePromptToSaveLaborType(newLabor);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '', serviceId: null });
     } catch (err) {
       console.error('Error adding labor:', err);
       setError('Failed to add labor. Please try again later.');
@@ -1198,7 +1206,7 @@ const DocumentDetail = () => {
       setLaborModalOpen(false);
       setEditingLabor(null);
       maybePromptToSaveLaborType(newLabor);
-      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '' });
+      setNewLabor({ description: '', billingType: 'hourly', quantity: 1, rate: defaultLaborRate, laborType: '', laborTypeCustom: '', serviceId: null });
     } catch (err) {
       console.error('Error updating labor:', err);
       setError('Failed to update labor. Please try again later.');
@@ -1372,6 +1380,7 @@ const DocumentDetail = () => {
     vehicleMileage: workOrder.vehicleMileage,
     serviceRequested: workOrder.serviceRequested,
     diagnosticNotes: workOrder.diagnosticNotes,
+    services: workOrder.services || [],
     parts: applyPartsSorting(workOrder.parts || []),
     labor: workOrder.labor || [],
     servicePackages: workOrder.servicePackages || [],
@@ -1485,19 +1494,10 @@ const DocumentDetail = () => {
     const core = (part.coreChargeInvoiceable && part.coreCharge) ? part.coreCharge : 0;
     return total + lineTotal + core;
   }, 0);
-  const partsCostAtCost = (workOrder.parts || []).reduce(
-    (total, part) => total + ((part.cost || 0) * (part.quantity || 0)),
-    0
-  );
-  const partsTotalQty = (workOrder.parts || []).reduce((total, part) => total + (part.quantity || 0), 0);
   const laborCost = (workOrder.labor || []).reduce((total, labor) => {
     const qty = labor.quantity || labor.hours || 0;
     return total + (qty * labor.rate);
   }, 0);
-  const laborTotalQty = (workOrder.labor || []).reduce(
-    (total, labor) => total + (labor.quantity || labor.hours || 0),
-    0
-  );
   const servicePackagesCost = (workOrder.servicePackages || []).reduce((total, pkg) => total + (pkg.price || 0), 0);
   const subtotal = partsCost + laborCost + servicePackagesCost;
   const discountAmount = calculateDiscountAmount(
@@ -1518,6 +1518,454 @@ const DocumentDetail = () => {
     if (quoteAgeDays <= 30) return 'bg-yellow-100 text-yellow-800';
     return 'bg-red-100 text-red-800';
   };
+
+  // ==================== Job grouping (detail-page containers) ====================
+  // Invoiced work orders keep the legacy flat layout (don't reorganize historical records).
+  const isInvoiced = ['Repair Complete - Invoiced', 'Invoiced'].includes(workOrder.status);
+
+  const partsWithIndex = (workOrder.parts || []).map((part, originalIndex) => ({ ...part, originalIndex }));
+  const laborWithIndex = (workOrder.labor || []).map((labor, originalIndex) => ({ ...labor, originalIndex }));
+  const validServices = (workOrder.services || []).filter(s => s && s._id);
+  const serviceIdSet = new Set(validServices.map(s => s._id.toString()));
+  const lineIsUnassigned = (line) => !line.serviceId || !serviceIdSet.has(line.serviceId.toString());
+
+  // Each service is a job container; the FIRST service also absorbs unassigned lines.
+  const jobs = validServices.map((svc, idx) => {
+    const sid = svc._id.toString();
+    const belongs = (line) =>
+      (line.serviceId && line.serviceId.toString() === sid) || (idx === 0 && lineIsUnassigned(line));
+    return {
+      serviceId: sid,
+      name: svc.description,
+      parts: partsWithIndex.filter(belongs),
+      labor: laborWithIndex.filter(belongs),
+    };
+  });
+  const hasServices = validServices.length > 0;
+  // Only a service-less work order shows a standalone "General" container.
+  const generalParts = hasServices ? [] : partsWithIndex.filter(lineIsUnassigned);
+  const generalLabor = hasServices ? [] : laborWithIndex.filter(lineIsUnassigned);
+
+  // Per-job cost summary for the totals card (matches the job containers).
+  const costOf = (jobLike) => ({
+    parts: jobLike.parts.reduce(
+      (t, p) => t + ((p.price || 0) * (p.quantity || 0)) + ((p.coreChargeInvoiceable && p.coreCharge) ? p.coreCharge : 0),
+      0
+    ),
+    labor: jobLike.labor.reduce((t, l) => t + ((l.quantity || l.hours || 0) * (l.rate || 0)), 0),
+  });
+  const jobSummaries = [
+    ...(hasServices ? jobs : [{ serviceId: 'general', name: 'General', parts: generalParts, labor: generalLabor }]).map((j) => {
+      const c = costOf(j);
+      return { key: j.serviceId, name: j.name, parts: c.parts, labor: c.labor, total: c.parts + c.labor, isPackage: false };
+    }),
+    ...(workOrder.servicePackages || []).map((pkg, i) => ({
+      key: `pkg-${i}`, name: pkg.name, parts: 0, labor: 0, total: pkg.price || 0, isPackage: true,
+    })),
+  ].filter((s) => s.isPackage || s.parts || s.labor);
+
+  const openInventoryForJob = (serviceId = null) => { setActiveServiceId(serviceId); setInventoryModalOpen(true); };
+  const openImportForJob = (serviceId = null) => { setActiveServiceId(serviceId); setReceiptModalOpen(true); };
+
+  const handleAddJob = async () => {
+    const name = newJobName.trim();
+    if (!name) return;
+    try {
+      await handleCreateService(name);
+      setNewJobName('');
+      setAddingJob(false);
+    } catch (err) {
+      console.error('Error adding job:', err);
+      setError('Failed to add job.');
+    }
+  };
+
+  const canAddParts = isQuote || permissions.workOrders.canAddParts(currentUser);
+  const canAddLabor = isQuote || permissions.workOrders.canAddLabor(currentUser) || permissions.workOrders.canAddLaborOwn(currentUser);
+
+  // Per-job header action buttons (Import / From Inventory / Add Part / Add Labor)
+  const renderJobHeaderActions = (serviceId) => (
+    <div className="flex flex-wrap gap-2">
+      {canAddParts && (
+        <>
+          <Button onClick={() => openImportForJob(serviceId)} variant="outline" size="sm">
+            <i className="fas fa-file-import mr-1"></i>Import
+          </Button>
+          {!isQuote && (
+            <Button onClick={() => openInventoryForJob(serviceId)} variant="outline" size="sm">
+              <i className="fas fa-boxes-stacked mr-1"></i>Inventory
+            </Button>
+          )}
+          <Button onClick={() => openAddPartModal(serviceId)} variant="primary" size="sm">
+            <i className="fas fa-plus mr-1"></i>Part
+          </Button>
+        </>
+      )}
+      {canAddLabor && (
+        <Button onClick={() => openAddLaborModal(serviceId)} variant="primary" size="sm">
+          <i className="fas fa-plus mr-1"></i>Labor
+        </Button>
+      )}
+    </div>
+  );
+
+  // Parts table for a given (already index-tagged) subset of parts.
+  const renderPartsTable = (partsForJob) => {
+    if (!partsForJob || partsForJob.length === 0) {
+      return <div className="text-sm text-gray-400 py-2">No parts.</div>;
+    }
+    const subtotalQty = partsForJob.reduce((t, p) => t + (p.quantity || 0), 0);
+    const subtotalCost = partsForJob.reduce(
+      (t, p) => t + ((p.price || 0) * (p.quantity || 0)) + ((p.coreChargeInvoiceable && p.coreCharge) ? p.coreCharge : 0),
+      0
+    );
+    const subtotalAtCost = partsForJob.reduce((t, p) => t + ((p.cost || 0) * (p.quantity || 0)), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                onClick={() => handlePartSort('name')}>
+                Part{renderPartSortIndicator('name')}
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <span className="inline-flex items-center gap-1">
+                  <span className="cursor-pointer hover:text-gray-700" onClick={() => handlePartSort('price')}>
+                    {!isQuote && showCost ? 'Cost' : 'Price'}{renderPartSortIndicator('price')}
+                  </span>
+                  {!isQuote && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setShowCost(!showCost); }}
+                      className="text-gray-400 hover:text-gray-600"
+                      title={showCost ? 'Hide cost (show price)' : 'Show cost'}>
+                      <i className={`fas fa-${showCost ? 'eye-slash' : 'eye'} text-xs`}></i>
+                    </button>
+                  )}
+                </span>
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                onClick={() => handlePartSort('vendor')}>
+                Vendor{renderPartSortIndicator('vendor')}
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
+                onClick={() => handlePartSort('category')}>
+                Cat.{renderPartSortIndicator('category')}
+              </th>
+              {!isQuote && (
+                <>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PO/Order #</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                </>
+              )}
+              {isQuote && (
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+              )}
+              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {applyPartsSorting(partsForJob).map((part) => (
+              <React.Fragment key={part.originalIndex}>
+              <tr
+                className={`cursor-pointer ${
+                  part.inventoryItemId && part.committed === false
+                    ? 'bg-yellow-50/40 hover:bg-yellow-50'
+                    : 'hover:bg-gray-50'
+                }`}
+                onClick={() => setExpandedPartIndex(expandedPartIndex === part.originalIndex ? null : part.originalIndex)}
+              >
+                <td className="px-4 py-2">
+                  <div className="font-medium text-gray-900 flex items-center flex-wrap gap-x-2">
+                    <i className={`fas fa-chevron-${expandedPartIndex === part.originalIndex ? 'down' : 'right'} text-xs text-gray-400 mr-2`}></i>
+                    {part.name}
+                    {part.serviceIncluded && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">incl.</span>
+                    )}
+                    {part.inventoryItemId && part.committed === false && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-100 text-yellow-700 rounded">Draft</span>
+                    )}
+                    {part.inventoryItemId && part.committed !== false && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded">
+                        <i className="fas fa-check mr-0.5"></i>Pulled
+                      </span>
+                    )}
+                  </div>
+                  {part.partNumber && <div className="text-xs text-gray-500">PN: {part.partNumber}</div>}
+                  {part.warranty && <div className="text-xs text-green-600 italic">Part Warranty: {part.warranty}</div>}
+                  {part.coreCharge > 0 && (
+                    <div className="text-xs text-orange-600">
+                      Core: {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}
+                    </div>
+                  )}
+                  {!isQuote && part.receiptImageUrl && (
+                    <button onClick={async (e) => { e.stopPropagation();
+                      try {
+                        const response = await API.get(
+                          `/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
+                        );
+                        if (response.data.status === 'success') {
+                          setViewerUrl(response.data.data.signedUrl);
+                          setViewerTitle(part.receiptImageUrl.split('/').pop() || 'receipt.png');
+                          setViewerModalOpen(true);
+                        } else { alert('Failed to load receipt'); }
+                      } catch (err) { console.error('Error fetching receipt:', err); alert('Failed to load receipt'); }
+                    }} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                      View Receipt
+                    </button>
+                  )}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.quantity}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                  {formatCurrency(!isQuote && showCost
+                    ? (part.cost > 0 ? part.cost : (part.price / (1 + markupPercentage / 100)))
+                    : (part.price || 0)
+                  )}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">
+                    {part.vendor}
+                    {part.url && (
+                      <a href={part.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 text-blue-500 hover:text-blue-700" title="Product link">
+                        <i className="fas fa-external-link-alt text-xs"></i>
+                      </a>
+                    )}
+                  </div>
+                  {part.supplier && <div className="text-xs text-gray-500">Seller: {part.supplier}</div>}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  {part.category && (
+                    <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${getCategoryBadgeColor(part.category)}`}>
+                      {part.category}
+                    </span>
+                  )}
+                </td>
+                {!isQuote && (
+                  <>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.purchaseOrderNumber}</td>
+                    <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col space-y-2">
+                        <label className="flex items-center text-sm">
+                          <input type="checkbox" checked={part.ordered || false}
+                            onChange={(e) => handlePartStatusChange(part.originalIndex, 'ordered', e.target.checked)}
+                            className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+                          <span className={part.ordered ? 'text-yellow-600' : 'text-gray-500'}>Ordered</span>
+                        </label>
+                        <label className="flex items-center text-sm">
+                          <input type="checkbox" checked={part.received || false} disabled={!part.ordered}
+                            onChange={(e) => handlePartStatusChange(part.originalIndex, 'received', e.target.checked)}
+                            className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed" />
+                          <span className={part.received ? 'text-green-600' : (part.ordered ? 'text-gray-700' : 'text-gray-400')}>Received</span>
+                        </label>
+                      </div>
+                    </td>
+                  </>
+                )}
+                {isQuote && (
+                  <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(part.price * part.quantity)}</td>
+                )}
+                <td className="px-4 py-2 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end items-center space-x-2">
+                    {part.inventoryItemId && part.committed === false && (
+                      <button
+                        onClick={() => handleCommitPart(part.originalIndex)}
+                        className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700"
+                        title="Pull this part from inventory"
+                      >
+                        <i className="fas fa-arrow-down mr-1"></i>Pull
+                      </button>
+                    )}
+                    <button onClick={() => openEditPartModal(part, part.originalIndex)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                    <button onClick={() => handleRemovePart(part.originalIndex)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
+                  </div>
+                </td>
+              </tr>
+              {expandedPartIndex === part.originalIndex && (
+                <tr>
+                  <td colSpan={isQuote ? 7 : 8} className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                      {part.url && (
+                        <div>
+                          <span className="font-medium text-gray-500">Product URL:</span>{' '}
+                          <a href={part.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all">
+                            {part.url.length > 50 ? part.url.substring(0, 50) + '...' : part.url}
+                            <i className="fas fa-external-link-alt text-xs ml-1"></i>
+                          </a>
+                        </div>
+                      )}
+                      {part.supplier && (
+                        <div><span className="font-medium text-gray-500">Seller:</span> {part.supplier}</div>
+                      )}
+                      {part.purchaseOrderNumber && (
+                        <div><span className="font-medium text-gray-500">PO/Order #:</span> {part.purchaseOrderNumber}</div>
+                      )}
+                      {part.vin && (
+                        <div><span className="font-medium text-gray-500">Source VIN:</span> <span className="font-mono">{part.vin}</span></div>
+                      )}
+                      {part.stockNumber && (
+                        <div><span className="font-medium text-gray-500">Stock #:</span> {part.stockNumber}</div>
+                      )}
+                      {part.warranty && (
+                        <div><span className="font-medium text-gray-500">Warranty:</span> <span className="text-green-700">{part.warranty}</span></div>
+                      )}
+                      {part.coreCharge > 0 && (
+                        <div><span className="font-medium text-gray-500">Core Charge:</span> {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}</div>
+                      )}
+                      {part.notes && (
+                        <div className="col-span-2 md:col-span-3"><span className="font-medium text-gray-500">Notes:</span> {part.notes}</div>
+                      )}
+                      {!part.url && !part.supplier && !part.vin && !part.stockNumber && !part.warranty && !part.notes && !(part.coreCharge > 0) && (
+                        <div className="text-gray-400 italic">No additional details</div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50">
+            <tr>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQty}</td>
+              {isQuote ? (
+                <>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-gray-900">{formatCurrency(subtotalCost)}</td>
+                  <td></td>
+                </>
+              ) : (
+                <>
+                  <td className="px-4 py-2 text-sm font-bold text-gray-900">
+                    {formatCurrency(showCost ? subtotalAtCost : subtotalCost)}
+                  </td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                </>
+              )}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  };
+
+  // Labor table for a given (already index-tagged) subset of labor.
+  const renderLaborTable = (laborForJob) => {
+    if (!laborForJob || laborForJob.length === 0) {
+      return <div className="text-sm text-gray-400 py-2">No labor.</div>;
+    }
+    const subtotalQty = laborForJob.reduce((t, l) => t + (l.quantity || l.hours || 0), 0);
+    const subtotalCost = laborForJob.reduce((t, l) => t + ((l.quantity || l.hours || 0) * (l.rate || 0)), 0);
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rate</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+              <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {laborForJob.map((labor) => {
+              const qty = labor.quantity || labor.hours || 0;
+              const isHourly = labor.billingType !== 'fixed';
+              return (
+                <tr key={labor.originalIndex}>
+                  <td className="px-4 py-2"><div className="font-medium text-gray-900">{labor.description}</div></td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{qty}{isHourly ? ' hrs' : ''}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(labor.rate)}{isHourly ? '/hr' : '/ea'}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(qty * labor.rate)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-right">
+                    <div className="flex justify-end space-x-2">
+                      <button onClick={() => openEditLaborModal(labor, labor.originalIndex)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                      <button onClick={() => handleRemoveLabor(labor.originalIndex)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-gray-50">
+            <tr>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQty}</td>
+              <td></td>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">{formatCurrency(subtotalCost)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  };
+
+  // One service package rendered as its own job-style container.
+  const renderPackageContainer = (pkg, pkgIndex) => (
+    <Card
+      key={`pkg-${pkgIndex}`}
+      title={
+        <span className="flex items-center gap-2">
+          {pkg.name}
+          {pkg.committed ? (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+              <i className="fas fa-check mr-0.5"></i>Pulled
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">Draft</span>
+          )}
+        </span>
+      }
+      headerActions={
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-purple-700">{formatCurrency(pkg.price)}</span>
+          {!pkg.committed && !isInvoiced && (
+            <button onClick={() => handleCommitServicePackage(pkgIndex)}
+              className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700">
+              <i className="fas fa-arrow-down mr-1"></i>Pull from Inventory
+            </button>
+          )}
+          {!isInvoiced && (
+            <button onClick={() => handleRemoveServicePackage(pkgIndex)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+          )}
+        </div>
+      }
+    >
+      {pkg.includedItems && pkg.includedItems.length > 0 ? (
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-1">
+            {pkg.committed ? 'Included items (pulled from inventory):' : 'Included items (not yet pulled):'}
+          </div>
+          <div className="space-y-1">
+            {pkg.includedItems.map((item, itemIdx) => (
+              <div key={itemIdx} className="flex items-center justify-between text-sm text-gray-700">
+                <span>
+                  {item.name}
+                  {item.partNumber && <span className="text-xs text-gray-400 ml-1">({item.partNumber})</span>}
+                </span>
+                <span className="text-gray-500">
+                  {item.quantity} {item.unit || ''}
+                  {showCost && item.cost > 0 && (
+                    <span className="ml-2 text-gray-400">@ {formatCurrency(item.cost)}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-gray-400">No included items.</div>
+      )}
+    </Card>
+  );
 
   // ==================== RENDER ====================
   return (
@@ -1743,19 +2191,39 @@ const DocumentDetail = () => {
           }
         >
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Parts</span>
-              <span className="font-medium">{formatCurrency(partsCost)}</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">By Job</span>
+              {jobSummaries.some((s) => !s.isPackage && (s.parts > 0 || s.labor > 0)) && (
+                <button onClick={() => setShowJobBreakdown((v) => !v)} className="text-xs text-blue-600 hover:underline">
+                  {showJobBreakdown ? 'Hide parts/labor' : 'Show parts/labor'}
+                </button>
+              )}
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Labor</span>
-              <span className="font-medium">{formatCurrency(laborCost)}</span>
-            </div>
-            {servicePackagesCost > 0 && (
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Services</span>
-                <span className="font-medium">{formatCurrency(servicePackagesCost)}</span>
-              </div>
+            {jobSummaries.length === 0 ? (
+              <p className="text-sm text-gray-400">No charges yet.</p>
+            ) : (
+              jobSummaries.map((s) => (
+                <div key={s.key}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-700 truncate pr-2">{s.name}</span>
+                    <span className="font-medium whitespace-nowrap">{formatCurrency(s.total)}</span>
+                  </div>
+                  {showJobBreakdown && !s.isPackage && (
+                    <div className="ml-3 mt-0.5 space-y-0.5">
+                      {s.parts > 0 && (
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Parts</span><span>{formatCurrency(s.parts)}</span>
+                        </div>
+                      )}
+                      {s.labor > 0 && (
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Labor</span><span>{formatCurrency(s.labor)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
             )}
             <div className="border-t pt-2 flex justify-between items-center">
               <span className="text-sm text-gray-600">Subtotal</span>
@@ -2081,434 +2549,80 @@ const DocumentDetail = () => {
           </div>
         </Card>
 
-        {/* ===== SERVICES SECTION ===== */}
-        {(!isQuote || (workOrder.servicePackages || []).length > 0) && (
-          <Card
-            title="Services"
-            headerActions={
-              !isQuote && permissions.workOrders.canAddParts(currentUser) && (
-                <Button onClick={() => setServiceModalOpen(true)} variant="primary" size="sm">
-                  Add Service
+        {/* ===== JOBS SECTION ===== */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 className="text-lg font-bold text-gray-800">{isQuote ? 'Quoted Work' : 'Jobs'}</h2>
+          {!isInvoiced && (
+            <div className="flex flex-wrap items-center gap-2">
+              {!isQuote && permissions.workOrders.canAddParts(currentUser) && (
+                <Button onClick={() => setServiceModalOpen(true)} variant="outline" size="sm">
+                  <i className="fas fa-box-open mr-1"></i>Service Package
                 </Button>
-              )
-            }
-          >
-            {(workOrder.servicePackages || []).length === 0 ? (
-              <div className="text-center py-6 text-gray-500"><p>No services added.</p></div>
-            ) : (
-              <div className="space-y-3">
-                {workOrder.servicePackages.map((pkg, pkgIndex) => (
-                  <div
-                    key={pkgIndex}
-                    className={`border rounded-lg p-4 ${
-                      pkg.committed
-                        ? 'border-purple-200 bg-purple-50/30'
-                        : 'border-yellow-300 bg-yellow-50/30 border-dashed'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="font-semibold text-gray-900">{pkg.name}</div>
-                        {pkg.committed ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
-                            <i className="fas fa-check mr-0.5"></i>Pulled
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">
-                            Draft
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-purple-700">{formatCurrency(pkg.price)}</span>
-                        {!pkg.committed && (
-                          <button
-                            onClick={() => handleCommitServicePackage(pkgIndex)}
-                            className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700"
-                          >
-                            <i className="fas fa-arrow-down mr-1"></i>Pull from Inventory
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleRemoveServicePackage(pkgIndex)}
-                          className="text-red-400 hover:text-red-600 text-xs"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                    {pkg.includedItems && pkg.includedItems.length > 0 && (
-                      <div className="mt-2">
-                        <div className="text-xs font-medium text-gray-500 mb-1">
-                          {pkg.committed ? 'Included items (pulled from inventory):' : 'Included items (not yet pulled):'}
-                        </div>
-                        <div className="space-y-1">
-                          {pkg.includedItems.map((item, itemIdx) => (
-                            <div key={itemIdx} className="flex items-center justify-between text-sm text-gray-700">
-                              <span>
-                                {item.name}
-                                {item.partNumber && <span className="text-xs text-gray-400 ml-1">({item.partNumber})</span>}
-                              </span>
-                              <span className="text-gray-500">
-                                {item.quantity} {item.unit || ''}
-                                {showCost && item.cost > 0 && (
-                                  <span className="ml-2 text-gray-400">@ {formatCurrency(item.cost)}</span>
-                                )}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+              )}
+              {canAddParts && (
+                addingJob ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newJobName}
+                      onChange={(e) => setNewJobName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddJob(); } }}
+                      className="border rounded px-2 py-1 text-sm"
+                      placeholder="New job / service name"
+                      autoFocus
+                    />
+                    <Button onClick={handleAddJob} variant="primary" size="sm" disabled={!newJobName.trim()}>Add</Button>
+                    <Button onClick={() => { setAddingJob(false); setNewJobName(''); }} variant="light" size="sm">Cancel</Button>
                   </div>
-                ))}
-                <div className="flex items-center justify-between pt-3 border-t border-gray-200 text-sm">
-                  <span className="font-bold text-gray-900">Total ({workOrder.servicePackages.length} {workOrder.servicePackages.length === 1 ? 'service' : 'services'})</span>
-                  <span className="font-bold text-gray-900">{formatCurrency(servicePackagesCost)}</span>
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* ===== PARTS SECTION ===== */}
-        <Card
-          title="Parts"
-          headerActions={
-            (isQuote || permissions.workOrders.canAddParts(currentUser)) && (
-              <div className="flex space-x-2">
-                <Button onClick={() => setReceiptModalOpen(true)} variant="outline" size="sm">
-                  <i className="fas fa-file-import mr-1"></i>Import
-                </Button>
-                {isQuote ? (
-                  <Button onClick={openAddPartModal} variant="primary" size="sm">
-                    Add Part
-                  </Button>
                 ) : (
-                  <div className="relative" ref={addPartMenuRef}>
-                    <Button onClick={() => setAddPartMenuOpen(!addPartMenuOpen)} variant="primary" size="sm">
-                      Add Part <i className="fas fa-chevron-down ml-1 text-xs"></i>
-                    </Button>
-                    {addPartMenuOpen && (
-                      <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden">
-                        <button
-                          onClick={() => { setAddPartMenuOpen(false); setInventoryModalOpen(true); }}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                        >
-                          <i className="fas fa-boxes-stacked mr-2 text-gray-400"></i>From Inventory
-                        </button>
-                        <button
-                          onClick={() => { setAddPartMenuOpen(false); openAddPartModal(); }}
-                          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 border-t border-gray-100"
-                        >
-                          <i className="fas fa-pen mr-2 text-gray-400"></i>Manual Entry
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          }
-        >
-          {(workOrder.parts || []).length === 0 ? (
-            <div className="text-center py-6 text-gray-500"><p>No parts added.</p></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
-                      onClick={() => handlePartSort('name')}>
-                      Part{renderPartSortIndicator('name')}
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="cursor-pointer hover:text-gray-700" onClick={() => handlePartSort('price')}>
-                          {!isQuote && showCost ? 'Cost' : 'Price'}{renderPartSortIndicator('price')}
-                        </span>
-                        {!isQuote && (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setShowCost(!showCost); }}
-                            className="text-gray-400 hover:text-gray-600"
-                            title={showCost ? 'Hide cost (show price)' : 'Show cost'}
-                          >
-                            <i className={`fas fa-${showCost ? 'eye-slash' : 'eye'} text-xs`}></i>
-                          </button>
-                        )}
-                      </span>
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
-                      onClick={() => handlePartSort('vendor')}>
-                      Vendor{renderPartSortIndicator('vendor')}
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700"
-                      onClick={() => handlePartSort('category')}>
-                      Cat.{renderPartSortIndicator('category')}
-                    </th>
-                    {!isQuote && (
-                      <>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PO/Order #</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      </>
-                    )}
-                    {isQuote && (
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                    )}
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {applyPartsSorting(
-                    workOrder.parts.map((part, originalIndex) => ({ ...part, originalIndex }))
-                  ).map((part) => (
-                    <React.Fragment key={part.originalIndex}>
-                    <tr
-                      className={`cursor-pointer ${
-                        part.inventoryItemId && part.committed === false
-                          ? 'bg-yellow-50/40 hover:bg-yellow-50'
-                          : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => setExpandedPartIndex(expandedPartIndex === part.originalIndex ? null : part.originalIndex)}
-                    >
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-gray-900 flex items-center flex-wrap gap-x-2">
-                          <i className={`fas fa-chevron-${expandedPartIndex === part.originalIndex ? 'down' : 'right'} text-xs text-gray-400 mr-2`}></i>
-                          {part.name}
-                          {part.serviceIncluded && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">incl.</span>
-                          )}
-                          {part.inventoryItemId && part.committed === false && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-100 text-yellow-700 rounded">Draft</span>
-                          )}
-                          {part.inventoryItemId && part.committed !== false && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded">
-                              <i className="fas fa-check mr-0.5"></i>Pulled
-                            </span>
-                          )}
-                        </div>
-                        {part.partNumber && <div className="text-xs text-gray-500">PN: {part.partNumber}</div>}
-                        {part.warranty && <div className="text-xs text-green-600 italic">Part Warranty: {part.warranty}</div>}
-                        {part.coreCharge > 0 && (
-                          <div className="text-xs text-orange-600">
-                            Core: {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}
-                          </div>
-                        )}
-                        {!isQuote && part.receiptImageUrl && (
-                          <button onClick={async (e) => { e.stopPropagation();
-                            try {
-                              const response = await API.get(
-                                `/workorders/receipt-signed-url?key=${encodeURIComponent(part.receiptImageUrl)}`
-                              );
-                              if (response.data.status === 'success') {
-                                setViewerUrl(response.data.data.signedUrl);
-                                setViewerTitle(part.receiptImageUrl.split('/').pop() || 'receipt.png');
-                                setViewerModalOpen(true);
-                              } else { alert('Failed to load receipt'); }
-                            } catch (err) { console.error('Error fetching receipt:', err); alert('Failed to load receipt'); }
-                          }} className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
-                            View Receipt
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.quantity}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(!isQuote && showCost
-                          ? (part.cost > 0 ? part.cost : (part.price / (1 + markupPercentage / 100)))
-                          : (part.price || 0)
-                        )}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {part.vendor}
-                          {part.url && (
-                            <a href={part.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 text-blue-500 hover:text-blue-700" title="Product link">
-                              <i className="fas fa-external-link-alt text-xs"></i>
-                            </a>
-                          )}
-                        </div>
-                        {part.supplier && <div className="text-xs text-gray-500">Seller: {part.supplier}</div>}
-                      </td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        {part.category && (
-                          <span className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${getCategoryBadgeColor(part.category)}`}>
-                            {part.category}
-                          </span>
-                        )}
-                      </td>
-                      {!isQuote && (
-                        <>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{part.purchaseOrderNumber}</td>
-                          <td className="px-4 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-col space-y-2">
-                              <label className="flex items-center text-sm">
-                                <input type="checkbox" checked={part.ordered || false}
-                                  onChange={(e) => handlePartStatusChange(part.originalIndex, 'ordered', e.target.checked)}
-                                  className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
-                                <span className={part.ordered ? 'text-yellow-600' : 'text-gray-500'}>Ordered</span>
-                              </label>
-                              <label className="flex items-center text-sm">
-                                <input type="checkbox" checked={part.received || false} disabled={!part.ordered}
-                                  onChange={(e) => handlePartStatusChange(part.originalIndex, 'received', e.target.checked)}
-                                  className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed" />
-                                <span className={part.received ? 'text-green-600' : (part.ordered ? 'text-gray-700' : 'text-gray-400')}>Received</span>
-                              </label>
-                            </div>
-                          </td>
-                        </>
-                      )}
-                      {isQuote && (
-                        <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(part.price * part.quantity)}</td>
-                      )}
-                      <td className="px-4 py-2 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end items-center space-x-2">
-                          {part.inventoryItemId && part.committed === false && (
-                            <button
-                              onClick={() => handleCommitPart(part.originalIndex)}
-                              className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700"
-                              title="Pull this part from inventory"
-                            >
-                              <i className="fas fa-arrow-down mr-1"></i>Pull
-                            </button>
-                          )}
-                          <button onClick={() => openEditPartModal(part, part.originalIndex)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
-                          <button onClick={() => handleRemovePart(part.originalIndex)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
-                        </div>
-                      </td>
-                    </tr>
-                    {expandedPartIndex === part.originalIndex && (
-                      <tr>
-                        <td colSpan={isQuote ? 7 : 8} className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-                            {part.url && (
-                              <div>
-                                <span className="font-medium text-gray-500">Product URL:</span>{' '}
-                                <a href={part.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all">
-                                  {part.url.length > 50 ? part.url.substring(0, 50) + '...' : part.url}
-                                  <i className="fas fa-external-link-alt text-xs ml-1"></i>
-                                </a>
-                              </div>
-                            )}
-                            {part.supplier && (
-                              <div><span className="font-medium text-gray-500">Seller:</span> {part.supplier}</div>
-                            )}
-                            {part.purchaseOrderNumber && (
-                              <div><span className="font-medium text-gray-500">PO/Order #:</span> {part.purchaseOrderNumber}</div>
-                            )}
-                            {part.vin && (
-                              <div><span className="font-medium text-gray-500">Source VIN:</span> <span className="font-mono">{part.vin}</span></div>
-                            )}
-                            {part.stockNumber && (
-                              <div><span className="font-medium text-gray-500">Stock #:</span> {part.stockNumber}</div>
-                            )}
-                            {part.warranty && (
-                              <div><span className="font-medium text-gray-500">Warranty:</span> <span className="text-green-700">{part.warranty}</span></div>
-                            )}
-                            {part.coreCharge > 0 && (
-                              <div><span className="font-medium text-gray-500">Core Charge:</span> {formatCurrency(part.coreCharge)}{part.coreChargeInvoiceable ? '' : ' (internal)'}</div>
-                            )}
-                            {part.notes && (
-                              <div className="col-span-2 md:col-span-3"><span className="font-medium text-gray-500">Notes:</span> {part.notes}</div>
-                            )}
-                            {!part.url && !part.supplier && !part.vin && !part.stockNumber && !part.warranty && !part.notes && !(part.coreCharge > 0) && (
-                              <div className="text-gray-400 italic">No additional details</div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr>
-                    <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
-                    <td className="px-4 py-2 text-sm font-bold text-gray-900">{partsTotalQty}</td>
-                    {isQuote ? (
-                      <>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td className="px-4 py-2 text-right text-sm font-bold text-gray-900">{formatCurrency(partsCost)}</td>
-                        <td></td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-4 py-2 text-sm font-bold text-gray-900">
-                          {formatCurrency(showCost ? partsCostAtCost : partsCost)}
-                        </td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                      </>
-                    )}
-                  </tr>
-                </tfoot>
-              </table>
+                  <Button onClick={() => setAddingJob(true)} variant="primary" size="sm">
+                    <i className="fas fa-plus mr-1"></i>Add Job
+                  </Button>
+                )
+              )}
             </div>
           )}
-        </Card>
+        </div>
 
-        {/* ===== LABOR SECTION ===== */}
-        <Card
-          title="Labor"
-          headerActions={
-            (isQuote || permissions.workOrders.canAddLabor(currentUser) || permissions.workOrders.canAddLaborOwn(currentUser)) && (
-              <Button onClick={openAddLaborModal} variant="primary" size="sm">Add Labor</Button>
-            )
-          }
-        >
-          {(workOrder.labor || []).length === 0 ? (
-            <div className="text-center py-6 text-gray-500"><p>No labor entries added.</p></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rate</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {workOrder.labor.map((labor, index) => {
-                    const qty = labor.quantity || labor.hours || 0;
-                    const isHourly = labor.billingType !== 'fixed';
-                    return (
-                      <tr key={index}>
-                        <td className="px-4 py-2"><div className="font-medium text-gray-900">{labor.description}</div></td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{qty}{isHourly ? ' hrs' : ''}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(labor.rate)}{isHourly ? '/hr' : '/ea'}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{formatCurrency(qty * labor.rate)}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">
-                          <div className="flex justify-end space-x-2">
-                            <button onClick={() => openEditLaborModal(labor, index)} className="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
-                            <button onClick={() => handleRemoveLabor(index)} className="text-red-600 hover:text-red-800 text-xs">Remove</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-gray-50">
-                  <tr>
-                    <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
-                    <td className="px-4 py-2 text-sm font-bold text-gray-900">{laborTotalQty}</td>
-                    <td></td>
-                    <td className="px-4 py-2 text-sm font-bold text-gray-900">{formatCurrency(laborCost)}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </Card>
+        {isInvoiced ? (
+          <>
+            {(workOrder.servicePackages || []).map((pkg, pkgIndex) => renderPackageContainer(pkg, pkgIndex))}
+            <Card title="Parts">{renderPartsTable(partsWithIndex)}</Card>
+            <Card title="Labor">{renderLaborTable(laborWithIndex)}</Card>
+          </>
+        ) : (
+          <>
+            {jobs.map((job) => (
+              <Card key={job.serviceId} title={job.name} headerActions={renderJobHeaderActions(job.serviceId)}>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Parts</p>
+                    {renderPartsTable(job.parts)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Labor</p>
+                    {renderLaborTable(job.labor)}
+                  </div>
+                </div>
+              </Card>
+            ))}
+            {(workOrder.servicePackages || []).map((pkg, pkgIndex) => renderPackageContainer(pkg, pkgIndex))}
+            {!hasServices && (
+              <Card title="General" headerActions={renderJobHeaderActions(null)}>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Parts</p>
+                    {renderPartsTable(generalParts)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Labor</p>
+                    {renderLaborTable(generalLabor)}
+                  </div>
+                </div>
+              </Card>
+            )}
+          </>
+        )}
 
         {/* ===== FILE ATTACHMENTS - WO only ===== */}
         {!isQuote && (
@@ -2856,6 +2970,13 @@ const DocumentDetail = () => {
                 </div>
               )}
 
+              <JobServiceSelect
+                services={workOrder.services || []}
+                value={newPart.serviceId}
+                onChange={(serviceId) => setNewPart({ ...newPart, serviceId })}
+                onCreateService={handleCreateService}
+              />
+
             </div>
             <div className="mt-6 flex justify-end space-x-3">
               <Button variant="light" onClick={() => { setPartModalOpen(false); setEditingPart(null); setDetectedHostname(null); }}>Cancel</Button>
@@ -2947,6 +3068,12 @@ const DocumentDetail = () => {
                     value={newLabor.rate} onChange={(e) => setNewLabor({ ...newLabor, rate: parseFloat(e.target.value) || 0 })} />
                 </div>
               </div>
+              <JobServiceSelect
+                services={workOrder.services || []}
+                value={newLabor.serviceId}
+                onChange={(serviceId) => setNewLabor({ ...newLabor, serviceId })}
+                onCreateService={handleCreateService}
+              />
               <div className="border p-3 rounded bg-gray-50">
                 <p className="text-sm text-gray-600 mb-1">Calculated Total:</p>
                 <p className="font-medium">{formatCurrency((newLabor.quantity || 0) * (newLabor.rate || 0))}</p>
@@ -3027,6 +3154,7 @@ const DocumentDetail = () => {
         onSuccess={handleReceiptImportSuccess}
         markupPercentage={markupPercentage}
         existingParts={workOrder?.parts || []}
+        serviceId={activeServiceId}
       />
 
       {/* Inventory & Service modals */}

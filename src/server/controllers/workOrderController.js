@@ -18,6 +18,30 @@ const emailService = require('../services/emailService');
 const cacheService = require('../services/cacheService');
 const { formatDate, TIMEZONE } = require('../config/timezone');
 
+// When copying parts/labor to a NEW work order, their serviceId references point at
+// the SOURCE work order's services[] sub-docs. Rebuild just the referenced services
+// with fresh _ids and return a map so the copied lines can be re-pointed.
+const buildCopiedServices = (sourceServices = [], ...movedLineArrays) => {
+  const referenced = new Set();
+  movedLineArrays.forEach(arr => (arr || []).forEach(line => {
+    if (line && line.serviceId) referenced.add(line.serviceId.toString());
+  }));
+
+  const idMap = new Map();
+  const services = [];
+  (sourceServices || []).forEach(svc => {
+    if (!svc || !svc._id || !referenced.has(svc._id.toString())) return;
+    const newId = new mongoose.Types.ObjectId();
+    idMap.set(svc._id.toString(), newId);
+    services.push({ _id: newId, description: svc.description });
+  });
+  return { services, idMap };
+};
+
+// Resolve an old serviceId to its remapped new id (or null for the "General" bucket).
+const remapServiceId = (idMap, serviceId) =>
+  (serviceId && idMap.get(serviceId.toString())) || null;
+
 // Status aliases for backward compatibility - defined once at module level
 const STATUS_ALIASES = {
   'Quote': ['Quote'],
@@ -687,7 +711,7 @@ exports.addPart = catchAsync(async (req, res, next) => {
 
 // Add part from inventory as a draft (no inventory deduction yet — commit later).
 exports.addPartFromInventory = catchAsync(async (req, res, next) => {
-  const { inventoryItemId, quantity } = req.body;
+  const { inventoryItemId, quantity, serviceId } = req.body;
   if (!inventoryItemId || !quantity || quantity < 1) {
     return next(new AppError('inventoryItemId and quantity (>= 1) are required', 400));
   }
@@ -723,7 +747,8 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
     inventoryItemId: item._id,
     committed: false,
     ordered: true,
-    received: true
+    received: true,
+    serviceId: serviceId || null
   });
   workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   await workOrder.save();
@@ -1325,6 +1350,13 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     return next(new AppError('Some specified parts or labor items not found', 400));
   }
 
+  // Carry over the services referenced by the moved items so job grouping survives the split.
+  const { services: copiedServices, idMap: serviceIdMap } = buildCopiedServices(
+    originalWorkOrder.services,
+    partsToMoveItems,
+    laborToMoveItems
+  );
+
   // Create new work order with moved items
   const newWorkOrder = new WorkOrder({
     customer: originalWorkOrder.customer._id,
@@ -1335,15 +1367,18 @@ exports.splitWorkOrder = catchAsync(async (req, res, next) => {
     status: 'Work Order Created',
     serviceRequested: newWorkOrderTitle || `Split from WO ${originalWorkOrder._id.toString().slice(-6)}`,
     diagnosticNotes: `Split from work order ${originalWorkOrder._id.toString().slice(-6)} on ${formatDate(todayInTz())}`,
+    services: copiedServices,
     parts: partsToMoveItems.map(part => {
       const { _id, ...partData } = part.toObject ? part.toObject() : part;
+      partData.serviceId = remapServiceId(serviceIdMap, partData.serviceId);
       return partData;
     }),
     labor: laborToMoveItems.map(labor => ({
       description: labor.description,
       billingType: labor.billingType || 'hourly',
       quantity: labor.quantity || labor.hours,
-      rate: labor.rate
+      rate: labor.rate,
+      serviceId: remapServiceId(serviceIdMap, labor.serviceId)
     }))
   });
 
@@ -1602,7 +1637,7 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   const Media = require('../models/Media');
 
   const workOrderId = req.params.id;
-  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, catalogActions, duplicateResolutions = {} } = req.body;
+  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, catalogActions, duplicateResolutions = {}, serviceId } = req.body;
 
   if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
     return next(new AppError('No parts selected', 400));
@@ -1664,7 +1699,8 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
         continue;
       }
     }
-    workOrder.parts.push(part);
+    // Newly imported parts inherit the job (service) the importer was launched from.
+    workOrder.parts.push({ ...part, serviceId: serviceId || null });
   }
 
   // Auto-advance status if all parts ordered
@@ -2170,6 +2206,15 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       });
     }
 
+    // Copy all quoted services with fresh _ids, mapping old->new so the moved
+    // parts/labor keep their job (serviceId) association on the new work order.
+    const serviceIdMap = new Map();
+    const copiedServices = quote.services.map(s => {
+      const newId = new mongoose.Types.ObjectId();
+      if (s._id) serviceIdMap.set(s._id.toString(), newId);
+      return { _id: newId, description: s.description };
+    });
+
     // Create new work order with selected items
     const newWorkOrder = new WorkOrder({
       customer: quote.customer._id,
@@ -2178,18 +2223,20 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       date: todayInTz(),
       priority: quote.priority,
       status: 'Work Order Created',
-      services: quote.services.map(s => ({ description: s.description })),
+      services: copiedServices,
       serviceRequested: quote.serviceRequested,
       diagnosticNotes: `Converted from Quote #${quote._id.toString().slice(-8).toUpperCase()}`,
       parts: partsToMove.map(part => {
         const { _id, ...partData } = part.toObject ? part.toObject() : part;
+        partData.serviceId = remapServiceId(serviceIdMap, partData.serviceId);
         return partData;
       }),
       labor: laborToMove.map(labor => ({
         description: labor.description,
         billingType: labor.billingType || 'hourly',
         quantity: labor.quantity || labor.hours,
-        rate: labor.rate
+        rate: labor.rate,
+        serviceId: remapServiceId(serviceIdMap, labor.serviceId)
       }))
     });
 
@@ -2275,6 +2322,15 @@ exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
     ? workOrder.labor.filter(l => laborToInclude.includes(l._id.toString()))
     : workOrder.labor;
 
+  // Copy all services with fresh _ids, mapping old->new so the copied
+  // parts/labor keep their job (serviceId) association on the new quote.
+  const serviceIdMap = new Map();
+  const copiedServices = workOrder.services.map(s => {
+    const newId = new mongoose.Types.ObjectId();
+    if (s._id) serviceIdMap.set(s._id.toString(), newId);
+    return { _id: newId, description: s.description };
+  });
+
   const newQuote = new WorkOrder({
     customer: workOrder.customer._id,
     vehicle: workOrder.vehicle ? workOrder.vehicle._id : null,
@@ -2282,18 +2338,20 @@ exports.generateQuoteFromWorkOrder = catchAsync(async (req, res, next) => {
     date: todayInTz(),
     priority: workOrder.priority,
     status: 'Quote',
-    services: workOrder.services.map(s => ({ description: s.description })),
+    services: copiedServices,
     serviceRequested: workOrder.serviceRequested,
     diagnosticNotes: `Generated from Work Order #${workOrder._id.toString().slice(-8).toUpperCase()}`,
     parts: partsSource.map(part => {
       const { _id, ordered, received, receiptImageUrl, ...partData } = part.toObject ? part.toObject() : part;
+      partData.serviceId = remapServiceId(serviceIdMap, partData.serviceId);
       return partData;
     }),
     labor: laborSource.map(labor => ({
       description: labor.description,
       billingType: labor.billingType || 'hourly',
       quantity: labor.quantity || labor.hours,
-      rate: labor.rate
+      rate: labor.rate,
+      serviceId: remapServiceId(serviceIdMap, labor.serviceId)
     }))
   });
 

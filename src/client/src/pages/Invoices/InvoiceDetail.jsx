@@ -7,6 +7,7 @@ import Button from '../../components/common/Button';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import businessConfig from '../../config/businessConfig';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
+import { normalizeInvoiceGroups } from '../../utils/jobGrouping';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import settingsService from '../../services/settingsService';
 import FollowUpModal from '../../components/followups/FollowUpModal';
@@ -119,6 +120,7 @@ const InvoiceDetail = () => {
       parts,
       labor,
       servicePackages,
+      jobGroups: items.length > 0 ? normalizeInvoiceGroups(items) : undefined,
       discount: invoice?.discount || null,
       customerFacingNotes,
       customerNotes: invoice?.notes,

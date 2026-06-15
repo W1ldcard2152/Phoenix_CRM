@@ -400,11 +400,13 @@ const InvoiceGenerator = () => {
     vehicleMileage: selectedWorkOrder?.vehicleMileage,
     serviceRequested: selectedWorkOrder?.serviceRequested,
     diagnosticNotes: selectedWorkOrder?.diagnosticNotes,
+    services: selectedWorkOrder?.services || [],
     parts: invoiceData.parts.map(p => ({
       name: p.name || p.description,
       partNumber: p.partNumber,
       quantity: p.quantity,
       price: p.price,
+      serviceId: p.serviceId || null,
       warranty: p.warranty || '',
       coreCharge: p.coreCharge || 0,
       coreChargeInvoiceable: p.coreChargeInvoiceable || false
@@ -413,6 +415,7 @@ const InvoiceGenerator = () => {
       description: l.description,
       hours: l.hours,
       rate: l.rate,
+      serviceId: l.serviceId || null,
       billingType: l.billingType || 'hourly'
     })),
     servicePackages: (invoiceData.servicePackages || []).map(pkg => ({

@@ -45,7 +45,7 @@ const formatVal = (v, type) => {
   return String(v);
 };
 
-const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30, existingParts = [] }) => {
+const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercentage = 30, existingParts = [], serviceId = null }) => {
   const [step, setStep] = useState(STEPS.UPLOAD);
 
   // Upload state
@@ -324,7 +324,8 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           mediaId,
           mediaS3Key,
           catalogActions: mappedCatalogActions,
-          duplicateResolutions
+          duplicateResolutions,
+          serviceId
         },
         { timeout: 30000 }
       );

@@ -9,6 +9,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import QuoteDisplay from '../../components/quotes/QuoteDisplay';
 import ConvertQuoteModal from '../../components/quotes/ConvertQuoteModal';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
+import JobServiceSelect from '../../components/common/JobServiceSelect';
 import FollowUpModal from '../../components/followups/FollowUpModal';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
 import businessConfig from '../../config/businessConfig';
@@ -65,10 +66,10 @@ const QuoteDetail = () => {
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [newPart, setNewPart] = useState({
     name: '', partNumber: '', quantity: 1,
-    price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: ''
+    price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '', serviceId: null
   });
   const [newLabor, setNewLabor] = useState({
-    description: '', hours: 1, rate: 75
+    description: '', hours: 1, rate: 75, serviceId: null
   });
 
   useEffect(() => {
@@ -125,6 +126,16 @@ const QuoteDetail = () => {
     alert(`Successfully extracted and added ${extractedParts.length} part(s)!`);
   };
 
+  // Create a new service (job) inline and return its _id for assignment
+  const handleCreateService = async (description) => {
+    const updatedServices = [...(quote.services || []), { description }];
+    const response = await WorkOrderService.updateWorkOrder(id, { services: updatedServices });
+    setQuote(response.data.workOrder);
+    const services = response.data.workOrder.services || [];
+    const match = [...services].reverse().find(s => s.description === description);
+    return match ? match._id : null;
+  };
+
   // Parts CRUD
   const handleAddPart = async () => {
     if (!newPart.name) {
@@ -136,7 +147,7 @@ const QuoteDetail = () => {
       const response = await WorkOrderService.updateWorkOrder(id, { parts: updatedParts });
       setQuote(response.data.workOrder);
       setPartModalOpen(false);
-      setNewPart({ name: '', partNumber: '', quantity: 1, price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '' });
+      setNewPart({ name: '', partNumber: '', quantity: 1, price: 0, cost: 0, vendor: '', supplier: '', purchaseOrderNumber: '', serviceId: null });
       setIsOtherVendor(false);
       setError(null);
     } catch (err) {
@@ -183,7 +194,7 @@ const QuoteDetail = () => {
       const response = await WorkOrderService.updateWorkOrder(id, { labor: updatedLabor });
       setQuote(response.data.workOrder);
       setLaborModalOpen(false);
-      setNewLabor({ description: '', hours: 1, rate: 75 });
+      setNewLabor({ description: '', hours: 1, rate: 75, serviceId: null });
       setError(null);
     } catch (err) {
       console.error('Error adding labor:', err);
@@ -345,6 +356,7 @@ const QuoteDetail = () => {
     customer: quote.customer,
     vehicle: quote.vehicle,
     serviceRequested: quote.serviceRequested,
+    services: quote.services || [],
     parts: quote.parts || [],
     labor: quote.labor || [],
     servicePackages: quote.servicePackages || [],
@@ -1216,6 +1228,12 @@ const QuoteDetail = () => {
                   />
                 </div>
               </div>
+              <JobServiceSelect
+                services={quote.services || []}
+                value={newPart.serviceId}
+                onChange={(serviceId) => setNewPart({ ...newPart, serviceId })}
+                onCreateService={handleCreateService}
+              />
             </div>
             <div className="flex justify-end space-x-3 mt-6">
               <Button variant="light" onClick={() => setPartModalOpen(false)}>Cancel</Button>
@@ -1265,6 +1283,12 @@ const QuoteDetail = () => {
                   />
                 </div>
               </div>
+              <JobServiceSelect
+                services={quote.services || []}
+                value={newLabor.serviceId}
+                onChange={(serviceId) => setNewLabor({ ...newLabor, serviceId })}
+                onCreateService={handleCreateService}
+              />
             </div>
             <div className="flex justify-end space-x-3 mt-6">
               <Button variant="light" onClick={() => setLaborModalOpen(false)}>Cancel</Button>

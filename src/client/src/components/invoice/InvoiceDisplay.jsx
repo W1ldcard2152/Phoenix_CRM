@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters'; // Import centralized formatter
 import workOrderNotesService from '../../services/workOrderNotesService';
+import JobGroups from '../common/JobGroups';
+import { normalizeInvoiceGroups, normalizeLiveGroups } from '../../utils/jobGrouping';
 
 const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref) => {
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
@@ -97,6 +99,12 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
   const calculatedServicesTotal = services.reduce((sum, svc) => sum + (parseFloat(svc.total || svc.price) || 0), 0);
   const calculatedSubtotal = calculatedPartsTotal + calculatedLaborTotal + calculatedServicesTotal;
 
+  // Group line items by job. Modern invoices carry a per-item jobName; legacy
+  // invoices (no items[]) fall back to the General bucket via live grouping.
+  const jobGroups = (items && items.length > 0)
+    ? normalizeInvoiceGroups(items)
+    : normalizeLiveGroups({ services: workOrder?.services || [], parts, labor, servicePackages: services });
+
   const finalSubtotal = initialSubtotal !== undefined ? initialSubtotal : calculatedSubtotal;
   const finalDiscountAmount = initialDiscountAmount !== undefined
     ? initialDiscountAmount
@@ -170,118 +178,8 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
         </div>
       )}
 
-      {/* Services */}
-      {services && services.length > 0 && (
-        <div className="mb-4">
-          <h3 className="font-semibold text-md mb-1">Services:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {services.map((svc, index) => (
-                <tr key={svc._id || `service-${index}`}>
-                  <td className="border border-gray-300 p-2 align-top">
-                    <div className="font-medium">{svc.name}</div>
-                    {svc.includedItems && svc.includedItems.length > 0 && (
-                      <ul className="mt-1 ml-4 list-disc text-xs text-gray-600">
-                        {svc.includedItems.map((i, idx) => {
-                          const qty = i.quantity || 0;
-                          const unit = i.unit ? ` ${i.unit}` : '';
-                          const brand = i.brand ? `${i.brand} ` : '';
-                          const partNum = i.partNumber ? ` (${i.partNumber})` : '';
-                          return <li key={idx}>{`${qty}${unit} - ${brand}${i.name}${partNum}`}</li>;
-                        })}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="border border-gray-300 p-2 text-right align-top">{formatCurrency(svc.total || svc.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Parts */}
-      {parts && parts.length > 0 && (
-        <div className="mb-4">
-          <h3 className="font-semibold text-md mb-1 text-gray-700">Parts:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Part #</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Unit Price</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parts.map((part, index) => (
-                <React.Fragment key={part._id || `part-${index}`}>
-                  <tr>
-                    <td className="border border-gray-300 p-2">
-                      {part.name || part.description}
-                      {part.warranty && (
-                        <div className="text-xs text-gray-500 italic mt-0.5">Part Warranty: {part.warranty}</div>
-                      )}
-                    </td>
-                    <td className="border border-gray-300 p-2">{part.partNumber}</td>
-                    <td className="border border-gray-300 p-2 text-right">{part.quantity}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.price)}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(part.total)}</td>
-                  </tr>
-                  {part.coreChargeInvoiceable && part.coreCharge > 0 && (
-                    <tr>
-                      <td className="border border-gray-300 p-2 pl-6 text-xs text-gray-600" colSpan="3">
-                        Core Charge - {part.name || part.description}
-                      </td>
-                      <td className="border border-gray-300 p-2 text-right text-xs">{formatCurrency(part.coreCharge)}</td>
-                      <td className="border border-gray-300 p-2 text-right text-xs">{formatCurrency(part.coreCharge)}</td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Labor */}
-      {labor && labor.length > 0 && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-md mb-1 text-gray-700">Labor:</h3>
-          <table className="w-full border-collapse border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left font-semibold">Description</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Qty</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Rate</th>
-                <th className="border border-gray-300 p-2 text-right font-semibold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {labor.map((laborItem, index) => {
-                const qty = laborItem.quantity || laborItem.hours || 0;
-                const isHourly = laborItem.billingType !== 'fixed';
-                const total = laborItem.total || (qty * laborItem.rate);
-                return (
-                  <tr key={laborItem._id || `labor-${index}`}>
-                    <td className="border border-gray-300 p-2">{laborItem.description}</td>
-                    <td className="border border-gray-300 p-2 text-right">{qty}{isHourly ? ' hrs' : ''}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(laborItem.rate)}{isHourly ? '/hr' : '/ea'}</td>
-                    <td className="border border-gray-300 p-2 text-right">{formatCurrency(total)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Line items grouped by job */}
+      <JobGroups groups={jobGroups} />
 
       {/* Totals */}
       <div className="flex justify-end mb-6">

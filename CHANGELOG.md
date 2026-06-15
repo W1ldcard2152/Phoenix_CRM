@@ -6,11 +6,14 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 
 ### Added
 - Follow-up notes now have an **Add & Resolve** button that logs the note and marks the follow-up resolved in one step — handy since the first note on a follow-up is usually the one that closes it.
+- **Jobs view** — invoices, quotes, and work orders now organize parts and labor **by job** (each Service Requested) instead of separate Parts and Labor sections. Every job shows its own parts and labor with a per-job total, and each service package is its own job. On the work order / quote page, each requested service is its own container with Add Part / From Inventory / Import / Add Labor buttons, so anything added — including receipt-imported parts — lands on that job automatically; an **Add Job** button creates more. Parts or labor with no job assigned fall under the first service. (Already-invoiced work orders keep the previous flat layout.)
 
 ### Changed
 - Creating a Work Order or Quote now auto-selects the vehicle only when the customer has exactly one in their garage (instead of always picking the first), and the Vehicle field is now required.
 - Saving a Work Order or Quote that's missing a required field now shows the specific reason (e.g. "Please select a vehicle") instead of a generic "Failed to save work order".
 - Adding a customer whose phone number already exists now warns and links to the existing customer, but still lets you create the new one with **Create New Anyway** — and the warning can no longer be skipped by saving before the duplicate check finishes.
+- Work order / quote totals summary now breaks down **by job**, with a toggle to expand each job's parts and labor subtotals.
+- Invoice and quote line items now read like a standard receipt: column headers (Qty · Unit Price · Amount), columns aligned across jobs, and a **Total** line at the bottom of each job. Fixed-price labor now shows "ea" units (e.g. "4 ea" at "$25.00/ea") to match hourly's "1.5 hr".
 
 ### Fixed
 - Importing or adding a not-yet-received part to a Work Order that had already flipped to "Parts Received" now drops it back to "Parts Ordered" (unless the part is added and marked received in the same action), so the status reflects that something is still on order.

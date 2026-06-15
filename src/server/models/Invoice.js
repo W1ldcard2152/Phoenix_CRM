@@ -48,6 +48,11 @@ const InvoiceItemSchema = new Schema({
     enum: ['Part', 'Labor', 'Service'],
     required: true
   },
+  jobName: { // denormalized job/service heading for grouping; '' = "General" bucket
+    type: String,
+    trim: true,
+    default: ''
+  },
   description: {
     type: String,
     required: true,

@@ -140,34 +140,73 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
     // Note: work order will be saved after invoice is created to include invoice reference
   }
 
-  // Combine parts and labor into invoice items
-  const items = [
-    ...parts.map(part => ({
-      type: 'Part',
-      description: part.name || part.description,
-      partNumber: part.partNumber,
-      quantity: part.quantity,
-      unitPrice: part.price,
-      total: part.total || (part.quantity * part.price),
-      taxable: true,
-      warranty: part.warranty || '',
-      coreCharge: part.coreChargeInvoiceable ? (part.coreCharge || 0) : 0,
-      coreChargeInvoiceable: part.coreChargeInvoiceable || false
-    })),
-    ...labor.map(labor => {
-      const qty = labor.quantity || labor.hours || 0;
-      return {
-        type: 'Labor',
-        description: labor.description,
-        quantity: qty,
-        unitPrice: labor.rate,
-        total: labor.total || (qty * labor.rate),
-        taxable: true, // Could be configurable
-        billingType: labor.billingType || 'hourly'
-      };
-    }),
-    ...(servicePackages || []).map(pkg => ({
+  // Build the ordered list of services (jobs) to group line items under.
+  // Prefer the linked work order's services, fall back to a services array on the request.
+  const serviceList = (workOrderToUpdate && workOrderToUpdate.services && workOrderToUpdate.services.length > 0)
+    ? workOrderToUpdate.services
+    : (req.body.services || []);
+  const serviceNameById = new Map(
+    serviceList
+      .filter(s => s && s._id)
+      .map(s => [s._id.toString(), s.description])
+  );
+
+  const mapPart = part => ({
+    type: 'Part',
+    jobName: (part.serviceId && serviceNameById.get(part.serviceId.toString())) || '',
+    description: part.name || part.description,
+    partNumber: part.partNumber,
+    quantity: part.quantity,
+    unitPrice: part.price,
+    total: part.total || (part.quantity * part.price),
+    taxable: true,
+    warranty: part.warranty || '',
+    coreCharge: part.coreChargeInvoiceable ? (part.coreCharge || 0) : 0,
+    coreChargeInvoiceable: part.coreChargeInvoiceable || false
+  });
+
+  const mapLabor = labor => {
+    const qty = labor.quantity || labor.hours || 0;
+    return {
+      type: 'Labor',
+      jobName: (labor.serviceId && serviceNameById.get(labor.serviceId.toString())) || '',
+      description: labor.description,
+      quantity: qty,
+      unitPrice: labor.rate,
+      total: labor.total || (qty * labor.rate),
+      taxable: true, // Could be configurable
+      billingType: labor.billingType || 'hourly'
+    };
+  };
+
+  const matchesService = (line, serviceId) =>
+    line.serviceId && line.serviceId.toString() === serviceId;
+
+  // Unassigned = no serviceId or a serviceId that no longer resolves.
+  const isUnassigned = line => !line.serviceId || !serviceNameById.has(line.serviceId.toString());
+  const validServices = serviceList.filter(s => s && s._id);
+  const firstServiceId = validServices.length > 0 ? validServices[0]._id.toString() : null;
+
+  // Emit items in job order: each service (with its parts then labor),
+  // then each service package as its own job. The FIRST service absorbs all
+  // unassigned lines ("unassigned → Job 1"); only a service-less work order
+  // leaves unassigned lines in a "General" group (jobName '').
+  const items = [];
+
+  validServices.forEach((service, idx) => {
+    const sid = service._id.toString();
+    const belongs = line => matchesService(line, sid) || (idx === 0 && isUnassigned(line));
+    const serviceParts = parts.filter(belongs);
+    const serviceLabor = labor.filter(belongs);
+    if (serviceParts.length === 0 && serviceLabor.length === 0) return; // skip empty jobs
+    serviceParts.forEach(p => items.push({ ...mapPart(p), jobName: service.description }));
+    serviceLabor.forEach(l => items.push({ ...mapLabor(l), jobName: service.description }));
+  });
+
+  (servicePackages || []).forEach(pkg => {
+    items.push({
       type: 'Service',
+      jobName: pkg.name,
       description: pkg.name,
       quantity: 1,
       unitPrice: pkg.price,
@@ -181,8 +220,14 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
         quantity: item.quantity,
         unit: item.unit || ''
       }))
-    }))
-  ];
+    });
+  });
+
+  // No services at all → unassigned lines fall into the General bucket.
+  if (!firstServiceId) {
+    parts.filter(isUnassigned).forEach(p => items.push(mapPart(p)));
+    labor.filter(isUnassigned).forEach(l => items.push(mapLabor(l)));
+  }
   
   // Calculate due date if not provided
   let dueDate = invoiceDueDate ? parseLocalDate(invoiceDueDate) : parseLocalDate(invoiceDate) || todayInTz();

@@ -100,6 +100,10 @@ const PartSchema = new Schema({
   serviceIncluded: { // Part included in a service package ($0 price)
     type: Boolean,
     default: false
+  },
+  serviceId: { // -> WorkOrder.services[]._id; null/unset = "General" job bucket
+    type: Schema.Types.ObjectId,
+    default: null
   }
 });
 
@@ -132,6 +136,10 @@ const LaborSchema = new Schema({
   servicePackageId: { // Link to service package this labor line came from
     type: Schema.Types.ObjectId,
     ref: 'ServicePackage'
+  },
+  serviceId: { // -> WorkOrder.services[]._id; null/unset = "General" job bucket
+    type: Schema.Types.ObjectId,
+    default: null
   }
 });
 
