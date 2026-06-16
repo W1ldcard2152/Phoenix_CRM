@@ -125,7 +125,9 @@ const Sidebar = () => {
                   <i className="fas fa-times text-lg"></i>
                 </button>
                 <div className="flex justify-center pt-6 pb-4 px-4">
-                  <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+                  <Link to="/" onClick={() => setMobileMenuOpen(false)} title="Dashboard">
+                    <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+                  </Link>
                 </div>
               </div>
 
@@ -230,11 +232,15 @@ const Sidebar = () => {
         </button>
         {collapsed ? (
           <div className="flex justify-center py-4">
-            <img src="/cvDog.png" alt="CV Repair" className="w-9" />
+            <Link to="/" title="Dashboard">
+              <img src="/cvDog.png" alt="CV Repair" className="w-9" />
+            </Link>
           </div>
         ) : (
           <div className="flex justify-center pt-6 pb-4 px-3">
-            <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+            <Link to="/" title="Dashboard">
+              <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+            </Link>
           </div>
         )}
       </div>
