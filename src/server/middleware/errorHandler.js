@@ -7,9 +7,13 @@ const handleCastError = err => {
 };
 
 // Handle duplicate key errors
+// Report the field name but NOT the offending value, to avoid leaking existing
+// data (e.g. confirming whether an email is already registered).
 const handleDuplicateFieldsError = err => {
-  const value = err.errmsg.match(/(["'])(\\?.)*?\1/)[0];
-  const message = `Duplicate field value: ${value}. Please use another value.`;
+  const field = err.keyValue ? Object.keys(err.keyValue)[0] : null;
+  const message = field
+    ? `That ${field} is already in use. Please use another value.`
+    : 'A unique field value is already in use. Please use another value.';
   return new AppError(message, 400);
 };
 

@@ -6,19 +6,22 @@ const authController = require('../controllers/authController');
 // All inventory routes require authentication
 router.use(authController.protect);
 
+// Office staff only for any inventory mutation (technicians get read-only access)
+const officeStaff = authController.restrictTo('admin', 'management', 'service-writer');
+
 // Shopping list must come before /:id to avoid route conflict
 router.get('/shopping-list', inventoryController.getShoppingList);
 
 // Receipt import (must come before /:id)
-router.post('/extract-receipt', inventoryController.receiptUpload, inventoryController.extractInventoryReceipt);
-router.post('/confirm-receipt', inventoryController.confirmInventoryReceipt);
+router.post('/extract-receipt', officeStaff, inventoryController.receiptUpload, inventoryController.extractInventoryReceipt);
+router.post('/confirm-receipt', officeStaff, inventoryController.confirmInventoryReceipt);
 
 router.get('/', inventoryController.getAllItems);
-router.post('/', inventoryController.createItem);
+router.post('/', officeStaff, inventoryController.createItem);
 
 router.get('/:id', inventoryController.getItem);
-router.patch('/:id', inventoryController.updateItem);
-router.delete('/:id', inventoryController.deleteItem);
-router.patch('/:id/adjust', inventoryController.adjustQuantity);
+router.patch('/:id', officeStaff, inventoryController.updateItem);
+router.delete('/:id', officeStaff, inventoryController.deleteItem);
+router.patch('/:id/adjust', officeStaff, inventoryController.adjustQuantity);
 
 module.exports = router;

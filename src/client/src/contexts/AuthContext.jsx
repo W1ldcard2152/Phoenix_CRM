@@ -56,23 +56,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Register function - server sets HTTP-only cookie automatically
-  const register = async (userData) => {
-    try {
-      const res = await axios.post(
-        '/api/users/signup',
-        userData,
-        { withCredentials: true }
-      );
-      const { data } = res.data;
-      setCurrentUser(data.user);
-      return data.user;
-    } catch (err) {
-      console.error('Registration error:', err);
-      throw err;
-    }
-  };
-
   // Update user data (for profile updates)
   const updateUser = (userData) => {
     setCurrentUser(userData);
@@ -94,7 +77,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
-    register,
     updateUser,
     refreshUser,
     isAuthenticated: !!currentUser

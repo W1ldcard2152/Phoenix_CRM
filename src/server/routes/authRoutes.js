@@ -4,7 +4,9 @@ const userController = require('../controllers/userController');
 const router = express.Router();
 
 // Auth routes
-router.post('/signup', authController.signup);
+// NOTE: public self-registration is intentionally disabled. Accounts are
+// created by an admin (see adminController.preAuthorizeUser / userController.createUser)
+// or provisioned via Google OAuth against a pre-authorized email.
 router.post('/login', authController.login);
 router.get('/logout', authController.logout);
 router.post('/forgotPassword', authController.forgotPassword);
@@ -18,8 +20,8 @@ router.get('/me', userController.getMe, userController.getUser);
 router.patch('/updateMe', userController.updateMe);
 router.delete('/deleteMe', userController.deleteMe);
 
-// Admin and management routes
-router.use(authController.restrictTo('admin', 'management'));
+// User management (create / modify / delete / role assignment) — admin only
+router.use(authController.restrictTo('admin'));
 
 router.route('/')
   .get(userController.getAllUsers)

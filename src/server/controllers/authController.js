@@ -43,27 +43,6 @@ const createSendToken = (user, statusCode, res) => {
   });
 };
 
-// Sign up new user
-exports.signup = catchAsync(async (req, res, next) => {
-  // Restrict role to prevent creating admin users via signup
-  // This allows creating technicians but not admins
-  const allowedRoles = ['technician', 'service-writer'];
-  
-  if (req.body.role && !allowedRoles.includes(req.body.role)) {
-    return next(new AppError('Invalid role specified', 400));
-  }
-  
-  const newUser = await User.create({
-    name: req.body.name,
-    email: req.body.email,
-    password: req.body.password,
-    passwordConfirm: req.body.passwordConfirm,
-    role: req.body.role
-  });
-  
-  createSendToken(newUser, 201, res);
-});
-
 // Log in user
 exports.login = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
@@ -166,39 +145,44 @@ exports.restrictTo = (...roles) => {
 
 // Forgot password
 exports.forgotPassword = catchAsync(async (req, res, next) => {
+  // Always return the same response whether or not the email exists, to avoid
+  // account enumeration.
+  const genericResponse = () =>
+    res.status(200).json({
+      status: 'success',
+      message: 'If an account with that email exists, a reset link has been sent.'
+    });
+
   // 1) Get user based on posted email
   const user = await User.findOne({ email: req.body.email });
   if (!user) {
-    return next(new AppError('There is no user with that email address.', 404));
+    return genericResponse();
   }
-  
+
   // 2) Generate random reset token
   const resetToken = user.createPasswordResetToken();
   await user.save({ validateBeforeSave: false });
-  
+
   // 3) Send to user's email
   const resetURL = `${req.protocol}://${req.get(
     'host'
   )}/api/v1/users/resetPassword/${resetToken}`;
-  
+
   const message = `Forgot your password? Submit a PATCH request with your new password and passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email.`;
-  
+
   try {
     await emailService.sendEmail({
       to: user.email,
       subject: 'Your password reset token (valid for 10 minutes)',
       text: message
     });
-    
-    res.status(200).json({
-      status: 'success',
-      message: 'Token sent to email'
-    });
+
+    return genericResponse();
   } catch (err) {
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save({ validateBeforeSave: false });
-    
+
     return next(
       new AppError(
         'There was an error sending the email. Try again later.',

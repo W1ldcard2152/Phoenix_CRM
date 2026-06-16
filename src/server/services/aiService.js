@@ -1,5 +1,8 @@
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 const AppError = require('../utils/appError');
+const { assertSafeUrl } = require('../utils/ssrfGuard');
+
+const MAX_REDIRECTS = 5;
 
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -251,25 +254,43 @@ exports.finalizeParts = (selectedParts, shippingTotal, isOrder, markupPercentage
  * Fetch a URL and return simplified text content for AI extraction.
  * Strips HTML tags, scripts, styles, and excessive whitespace.
  */
-const fetchPageText = (pageUrl) => {
-  const lib = pageUrl.startsWith('https') ? require('https') : require('http');
+const fetchPageText = async (pageUrl) => {
+  // SSRF guard: reject internal/reserved addresses before any request is made
+  await assertSafeUrl(pageUrl);
+
+  const opts = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9'
+    },
+    timeout: 15000
+  };
+
   return new Promise((resolve, reject) => {
-    const opts = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9'
-      },
-      timeout: 15000
+    let redirects = 0;
+    let currentUrl = pageUrl;
+
+    const request = (targetUrl) => {
+      currentUrl = targetUrl;
+      const lib = targetUrl.startsWith('https') ? require('https') : require('http');
+      lib.get(targetUrl, opts, handleResponse).on('error', reject);
     };
 
     const handleResponse = (res) => {
-      // Follow redirects
+      // Follow redirects — but re-validate the target and cap the count
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const redirectUrl = new URL(res.headers.location, pageUrl).href;
+        res.resume(); // drain the response so the socket can be released
+        if (++redirects > MAX_REDIRECTS) {
+          return reject(new AppError('Too many redirects while fetching URL', 400));
+        }
+        const redirectUrl = new URL(res.headers.location, currentUrl).href;
         console.log(`[URL Extract] Following redirect to: ${redirectUrl}`);
-        const rLib = redirectUrl.startsWith('https') ? require('https') : require('http');
-        rLib.get(redirectUrl, opts, handleResponse).on('error', reject);
+        // Re-run the SSRF guard on every redirect target (prevents open-redirect
+        // chains from reaching internal hosts)
+        assertSafeUrl(redirectUrl)
+          .then(() => request(redirectUrl))
+          .catch(reject);
         return;
       }
 
@@ -296,7 +317,7 @@ const fetchPageText = (pageUrl) => {
       });
     };
 
-    lib.get(pageUrl, opts, handleResponse).on('error', reject);
+    request(pageUrl);
   });
 };
 

@@ -3,6 +3,7 @@ const s3Service = require('../services/s3Service');
 const emailService = require('../services/emailService');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { receiptFilter } = require('../utils/uploadFilters');
 const multer = require('multer');
 
 // Configure multer for memory storage
@@ -11,7 +12,8 @@ const upload = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB
-  }
+  },
+  fileFilter: receiptFilter // images + PDF only
 });
 
 // Multer middleware

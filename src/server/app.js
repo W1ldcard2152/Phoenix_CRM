@@ -118,7 +118,6 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true // Don't count successful logins against the limit
 });
 app.use('/api/users/login', authLimiter);
-app.use('/api/users/signup', authLimiter);
 app.use('/api/users/forgotPassword', authLimiter);
 
 // Body parser, reading data from body into req.body
@@ -128,6 +127,12 @@ app.use(cookieParser());
 
 // Data sanitization against NoSQL query injection
 app.use(mongoSanitize());
+
+// NOTE: input-side XSS sanitization (express-xss-sanitizer) was evaluated and
+// intentionally NOT used — it HTML-encodes all input, which corrupts legitimate
+// data (e.g. "Smith & Sons", notes containing "<", URLs with "&" query params).
+// XSS is instead handled at the output layer: the React client escapes all
+// rendered values by default and uses no dangerouslySetInnerHTML.
 
 // Convert local-timezone date strings in request bodies to UTC automatically
 app.use(convertDates);

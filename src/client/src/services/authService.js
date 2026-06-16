@@ -12,17 +12,6 @@ const AuthService = {
     }
   },
 
-  // Register
-  register: async (userData) => {
-    try {
-      const response = await API.post('/users/signup', userData);
-      return response.data;
-    } catch (error) {
-      console.error('Registration error:', error);
-      throw error;
-    }
-  },
-
   // Logout
   logout: async () => {
     try {

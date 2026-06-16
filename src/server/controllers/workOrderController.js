@@ -9,6 +9,7 @@ const ServicePackage = require('../models/ServicePackage');
 const Settings = require('../models/Settings');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const escapeRegex = require('../utils/escapeRegex');
 const { parseLocalDate, buildDateRangeQuery, parseDateOrDefault, todayInTz, startOfTodayInTz, getDayBoundaries } = require('../utils/dateUtils');
 const { applyPopulation } = require('../utils/populationHelpers');
 const { validateEntityExists, validateVehicleOwnership } = require('../utils/validationHelpers');
@@ -1221,14 +1222,17 @@ exports.searchWorkOrders = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a search query', 400));
   }
 
+  // Escape regex metacharacters + cap length to prevent ReDoS / injection
+  const safeQuery = escapeRegex(String(query).trim().slice(0, 100));
+
   const workOrders = await applyPopulation(
     WorkOrder.find({
       status: { $ne: 'Quote' },
       $or: [
-        { serviceRequested: { $regex: query, $options: 'i' } },
-        { 'services.description': { $regex: query, $options: 'i' } },
-        { status: { $regex: query, $options: 'i' } },
-        { diagnosticNotes: { $regex: query, $options: 'i' } }
+        { serviceRequested: { $regex: safeQuery, $options: 'i' } },
+        { 'services.description': { $regex: safeQuery, $options: 'i' } },
+        { status: { $regex: safeQuery, $options: 'i' } },
+        { diagnosticNotes: { $regex: safeQuery, $options: 'i' } }
       ]
     }),
     'workOrder',
@@ -1515,9 +1519,11 @@ exports.getServiceWritersCorner = catchAsync(async (req, res, next) => {
 // Step 1: Extract parts from receipt using AI (returns raw parts for user review)
 // Multer setup for receipt upload (used as route-level middleware)
 const multer = require('multer');
+const { receiptFilter } = require('../utils/uploadFilters');
 const receiptUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: receiptFilter // images + PDF only
 }).single('receipt');
 exports.receiptUpload = receiptUpload;
 

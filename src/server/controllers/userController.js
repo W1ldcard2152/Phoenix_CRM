@@ -11,6 +11,43 @@ const filterObj = (obj, ...allowedFields) => {
   return newObj;
 };
 
+// Allowed enum values, sourced from the schema so they can't drift.
+// Fall back to literals when the model is mocked (e.g. in unit tests).
+const VALID_ROLES =
+  User.schema?.path('role')?.enumValues ||
+  ['admin', 'management', 'service-writer', 'technician'];
+const VALID_STATUSES =
+  User.schema?.path('status')?.enumValues || ['pending', 'active', 'disabled'];
+
+// Reject role/status values that aren't in the schema enum (clear 400 instead
+// of a generic mongoose validation error, and prevents silently-ignored input)
+const validateRoleAndStatus = (body, next) => {
+  if (body.role !== undefined && !VALID_ROLES.includes(body.role)) {
+    next(new AppError(`Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`, 400));
+    return false;
+  }
+  if (body.status !== undefined && !VALID_STATUSES.includes(body.status)) {
+    next(new AppError(`Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`, 400));
+    return false;
+  }
+  return true;
+};
+
+// Guard against removing the last remaining admin (lockout protection).
+// `change` describes the pending change to the target user.
+const wouldRemoveLastAdmin = async (targetUser, change) => {
+  if (!targetUser || targetUser.role !== 'admin') return false;
+  const losesAdmin =
+    (change.role !== undefined && change.role !== 'admin') ||
+    change.status === 'disabled' ||
+    change.active === false;
+  if (!losesAdmin) return false;
+  // countDocuments is not affected by the pre-find `active` filter, so the
+  // status guard alone is what excludes disabled admins here.
+  const activeAdmins = await User.countDocuments({ role: 'admin', status: { $ne: 'disabled' } });
+  return activeAdmins <= 1;
+};
+
 // Get all users
 exports.getAllUsers = catchAsync(async (req, res, next) => {
   const users = await User.find();
@@ -88,8 +125,23 @@ exports.getUser = catchAsync(async (req, res, next) => {
 
 // Create new user (admin only)
 exports.createUser = catchAsync(async (req, res, next) => {
-  const newUser = await User.create(req.body);
-  
+  if (!validateRoleAndStatus(req.body, next)) return;
+
+  // Whitelist fields so callers can't inject arbitrary schema fields
+  const filteredBody = filterObj(
+    req.body,
+    'name',
+    'email',
+    'password',
+    'passwordConfirm',
+    'role',
+    'status',
+    'technician',
+    'displayName'
+  );
+
+  const newUser = await User.create(filteredBody);
+
   res.status(201).json({
     status: 'success',
     data: {
@@ -109,16 +161,37 @@ exports.updateUser = catchAsync(async (req, res, next) => {
       )
     );
   }
-  
-  const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+
+  if (!validateRoleAndStatus(req.body, next)) return;
+
+  // Whitelist fields — never trust req.body to set role/status/active directly
+  const filteredBody = filterObj(
+    req.body,
+    'name',
+    'email',
+    'role',
+    'status',
+    'active',
+    'technician',
+    'displayName'
+  );
+
+  const target = await User.findById(req.params.id).setOptions({ includeInactive: true });
+  if (!target) {
+    return next(new AppError('No user found with that ID', 404));
+  }
+
+  if (await wouldRemoveLastAdmin(target, filteredBody)) {
+    return next(
+      new AppError('Cannot remove or disable the last remaining admin account.', 400)
+    );
+  }
+
+  const user = await User.findByIdAndUpdate(req.params.id, filteredBody, {
     new: true,
     runValidators: true
   });
-  
-  if (!user) {
-    return next(new AppError('No user found with that ID', 404));
-  }
-  
+
   res.status(200).json({
     status: 'success',
     data: {

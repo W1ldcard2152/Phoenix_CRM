@@ -4,8 +4,9 @@ const authController = require('../controllers/authController');
 const router = express.Router();
 
 // All admin routes require authentication + admin role
+// User management and role assignment is restricted to admin only.
 router.use(authController.protect);
-router.use(authController.restrictTo('admin', 'management'));
+router.use(authController.restrictTo('admin'));
 
 router.route('/users')
   .get(adminController.getAllUsers)

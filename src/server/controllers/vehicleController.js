@@ -3,6 +3,7 @@ const Customer = require('../models/Customer');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const escapeRegex = require('../utils/escapeRegex');
 const { parseLocalDate, todayInTz } = require('../utils/dateUtils');
 const cacheService = require('../services/cacheService');
 
@@ -46,8 +47,8 @@ exports.getAllVehicles = catchAsync(async (req, res, next) => {
   const query = {};
 
   if (customer) query.customer = customer;
-  if (make) query.make = { $regex: make, $options: 'i' };
-  if (model) query.model = { $regex: model, $options: 'i' };
+  if (make) query.make = { $regex: escapeRegex(String(make).slice(0, 100)), $options: 'i' };
+  if (model) query.model = { $regex: escapeRegex(String(model).slice(0, 100)), $options: 'i' };
 
   const vehicles = await Vehicle.find(query)
     .populate('customer', 'name phone email')
@@ -118,7 +119,7 @@ exports.createVehicle = catchAsync(async (req, res, next) => {
 
       // Search for existing vehicle with this VIN
       const existingVehicle = await Vehicle.findOne({
-        vin: { $regex: new RegExp(`^${normalizedVin}$`, 'i') }
+        vin: { $regex: new RegExp(`^${escapeRegex(normalizedVin)}$`, 'i') }
       }).populate('customer', 'name phone email _id');
 
       if (existingVehicle) {
@@ -233,8 +234,7 @@ exports.searchVehicles = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a search query', 400));
   }
 
-  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const tokens = query.trim().split(/\s+/).filter(Boolean).map(escapeRegex);
+  const tokens = query.trim().slice(0, 100).split(/\s+/).filter(Boolean).map(escapeRegex);
 
   const filter = tokens.length
     ? {
@@ -462,7 +462,7 @@ exports.checkVinExists = catchAsync(async (req, res, next) => {
 
   // Search for existing vehicle with this VIN
   const existingVehicle = await Vehicle.findOne({
-    vin: { $regex: new RegExp(`^${normalizedVin}$`, 'i') }
+    vin: { $regex: new RegExp(`^${escapeRegex(normalizedVin)}$`, 'i') }
   }).populate('customer', 'name phone email _id');
 
   if (existingVehicle) {

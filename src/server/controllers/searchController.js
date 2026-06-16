@@ -3,17 +3,9 @@ const Vehicle = require('../models/Vehicle');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const escapeRegex = require('../utils/escapeRegex');
 const { formatDate, TIMEZONE } = require('../config/timezone');
 const { getDayBoundaries } = require('../utils/dateUtils');
-
-/**
- * Escape special regex characters to prevent ReDoS and NoSQL injection attacks
- * @param {string} str - The string to escape
- * @returns {string} - The escaped string safe for use in regex
- */
-const escapeRegex = (str) => {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-};
 
 const globalSearch = catchAsync(async (req, res, next) => {
   const { q: searchQuery } = req.query;

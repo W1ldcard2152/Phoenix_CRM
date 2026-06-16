@@ -10,6 +10,14 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 ### Changed
 - Rebranded the app to **CV Repair**: new dog logo and favicon, updated app/PWA name, install icons, offline page, and a warm brown-and-parchment color theme throughout (buttons, links, and backgrounds). The sidebar is now a solid brand color with the CV Repair logo at the top, and the sign-in screen shows the CV Repair logo.
 - Company identity on invoices and quotes is now driven by the Company Profile setting instead of being hardcoded, so the name, address, phone, email, website, and logo on printed documents follow whatever you set.
+- **User management is now admin-only.** Creating users, changing roles, and deactivating accounts require the admin role (management can no longer do these). Sign-in is Google-first — an admin pre-authorizes each person by email. The last remaining admin can no longer be demoted or disabled.
+- **Security hardening** across the app: search inputs are sanitized to prevent slow-query (ReDoS) attacks; file uploads are restricted to images and PDFs; the "import product from URL" feature can no longer be pointed at internal/cloud-metadata addresses; and error messages no longer reveal whether an email is already registered.
+
+### Removed
+- **Public self-registration.** The open sign-up page and endpoint were removed — anyone could previously create a working account. New accounts are created by an admin or provisioned via Google sign-in against a pre-authorized email.
+
+### Fixed
+- Resolved the dependency-audit vulnerabilities flagged at deploy (including all 4 criticals) by removing unused packages and updating others to patched versions; remaining advisories are build-time-only tooling with no shipped impact (documented in `SECURITY.md`).
 
 ## 2026-06-15
 

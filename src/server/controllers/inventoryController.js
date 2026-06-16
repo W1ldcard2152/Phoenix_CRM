@@ -2,10 +2,13 @@ const multer = require('multer');
 const InventoryItem = require('../models/InventoryItem');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const escapeRegex = require('../utils/escapeRegex');
+const { receiptFilter } = require('../utils/uploadFilters');
 
 const receiptUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: receiptFilter // images + PDF only
 }).single('receipt');
 exports.receiptUpload = receiptUpload;
 
@@ -29,7 +32,8 @@ exports.getAllItems = catchAsync(async (req, res, next) => {
   }
 
   if (search) {
-    const searchRegex = new RegExp(search, 'i');
+    // Escape regex metacharacters + cap length to prevent ReDoS / injection
+    const searchRegex = new RegExp(escapeRegex(String(search).slice(0, 100)), 'i');
     filter.$or = [
       { name: searchRegex },
       { partNumber: searchRegex },

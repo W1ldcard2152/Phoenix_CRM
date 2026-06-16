@@ -73,6 +73,7 @@ jest.mock('../../models/User', () => {
 });
 jest.mock('../../models/WorkOrderNote', () => createMockModel('WorkOrderNote'));
 jest.mock('../../models/CustomerInteraction', () => createMockModel('CustomerInteraction'));
+jest.mock('../../models/InventoryItem', () => createMockModel('InventoryItem'));
 
 // Mock external services
 jest.mock('../../services/emailService', () => ({
@@ -341,6 +342,93 @@ describe('Route access control', () => {
 
     it('allows service-writer to GET /api/interactions', () =>
       expectNotForbidden('get', '/api/interactions', 'serviceWriter'));
+  });
+
+  // ==================================================================
+  //  User management — admin only (security hardening)
+  // ==================================================================
+  describe('User management routes (/api/users)', () => {
+    const userId = mockObjectId().toString();
+
+    it('rejects management from GET /api/users (list)', () =>
+      expectForbidden('get', '/api/users', 'management'));
+
+    it('rejects service-writer from POST /api/users (create)', () =>
+      expectForbidden('post', '/api/users', 'serviceWriter'));
+
+    it('rejects management from PATCH /api/users/:id', () =>
+      expectForbidden('patch', `/api/users/${userId}`, 'management'));
+
+    it('rejects management from DELETE /api/users/:id', () =>
+      expectForbidden('delete', `/api/users/${userId}`, 'management'));
+
+    it('allows admin to GET /api/users (list)', () =>
+      expectNotForbidden('get', '/api/users', 'admin'));
+
+    // Self-service routes stay open to all authenticated users
+    it('allows technician to GET /api/users/me', () =>
+      expectNotForbidden('get', '/api/users/me', 'technician'));
+  });
+
+  // ==================================================================
+  //  Admin user management — admin only (security hardening)
+  // ==================================================================
+  describe('Admin routes (/api/admin)', () => {
+    const userId = mockObjectId().toString();
+
+    it('rejects management from GET /api/admin/users', () =>
+      expectForbidden('get', '/api/admin/users', 'management'));
+
+    it('rejects management from POST /api/admin/users', () =>
+      expectForbidden('post', '/api/admin/users', 'management'));
+
+    it('rejects management from PATCH /api/admin/users/:id', () =>
+      expectForbidden('patch', `/api/admin/users/${userId}`, 'management'));
+
+    it('allows admin to GET /api/admin/users', () =>
+      expectNotForbidden('get', '/api/admin/users', 'admin'));
+  });
+
+  // ==================================================================
+  //  Public self-registration is removed (security hardening)
+  // ==================================================================
+  describe('Signup is disabled', () => {
+    it('no longer exports a signup handler', () => {
+      expect(authController.signup).toBeUndefined();
+    });
+
+    it('POST /api/users/signup is not a live route (admin gets 404, not 201)', async () => {
+      asRole('admin');
+      const res = await request(app)
+        .post('/api/users/signup')
+        .send({ email: 'x@y.com', password: 'password1', passwordConfirm: 'password1' });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ==================================================================
+  //  Inventory — reads open, writes office-staff only (security hardening)
+  // ==================================================================
+  describe('Inventory routes (/api/inventory)', () => {
+    const itemId = mockObjectId().toString();
+
+    it('allows technician to GET /api/inventory (read)', () =>
+      expectNotForbidden('get', '/api/inventory', 'technician'));
+
+    it('rejects technician from POST /api/inventory (create)', () =>
+      expectForbidden('post', '/api/inventory', 'technician'));
+
+    it('rejects technician from PATCH /api/inventory/:id', () =>
+      expectForbidden('patch', `/api/inventory/${itemId}`, 'technician'));
+
+    it('rejects technician from DELETE /api/inventory/:id', () =>
+      expectForbidden('delete', `/api/inventory/${itemId}`, 'technician'));
+
+    it('rejects technician from PATCH /api/inventory/:id/adjust', () =>
+      expectForbidden('patch', `/api/inventory/${itemId}/adjust`, 'technician'));
+
+    it('allows service-writer to POST /api/inventory (create)', () =>
+      expectNotForbidden('post', '/api/inventory', 'serviceWriter'));
   });
 
   // ==================================================================

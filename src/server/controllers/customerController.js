@@ -3,6 +3,7 @@ const Vehicle = require('../models/Vehicle');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const cacheService = require('../services/cacheService');
+const escapeRegex = require('../utils/escapeRegex');
 
 // Helper function to normalize phone numbers (remove non-digits)
 const normalizePhoneNumber = (phoneNumber) => {
@@ -179,6 +180,9 @@ exports.searchCustomers = catchAsync(async (req, res, next) => {
     return next(new AppError('Please provide a search query', 400));
   }
 
+  // Cap length + escape regex metacharacters to prevent ReDoS / NoSQL injection
+  const safeQuery = escapeRegex(query.trim().slice(0, 100));
+
   // Create an array of phone number variations to search for
   const phoneSearchQueries = [query];
   // If the query contains dashes, also search for the normalized version
@@ -193,12 +197,12 @@ exports.searchCustomers = catchAsync(async (req, res, next) => {
 
   const customers = await Customer.find({
     $or: [
-      { name: { $regex: query, $options: 'i' } },
-      { email: { $regex: query, $options: 'i' } },
-      // Search for all phone number variations
-      { phone: { $in: phoneSearchQueries.map(p => new RegExp(p, 'i')) } },
-      { 'address.street': { $regex: query, $options: 'i' } },
-      { 'address.city': { $regex: query, $options: 'i' } }
+      { name: { $regex: safeQuery, $options: 'i' } },
+      { email: { $regex: safeQuery, $options: 'i' } },
+      // Search for all phone number variations (escaped)
+      { phone: { $in: phoneSearchQueries.map(p => new RegExp(escapeRegex(p), 'i')) } },
+      { 'address.street': { $regex: safeQuery, $options: 'i' } },
+      { 'address.city': { $regex: safeQuery, $options: 'i' } }
     ]
   });
 
