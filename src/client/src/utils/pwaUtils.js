@@ -1,4 +1,6 @@
-// PWA Utility Functions for Phoenix CRM
+// PWA Utility Functions for CV Repair
+// NOTE: the `phoenix-crm-cache-` localStorage prefix below is intentionally
+// left unchanged so existing users' cached data/UI prefs survive the rebrand.
 
 /**
  * Check if the app is running as a PWA (installed)

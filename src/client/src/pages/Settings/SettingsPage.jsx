@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCompany } from '../../contexts/CompanyContext';
 import AuthService from '../../services/authService';
 import SettingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
@@ -40,6 +41,7 @@ const DEFAULT_SHOP_HOURS = [
 const SettingsPage = () => {
   const navigate = useNavigate();
   const { currentUser, updateUser, updateToken } = useAuth();
+  const { refreshCompany } = useCompany();
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'management';
 
@@ -69,6 +71,16 @@ const SettingsPage = () => {
   const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
   const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
 
+  // Company Profile State (admin/management only) — prints on invoices/quotes + app header
+  const [companyProfile, setCompanyProfile] = useState({
+    companyName: '', companyAddressLine1: '', companyAddressLine2: '',
+    companyPhone: '', companyEmail: '', companyWebsite: ''
+  });
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('');
+  const [companyMessage, setCompanyMessage] = useState({ type: '', text: '' });
+  const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
   // Shop Hours State (admin/management only)
   const [shopHours, setShopHours] = useState(null);
   const [shopHoursMessage, setShopHoursMessage] = useState({ type: '', text: '' });
@@ -92,10 +104,55 @@ const SettingsPage = () => {
           });
           setLaborTypes(res.data.settings.laborTypes || []);
           setShopHours(res.data.settings.shopHours || DEFAULT_SHOP_HOURS);
+          const s = res.data.settings;
+          setCompanyProfile({
+            companyName: s.companyName || '',
+            companyAddressLine1: s.companyAddressLine1 || '',
+            companyAddressLine2: s.companyAddressLine2 || '',
+            companyPhone: s.companyPhone || '',
+            companyEmail: s.companyEmail || '',
+            companyWebsite: s.companyWebsite || ''
+          });
+          setCompanyLogoUrl(s.companyLogoUrl || '');
         })
         .catch(() => {});
     }
   }, [isAdmin]);
+
+  const handleSaveCompanyProfile = async (e) => {
+    e.preventDefault();
+    setIsSavingCompany(true);
+    setCompanyMessage({ type: '', text: '' });
+    try {
+      await SettingsService.updateCompanyProfile(companyProfile);
+      await refreshCompany();
+      setCompanyMessage({ type: 'success', text: 'Company profile saved.' });
+      setTimeout(() => setCompanyMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      setCompanyMessage({ type: 'error', text: err.response?.data?.message || 'Failed to save company profile' });
+    } finally {
+      setIsSavingCompany(false);
+    }
+  };
+
+  const handleUploadLogo = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    setIsUploadingLogo(true);
+    setCompanyMessage({ type: '', text: '' });
+    try {
+      const res = await SettingsService.uploadCompanyLogo(file);
+      setCompanyLogoUrl(res.data.settings.companyLogoUrl || '');
+      await refreshCompany();
+      setCompanyMessage({ type: 'success', text: 'Logo updated.' });
+      setTimeout(() => setCompanyMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      setCompanyMessage({ type: 'error', text: err.response?.data?.message || 'Failed to upload logo' });
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
 
   const updateDayHours = (dayOfWeek, field, value) => {
     setShopHours(prev => prev.map(d =>
@@ -542,6 +599,120 @@ const SettingsPage = () => {
 
         {activeTab === 'shop' && isAdmin && (
           <div className="space-y-6">
+            {/* Company Profile — name + logo + contact info shown in the app header
+                and printed on invoices/quotes */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-1">Company Profile</h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Your company name, logo, and contact info. Shown in the app header and printed on invoices and quotes.
+              </p>
+
+              {companyMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  companyMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {companyMessage.text}
+                </div>
+              )}
+
+              {/* Logo */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Logo</label>
+                <div className="flex items-center gap-4">
+                  <div className="h-20 w-20 flex items-center justify-center border border-gray-200 rounded-md bg-gray-50 overflow-hidden">
+                    {companyLogoUrl ? (
+                      <img src={companyLogoUrl} alt="Company logo" className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <span className="text-xs text-gray-400">No logo</span>
+                    )}
+                  </div>
+                  <label className={`px-4 py-2 rounded-md cursor-pointer text-white ${
+                    isUploadingLogo ? 'bg-primary-400' : 'bg-primary-600 hover:bg-primary-700'
+                  }`}>
+                    {isUploadingLogo ? 'Uploading...' : 'Upload Logo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleUploadLogo}
+                      disabled={isUploadingLogo}
+                    />
+                  </label>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  PNG or JPG, up to 5MB. Used in the header and on printed documents.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveCompanyProfile} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    value={companyProfile.companyName}
+                    onChange={(e) => setCompanyProfile({ ...companyProfile, companyName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+                    <input
+                      type="text"
+                      value={companyProfile.companyAddressLine1}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, companyAddressLine1: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                    <input
+                      type="text"
+                      value={companyProfile.companyAddressLine2}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, companyAddressLine2: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={companyProfile.companyPhone}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, companyPhone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={companyProfile.companyEmail}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, companyEmail: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                    <input
+                      type="text"
+                      value={companyProfile.companyWebsite}
+                      onChange={(e) => setCompanyProfile({ ...companyProfile, companyWebsite: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingCompany}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-primary-400"
+                  >
+                    {isSavingCompany ? 'Saving...' : 'Save Company Profile'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-1">Shop Settings</h2>
               <p className="text-sm text-gray-500 mb-4">

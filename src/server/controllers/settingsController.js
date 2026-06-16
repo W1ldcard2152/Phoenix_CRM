@@ -1,6 +1,23 @@
 const Settings = require('../models/Settings');
 const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
+const s3Service = require('../services/s3Service');
+const multer = require('multer');
+
+// Accept image uploads only (company logo)
+const imageOnlyFilter = (req, file, cb) => {
+  if ((file.mimetype || '').toLowerCase().startsWith('image/')) return cb(null, true);
+  cb(new AppError('Unsupported file type. Please upload an image.', 400), false);
+};
+
+// In-memory upload for the company logo (images only, 5MB cap)
+const companyLogoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageOnlyFilter
+});
+exports.uploadCompanyLogoMiddleware = companyLogoUpload.single('logo');
 
 // Capitalize the first letter of every word, leave the rest alone.
 // Preserves intentional caps (R&R, ABS) — only nudges the first letter of each word.
@@ -40,6 +57,16 @@ exports.updateSettings = catchAsync(async (req, res) => {
   if (req.body.shopHours !== undefined) {
     settings.shopHours = req.body.shopHours;
   }
+  // Company / tenant identity (logo is managed via the dedicated upload route)
+  const companyFields = [
+    'companyName', 'companyAddressLine1', 'companyAddressLine2',
+    'companyPhone', 'companyEmail', 'companyWebsite'
+  ];
+  companyFields.forEach((field) => {
+    if (req.body[field] !== undefined) {
+      settings[field] = req.body[field];
+    }
+  });
 
   await settings.save();
 
@@ -506,4 +533,60 @@ exports.removeCategory = catchAsync(async (req, res) => {
   await settings.save();
 
   res.status(200).json({ status: 'success', data: { settings } });
+});
+
+// Upload a new company logo to S3 and point companyLogoUrl at the public stream
+// route. Replaces (and deletes) any previously uploaded logo.
+exports.uploadCompanyLogo = catchAsync(async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('Please upload a logo image', 400));
+  }
+
+  const uploadResult = await s3Service.uploadFile(
+    req.file.buffer,
+    req.file.originalname,
+    req.file.mimetype
+  );
+  if (!uploadResult.key) {
+    return next(new AppError('Logo upload failed (storage not configured)', 500));
+  }
+
+  const settings = await Settings.getSettings();
+  const previousKey = settings.companyLogoKey;
+
+  settings.companyLogoKey = uploadResult.key;
+  // Stable, same-origin URL (avoids signed-URL expiry / CORS in PDFs).
+  // Cache-bust with the key so the header/PDF pick up the new image.
+  settings.companyLogoUrl = `/api/settings/company-logo?v=${encodeURIComponent(uploadResult.key)}`;
+  await settings.save();
+
+  // Best-effort cleanup of the prior logo object
+  if (previousKey) {
+    try { await s3Service.deleteFile(previousKey); } catch (err) {
+      console.error('Failed to delete previous company logo:', err.message);
+    }
+  }
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
+// Public (no-auth) stream of the current company logo so it loads same-origin
+// in the app header, on the login-adjacent header, and in generated PDFs.
+exports.getCompanyLogo = catchAsync(async (req, res) => {
+  const settings = await Settings.getSettings();
+
+  // No uploaded logo → fall back to the bundled default public asset
+  if (!settings.companyLogoKey) {
+    return res.redirect('/phxLogo.png');
+  }
+
+  const file = await s3Service.getFileStream(settings.companyLogoKey);
+  if (!file || !file.body) {
+    return res.redirect('/phxLogo.png');
+  }
+
+  res.set('Content-Type', file.contentType || 'image/png');
+  if (file.contentLength) res.set('Content-Length', String(file.contentLength));
+  res.set('Cache-Control', 'public, max-age=86400');
+  file.body.pipe(res);
 });

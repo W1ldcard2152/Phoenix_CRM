@@ -76,6 +76,20 @@ const SettingsSchema = new Schema(
       type: Boolean,
       default: false
     },
+    // Company / tenant identity shown in the app header and on printed
+    // invoices/quotes. Defaults to the first tenant (Phoenix Automotive Group)
+    // so existing deployments are unchanged; editable per-company in Settings.
+    companyName: { type: String, default: 'Phoenix Automotive Group, Inc.' },
+    companyAddressLine1: { type: String, default: '201 Ford St' },
+    companyAddressLine2: { type: String, default: 'Newark NY 14513' },
+    companyPhone: { type: String, default: '315-830-0008' },
+    companyEmail: { type: String, default: 'phxautosalvage@gmail.com' },
+    companyWebsite: { type: String, default: 'www.phxautogroup.com' },
+    // Stable same-origin URL used by the header and PDF generation. Defaults to
+    // the bundled public asset; set to /api/settings/company-logo once a logo
+    // has been uploaded to S3 (see companyLogoKey).
+    companyLogoUrl: { type: String, default: '/phxLogo.png' },
+    companyLogoKey: { type: String, default: '' },
     shopHours: {
       type: [{
         dayOfWeek: { type: Number, required: true },
@@ -149,6 +163,15 @@ SettingsSchema.statics.getSettings = async function () {
       settings.brandOverrides = ['ACDelco'];
       needsSave = true;
     }
+    // Backfill company identity for documents created before these fields existed
+    if (settings.companyName === undefined) { settings.companyName = 'Phoenix Automotive Group, Inc.'; needsSave = true; }
+    if (settings.companyAddressLine1 === undefined) { settings.companyAddressLine1 = '201 Ford St'; needsSave = true; }
+    if (settings.companyAddressLine2 === undefined) { settings.companyAddressLine2 = 'Newark NY 14513'; needsSave = true; }
+    if (settings.companyPhone === undefined) { settings.companyPhone = '315-830-0008'; needsSave = true; }
+    if (settings.companyEmail === undefined) { settings.companyEmail = 'phxautosalvage@gmail.com'; needsSave = true; }
+    if (settings.companyWebsite === undefined) { settings.companyWebsite = 'www.phxautogroup.com'; needsSave = true; }
+    if (settings.companyLogoUrl === undefined) { settings.companyLogoUrl = '/phxLogo.png'; needsSave = true; }
+    if (settings.companyLogoKey === undefined) { settings.companyLogoKey = ''; needsSave = true; }
     if (!settings.shopHours || settings.shopHours.length === 0) {
       settings.shopHours = [
         { dayOfWeek: 0, open: '08:00', close: '18:00', closed: true,  lunchStart: '', lunchDuration: 0 },

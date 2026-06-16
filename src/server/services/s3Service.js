@@ -33,8 +33,17 @@ exports.uploadFile = async (fileBuffer, fileName, mimeType, acl = 'private') => 
     return { fileUrl: null, key: null };
   }
 
+  // Sanitize the original filename before composing the S3 key: strip any path
+  // separators / control chars and keep only safe characters. Prevents the
+  // client-supplied name from injecting unexpected key structure.
+  const safeName = String(fileName || 'file')
+    .replace(/[/\\]+/g, '_')        // no path separators
+    .replace(/[^\w.\- ]+/g, '_')    // allow word chars, dot, dash, space
+    .replace(/\s+/g, '_')
+    .slice(0, 120) || 'file';
+
   // Generate a unique file name to prevent conflicts
-  const uniqueFileName = `${uuidv4()}-${fileName}`;
+  const uniqueFileName = `${uuidv4()}-${safeName}`;
 
   const command = new PutObjectCommand({
     Bucket: bucketName,
@@ -85,6 +94,30 @@ exports.getSignedUrl = async (key, expiresIn = 3600) => {
     console.error('Error generating signed URL:', err);
     throw new Error(`Failed to generate signed URL: ${err.message}`);
   }
+};
+
+/**
+ * Fetch an object from S3 for streaming back to the client.
+ * @param {String} key - S3 object key
+ * @returns {Promise<Object|null>} { body, contentType, contentLength } or null
+ */
+exports.getFileStream = async (key) => {
+  if (!s3Client || !key) {
+    return null;
+  }
+
+  const decodedKey = decodeURIComponent(key);
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: decodedKey
+  });
+
+  const response = await s3Client.send(command);
+  return {
+    body: response.Body, // Node.js Readable stream
+    contentType: response.ContentType,
+    contentLength: response.ContentLength
+  };
 };
 
 /**

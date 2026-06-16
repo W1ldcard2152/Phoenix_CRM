@@ -109,6 +109,20 @@ const SettingsService = {
   updateShopHours: async (shopHours) => {
     const response = await API.patch('/settings', { shopHours });
     return response.data;
+  },
+
+  updateCompanyProfile: async (profile) => {
+    const response = await API.patch('/settings', profile);
+    return response.data;
+  },
+
+  uploadCompanyLogo: async (file) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await API.post('/settings/company-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
   }
 };
 

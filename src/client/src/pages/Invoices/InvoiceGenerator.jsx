@@ -12,7 +12,7 @@ import SelectInput from '../../components/common/SelectInput';
 import DiscountModal from '../../components/common/DiscountModal';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
 import { formatCurrency, getTodayForInput } from '../../utils/formatters';
-import businessConfig from '../../config/businessConfig';
+import { useCompany } from '../../contexts/CompanyContext';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import { calculateDiscountAmount, describeDiscount } from '../../utils/discountUtils';
@@ -55,15 +55,17 @@ const InvoiceGenerator = () => {
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
   const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
 
-  // Business settings from centralized config (for InvoiceDisplay component)
+  const { company } = useCompany();
+
+  // Configurable company identity (for the InvoiceDisplay component)
   const settings = {
-    businessName: businessConfig.name,
-    businessAddressLine1: businessConfig.addressLine1,
-    businessAddressLine2: businessConfig.addressLine2,
-    businessPhone: businessConfig.phone,
-    businessEmail: businessConfig.email,
-    businessWebsite: businessConfig.website,
-    businessLogo: businessConfig.logo
+    businessName: company.name,
+    businessAddressLine1: company.addressLine1,
+    businessAddressLine2: company.addressLine2,
+    businessPhone: company.phone,
+    businessEmail: company.email,
+    businessWebsite: company.website,
+    businessLogo: company.logo
   };
 
   // Enhanced loadWorkOrder function
@@ -432,7 +434,8 @@ const InvoiceGenerator = () => {
       : null,
     terms: invoiceData.terms,
     technicianName: getCustomerFacingName(selectedWorkOrder?.assignedTechnician),
-    serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(selectedWorkOrder?.createdBy) : undefined
+    serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(selectedWorkOrder?.createdBy) : undefined,
+    company
   });
 
   const generatePDF = async () => {

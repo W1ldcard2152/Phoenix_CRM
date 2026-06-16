@@ -29,7 +29,7 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
                 // New content is available; please refresh
                 
                 // Show update notification to user
-                if (window.confirm('A new version of Phoenix CRM is available. Reload to update?')) {
+                if (window.confirm('A new version of CV Repair is available. Reload to update?')) {
                   window.location.reload();
                 }
               }

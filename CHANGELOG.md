@@ -2,6 +2,15 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-16
+
+### Added
+- **Company Profile** settings (Shop tab, admin/management) — set your company name, contact info, and logo. The logo and name now appear in the app header (sidebar/top bar) and on printed invoices and quotes, and the logo can be uploaded as an image. Existing shops keep their current name and logo until changed.
+
+### Changed
+- Rebranded the app to **CV Repair**: new dog logo and favicon, updated app/PWA name, install icons, offline page, and a warm brown-and-parchment color theme throughout (buttons, links, and backgrounds). The sidebar is now a solid brand color with the CV Repair logo at the top, and the sign-in screen shows the CV Repair logo.
+- Company identity on invoices and quotes is now driven by the Company Profile setting instead of being hardcoded, so the name, address, phone, email, website, and logo on printed documents follow whatever you set.
+
 ## 2026-06-15
 
 ### Added

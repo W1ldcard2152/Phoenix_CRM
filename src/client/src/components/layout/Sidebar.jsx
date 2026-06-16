@@ -83,7 +83,7 @@ const Sidebar = () => {
 
   const allSecondaryItems = [
     { name: 'Technicians', path: '/technicians', icon: 'fas fa-hard-hat', roles: ['admin', 'management', 'service-writer'] },
-    { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt', roles: ['admin', 'management'] },
+    { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt', roles: ['admin'] },
     { name: 'Settings', path: '/settings', icon: 'fas fa-sliders-h', roles: null },
   ];
 
@@ -112,24 +112,21 @@ const Sidebar = () => {
             />
             
             {/* Sidebar */}
-            <div className="fixed top-0 left-0 h-full w-80 max-w-[85vw] text-white shadow-xl transform transition-transform duration-300 ease-in-out"
-              style={{
-                backgroundImage: 'linear-gradient(to bottom, rgba(23, 37, 84, 0.95), rgba(17, 24, 39, 0.98)), url(/navbar.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }}
+            <div
+              className="fixed top-0 left-0 h-full w-80 max-w-[85vw] text-white shadow-xl transform transition-transform duration-300 ease-in-out"
+              style={{ backgroundColor: '#4c2622' }}
             >
-              {/* Header with close button */}
-              <div className="flex items-center justify-between p-4 border-b border-primary-700">
-                <div className="flex items-center">
-                  <img src="/phxBanner.svg" alt="Phoenix CRM" className="h-8" />
-                </div>
+              {/* Brand header — logo blends into the solid brand color */}
+              <div className="relative border-b border-primary-700/60">
                 <button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="p-2 rounded hover:bg-primary-700 focus:outline-none"
+                  className="absolute top-2 right-2 p-2 rounded text-white/70 hover:bg-primary-700 focus:outline-none"
                 >
                   <i className="fas fa-times text-lg"></i>
                 </button>
+                <div className="flex justify-center pt-6 pb-4 px-4">
+                  <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+                </div>
               </div>
 
               {/* Navigation Content */}
@@ -220,20 +217,26 @@ const Sidebar = () => {
       className={`${
         collapsed ? 'w-16' : 'w-64'
       } text-white transition-all duration-300 ease-in-out min-h-screen flex flex-col relative hidden md:flex`}
-      style={{
-        backgroundImage: 'linear-gradient(to bottom, rgba(23, 37, 84, 0.85), rgba(17, 24, 39, 0.95)), url(/navbar.jpg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-      }}
+      style={{ backgroundColor: '#4c2622' }}
     >
-      {/* Desktop toggle button */}
-      <div className="relative z-10 flex items-center justify-end p-4 border-b border-primary-700 h-[60px]">
+      {/* Brand header — the logo's background matches the solid sidebar color,
+          so the dog + name + tagline appear to float on the brand color */}
+      <div className="relative z-10 border-b border-primary-700/60">
         <button
           onClick={toggleSidebar}
-          className="p-1 rounded hover:bg-primary-700 focus:outline-none"
+          className="absolute top-2 right-2 z-20 p-1 rounded text-white/70 hover:bg-primary-700 focus:outline-none"
         >
-          <i className={`fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`}></i>
+          <i className={`fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'} text-xs`}></i>
         </button>
+        {collapsed ? (
+          <div className="flex justify-center py-4">
+            <img src="/cvDog.png" alt="CV Repair" className="w-9" />
+          </div>
+        ) : (
+          <div className="flex justify-center pt-6 pb-4 px-3">
+            <img src="/cvLogo.png" alt="CV Repair — by Certaverus Systems" className="w-40 max-w-full" />
+          </div>
+        )}
       </div>
 
       {/* Quick Entry CTA - Desktop */}

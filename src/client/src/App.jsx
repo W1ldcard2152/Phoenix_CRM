@@ -30,7 +30,6 @@ import InvoiceGenerator from './pages/Invoices/InvoiceGenerator';
 import InvoiceDetail from './pages/Invoices/InvoiceDetail'; // Added InvoiceDetail
 import InvoiceList from './pages/Invoices/InvoiceList';
 import Login from './pages/Auth/Login';
-import Register from './pages/Auth/Register';
 import OAuthCallback from './pages/Auth/OAuthCallback';
 
 
@@ -57,6 +56,7 @@ import TechnicianWorkOrderDetail from './pages/TechnicianPortal/TechnicianWorkOr
 
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { CompanyProvider } from './contexts/CompanyContext';
 
 // Private Route Component
 const PrivateRoute = ({ children }) => {
@@ -87,17 +87,17 @@ const RoleBasedDashboard = () => {
 const App = () => {
   return (
     <AuthProvider>
+      <CompanyProvider>
       <Router>
         <Routes>
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route path="/auth/callback" element={<OAuthCallback />} />
           
           {/* App Routes with Layout */}
           <Route path="/*" element={
             <PrivateRoute>
-              <div className="flex h-screen bg-gray-100">
+              <div className="flex h-screen bg-parchment">
                 {/* Mobile: Sidebar overlay, Desktop: Fixed sidebar */}
                 <Sidebar />
                 <div className="flex flex-col flex-1 overflow-hidden min-w-0">
@@ -154,7 +154,7 @@ const App = () => {
                       <Route path="/technicians" element={<TechniciansPage />} />
                       
                       {/* Admin Routes */}
-                      <Route path="/admin" element={<RoleRoute roles={['admin', 'management']}><AdminPage /></RoleRoute>} />
+                      <Route path="/admin" element={<RoleRoute roles={['admin']}><AdminPage /></RoleRoute>} />
 
                       {/* Feedback Admin Route (admin only) */}
                       <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
@@ -181,6 +181,7 @@ const App = () => {
           } />
         </Routes>
       </Router>
+      </CompanyProvider>
     </AuthProvider>
   );
 };

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCompany } from '../../contexts/CompanyContext';
 import FeedbackButton from '../common/FeedbackButton';
 import GlobalSearch from '../common/GlobalSearch';
 
 const Navbar = ({ onMobileMenuToggle }) => {
   const { currentUser, logout, isAuthenticated } = useAuth();
+  const { company } = useCompany();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -49,8 +51,8 @@ const Navbar = ({ onMobileMenuToggle }) => {
             <div className="flex-shrink-0">
               <Link to="/" className="text-xl font-bold text-primary-600">
                 <img
-                  src="/phxBanner.svg"
-                  alt="Phoenix Automotive Group Banner"
+                  src={company.logo}
+                  alt={company.name}
                   className="h-8 sm:h-12 lg:h-14"
                 />
               </Link>
@@ -107,12 +109,6 @@ const Navbar = ({ onMobileMenuToggle }) => {
                   className="text-gray-700 hover:text-primary-600 transition text-xs sm:text-sm font-medium"
                 >
                   Login
-                </Link>
-                <Link
-                  to="/register"
-                  className="bg-primary-600 text-white rounded-md py-1.5 px-2 sm:py-2 sm:px-4 hover:bg-primary-700 transition text-xs sm:text-sm font-medium"
-                >
-                  Register
                 </Link>
               </div>
             )}

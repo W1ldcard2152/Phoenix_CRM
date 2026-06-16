@@ -5,7 +5,7 @@ import workOrderNotesService from '../../services/workOrderNotesService';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import InvoiceDisplay from '../../components/invoice/InvoiceDisplay';
-import businessConfig from '../../config/businessConfig';
+import { useCompany } from '../../contexts/CompanyContext';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { normalizeInvoiceGroups } from '../../utils/jobGrouping';
 import { getCustomerFacingName } from '../../utils/nameUtils';
@@ -22,16 +22,17 @@ const InvoiceDetail = () => {
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
   const printableRef = useRef(); // Keep for InvoiceDisplay component
+  const { company } = useCompany();
 
-  // Business settings from centralized config (for InvoiceDisplay component)
+  // Configurable company identity (for the InvoiceDisplay component)
   const settings = {
-    businessName: businessConfig.name,
-    businessAddressLine1: businessConfig.addressLine1,
-    businessAddressLine2: businessConfig.addressLine2,
-    businessPhone: businessConfig.phone,
-    businessEmail: businessConfig.email,
-    businessWebsite: businessConfig.website,
-    businessLogo: businessConfig.logo
+    businessName: company.name,
+    businessAddressLine1: company.addressLine1,
+    businessAddressLine2: company.addressLine2,
+    businessPhone: company.phone,
+    businessEmail: company.email,
+    businessWebsite: company.website,
+    businessLogo: company.logo
   };
 
   useEffect(() => {
@@ -127,7 +128,8 @@ const InvoiceDetail = () => {
       taxRate: invoice?.taxRate || 0,
       terms: invoice?.terms,
       technicianName: getCustomerFacingName(invoice?.workOrder?.assignedTechnician),
-      serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(invoice?.workOrder?.createdBy) : undefined
+      serviceAdvisorName: showServiceAdvisorOnInvoice ? getCustomerFacingName(invoice?.workOrder?.createdBy) : undefined,
+      company
     };
   };
 

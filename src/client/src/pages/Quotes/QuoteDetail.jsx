@@ -12,7 +12,7 @@ import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import JobServiceSelect from '../../components/common/JobServiceSelect';
 import FollowUpModal from '../../components/followups/FollowUpModal';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
-import businessConfig from '../../config/businessConfig';
+import { useCompany } from '../../contexts/CompanyContext';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 
@@ -28,15 +28,17 @@ const QuoteDetail = () => {
     'ECS Tuning', 'FCP Euro', 'Other'
   ];
 
-  // Business settings from centralized config (for QuoteDisplay component)
+  const { company } = useCompany();
+
+  // Configurable company identity (for the QuoteDisplay component)
   const businessSettings = {
-    businessName: businessConfig.name,
-    businessAddressLine1: businessConfig.addressLine1,
-    businessAddressLine2: businessConfig.addressLine2,
-    businessPhone: businessConfig.phone,
-    businessEmail: businessConfig.email,
-    businessWebsite: businessConfig.website,
-    businessLogo: businessConfig.logo
+    businessName: company.name,
+    businessAddressLine1: company.addressLine1,
+    businessAddressLine2: company.addressLine2,
+    businessPhone: company.phone,
+    businessEmail: company.email,
+    businessWebsite: company.website,
+    businessLogo: company.logo
   };
 
   const [quote, setQuote] = useState(null);
@@ -362,7 +364,8 @@ const QuoteDetail = () => {
     servicePackages: quote.servicePackages || [],
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
     technicianName: getCustomerFacingName(quote.assignedTechnician),
-    serviceAdvisorName: getCustomerFacingName(quote.createdBy)
+    serviceAdvisorName: getCustomerFacingName(quote.createdBy),
+    company
   });
 
   // Print handler

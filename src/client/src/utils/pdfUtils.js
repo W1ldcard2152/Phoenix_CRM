@@ -284,8 +284,13 @@ export const generateDocumentHtml = (type, data) => {
     taxRate = 0,
     terms,
     technicianName,
-    serviceAdvisorName
+    serviceAdvisorName,
+    company
   } = data;
+
+  // Company identity for the document header/footer. Falls back to the bundled
+  // defaults when the caller doesn't supply a configured company profile.
+  const co = company || businessConfig;
 
   // Filter service packages to only include committed ones for invoices/work orders
   const committedServicePackages = servicePackages.filter(pkg => pkg.committed !== false);
@@ -344,12 +349,12 @@ export const generateDocumentHtml = (type, data) => {
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         <tr>
           <td style="vertical-align: top;">
-            <img src="${window.location.origin}${businessConfig.logoPng || businessConfig.logo}" alt="${businessConfig.name}" style="height: 64px; width: auto; margin-bottom: 8px;" onerror="this.style.display='none'"/>
-            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${businessConfig.addressLine1}</p>
-            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${businessConfig.addressLine2}</p>
-            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${businessConfig.phone}</p>
-            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${businessConfig.email}</p>
-            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${businessConfig.website}</p>
+            <img src="${window.location.origin}${co.logoPng || co.logo}" alt="${co.name}" style="height: 64px; width: auto; margin-bottom: 8px;" onerror="this.style.display='none'"/>
+            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.addressLine1}</p>
+            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.addressLine2}</p>
+            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.phone}</p>
+            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.email}</p>
+            <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.website}</p>
           </td>
           <td style="text-align: right; vertical-align: top;">
             <h2 style="margin: 0 0 4px 0; font-size: 28px; font-weight: bold; color: #1f2937;">${typeLabels[type] || 'DOCUMENT'}</h2>
@@ -501,7 +506,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Footer -->
       <div style="text-align: center; font-size: 12px; color: #4b5563; margin-top: 32px; border-top: 1px solid #d1d5db; padding-top: 16px; text-decoration: none;">
         <p style="margin: 0 0 2px 0; text-decoration: none;">Thank you for your business!</p>
-        <p style="margin: 0; text-decoration: none;">${businessConfig.name} | ${businessConfig.phone} | ${businessConfig.website}</p>
+        <p style="margin: 0; text-decoration: none;">${co.name} | ${co.phone} | ${co.website}</p>
       </div>
     </div>
   `;

@@ -1,10 +1,10 @@
 {
-  "name": "Phoenix Auto CRM",
-  "short_name": "Auto CRM",
-  "description": "Customer and vehicle management system for Phoenix Automotive",
+  "name": "CV Repair",
+  "short_name": "CV Repair",
+  "description": "Auto repair shop management system",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#6366f1"
+  "background_color": "#f5f0e8",
+  "theme_color": "#4c2622"
 }

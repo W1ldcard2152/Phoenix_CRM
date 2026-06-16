@@ -3,7 +3,12 @@ const router = express.Router();
 const settingsController = require('../controllers/settingsController');
 const authController = require('../controllers/authController');
 
-// All settings routes require authentication
+// Public: stream the current company logo (used by the app header and by PDF
+// generation, which need a same-origin image without auth/CORS). Registered
+// before `protect` so it stays unauthenticated.
+router.get('/company-logo', settingsController.getCompanyLogo);
+
+// All remaining settings routes require authentication
 router.use(authController.protect);
 
 // Any authenticated user can read settings
@@ -11,6 +16,14 @@ router.get('/', settingsController.getSettings);
 
 // Only admin/management can update settings
 router.patch('/', authController.restrictTo('admin', 'management'), settingsController.updateSettings);
+
+// Upload/replace the company logo (admin/management only)
+router.post(
+  '/company-logo',
+  authController.restrictTo('admin', 'management'),
+  settingsController.uploadCompanyLogoMiddleware,
+  settingsController.uploadCompanyLogo
+);
 
 // Add or remove vendors/categories (admin/management only)
 router.post('/vendors', authController.restrictTo('admin', 'management'), settingsController.addVendor);

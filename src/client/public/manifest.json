@@ -1,7 +1,7 @@
 {
-  "short_name": "Phoenix CRM",
-  "name": "Phoenix Auto Repair CRM",
-  "description": "Auto Repair Shop CRM - Manage customers, vehicles, and work orders",
+  "short_name": "CV Repair",
+  "name": "CV Repair",
+  "description": "Auto repair shop management - customers, vehicles, work orders, and invoicing",
   "icons": [
     {
       "src": "favicon.ico",
@@ -32,8 +32,8 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#1d4ed8",
-  "background_color": "#ffffff",
+  "theme_color": "#4c2622",
+  "background_color": "#f5f0e8",
   "categories": ["business", "productivity"],
   "lang": "en-US",
   "dir": "ltr",
