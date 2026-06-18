@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import WorkOrderService from '../../services/workOrderService';
 import SettingsService from '../../services/settingsService';
 import WorksheetService from '../../services/worksheetService';
@@ -11,7 +12,62 @@ import SplitPartModal from './SplitPartModal';
 import AutosaveField from './AutosaveField';
 
 const PRIORITY_LABEL = { cost: 'Lowest Cost', time: 'Fastest Availability' };
-const QUALITY_LABEL = { oem: 'OEM', aftermarket: 'Aftermarket', 'used-ok': 'Used OK' };
+const QUALITY_LABEL = { oem: 'OEM', aftermarket: 'Aftermarket', 'used-ok': 'Used' };
+const PRIORITY_OPTIONS = [
+  { value: 'cost', label: 'Lowest Cost' },
+  { value: 'time', label: 'Fastest Availability' },
+];
+const QUALITY_OPTIONS = [
+  { value: 'oem', label: 'OEM' },
+  { value: 'aftermarket', label: 'Aftermarket' },
+  { value: 'used-ok', label: 'Used' },
+];
+
+const qualityLabels = (arr) => (arr || []).map((q) => QUALITY_LABEL[q] || q).join(', ');
+
+// Inline editor for the sourcing basis — writes back to the WO root via setPrimer,
+// so a change here is reflected on the work order form (and vice versa).
+function BasisEditor({ initialPriority, initialQuality, onSave, onCancel, saving }) {
+  const [priority, setPriority] = useState(initialPriority || '');
+  const [quality, setQuality] = useState(initialQuality || []);
+  const toggle = (v) => setQuality((q) => (q.includes(v) ? q.filter((x) => x !== v) : [...q, v]));
+  const canSave = priority && quality.length > 0 && !saving;
+
+  const pill = (active) =>
+    `px-2 py-1 text-xs rounded border ${active ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-300 text-gray-600'}`;
+
+  return (
+    <div className="text-sm">
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Sourcing priority</div>
+      <div className="flex gap-1 mb-2">
+        {PRIORITY_OPTIONS.map((o) => (
+          <button key={o.value} type="button" className={pill(priority === o.value)} onClick={() => setPriority(o.value)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Acceptable quality (one or more)</div>
+      <div className="flex flex-wrap gap-1 mb-3">
+        {QUALITY_OPTIONS.map((o) => (
+          <button key={o.value} type="button" className={pill(quality.includes(o.value))} onClick={() => toggle(o.value)}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!canSave}
+          onClick={() => onSave({ sourcingPriority: priority, sourcingQuality: quality })}
+          className={`px-3 py-1 text-xs rounded text-white ${canSave ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" onClick={onCancel} className="px-3 py-1 text-xs rounded border border-gray-300">Cancel</button>
+      </div>
+    </div>
+  );
+}
 
 function SaveIndicator() {
   const { isSaving, lastSaved, error } = useSaveTracker();
@@ -26,18 +82,12 @@ function SaveIndicator() {
   return <span className="text-xs text-gray-400">All changes save automatically</span>;
 }
 
-function VendorPanel({ vendors, priority, quality }) {
+function VendorPanel({ vendors, priority }) {
   const tierLabel = priority === 'time' ? 'Speed' : 'Cost';
   return (
     <div className="text-sm">
-      <div className="mb-2">
-        <div className="text-[11px] uppercase tracking-wide text-gray-400">Sourcing basis</div>
-        <div className="text-gray-700">
-          {PRIORITY_LABEL[priority] || priority} · {QUALITY_LABEL[quality] || quality}
-        </div>
-        <div className="text-[11px] text-gray-400 mt-0.5">
-          Ranked by {tierLabel.toLowerCase()} tier, then manual order. Quality is a capture hint, not a filter.
-        </div>
+      <div className="text-[11px] text-gray-400 mb-1">
+        Ranked by {tierLabel.toLowerCase()} tier, then manual order. Quality is a capture hint, not a filter.
       </div>
       <ol className="space-y-1">
         {vendors.map((v, i) => (
@@ -58,6 +108,8 @@ function VendorPanel({ vendors, priority, quality }) {
 function WorksheetInner() {
   const { workOrderId } = useParams();
   const { track } = useSaveTracker();
+  const { user } = useAuth();
+  const isManager = ['admin', 'management'].includes(user?.role);
 
   const [workOrder, setWorkOrder] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -66,6 +118,8 @@ function WorksheetInner() {
   const [compareMode, setCompareMode] = useState(false);
   const [splitTarget, setSplitTarget] = useState(null);
   const [closed, setClosed] = useState(false);
+  const [editingBasis, setEditingBasis] = useState(false);
+  const [savingBasis, setSavingBasis] = useState(false);
 
   const reload = useCallback(async () => {
     const resp = await WorkOrderService.getWorkOrder(workOrderId);
@@ -109,6 +163,14 @@ function WorksheetInner() {
     await reload();
   };
 
+  // Add a vendor from the seller dropdown; refresh the local settings so the new
+  // vendor appears in every card's dropdown and in the ranking. Returns its name.
+  const handleAddVendor = useCallback(async (name, hostname) => {
+    const body = await track(() => SettingsService.addVendor(name, hostname));
+    if (body?.data?.settings) setSettings(body.data.settings);
+    return name;
+  }, [track]);
+
   const handleClose = async () => {
     await track(() => WorksheetService.closeWorksheet(workOrderId));
     setClosed(true);
@@ -138,15 +200,21 @@ function WorksheetInner() {
   const vehicle = typeof workOrder.vehicle === 'object' ? workOrder.vehicle : null;
   const vehicleLabel = vehicle ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() : '';
 
-  // HARD GATE: an unanswered primer blocks everything until both are set.
-  if (!workOrder.sourcingPriority || !workOrder.sourcingQuality) {
+  // HARD GATE: an unanswered primer blocks everything until both are set
+  // (quality is now a multi-select array, so check its length).
+  if (!workOrder.sourcingPriority || !(workOrder.sourcingQuality || []).length) {
     return <PrimerGate onSubmit={handlePrimer} vehicleLabel={vehicleLabel} />;
   }
 
-  const vendors = rankVendors(settings?.customVendors || [], {
+  const allVendors = settings?.customVendors || [];
+  // Ranking panel: filtered to this vehicle's make (guidance only).
+  const rankedVendors = rankVendors(allVendors, {
     priority: workOrder.sourcingPriority,
     make: vehicle?.make,
   });
+  // Seller dropdown + URL detection: every vendor, ranked by priority. NOT make-
+  // filtered — a writer can still buy from a general vendor, so don't hard-exclude.
+  const sellerVendors = rankVendors(allVendors, { priority: workOrder.sourcingPriority });
 
   const parts = workOrder.parts || [];
   const allSelected = parts.length > 0 && parts.every((p) => p.sourcingStatus === 'selected');
@@ -192,9 +260,44 @@ function WorksheetInner() {
       </header>
 
       <div className="p-3 space-y-4">
-        {/* Vendor ranking */}
+        {/* Sourcing basis (editable — syncs with the work order form) + vendor ranking */}
         <section className="bg-white border border-gray-200 rounded-lg p-3">
-          <VendorPanel vendors={vendors} priority={workOrder.sourcingPriority} quality={workOrder.sourcingQuality} />
+          {editingBasis ? (
+            <BasisEditor
+              initialPriority={workOrder.sourcingPriority}
+              initialQuality={workOrder.sourcingQuality || []}
+              saving={savingBasis}
+              onCancel={() => setEditingBasis(false)}
+              onSave={async (answers) => {
+                setSavingBasis(true);
+                try {
+                  await handlePrimer(answers);
+                  setEditingBasis(false);
+                } finally {
+                  setSavingBasis(false);
+                }
+              }}
+            />
+          ) : (
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-gray-400">Sourcing basis</div>
+                <div className="text-gray-700 text-sm">
+                  {PRIORITY_LABEL[workOrder.sourcingPriority] || workOrder.sourcingPriority}
+                  {' · '}
+                  {qualityLabels(workOrder.sourcingQuality)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingBasis(true)}
+                className="text-xs text-primary-600 hover:text-primary-800 shrink-0"
+              >
+                Edit
+              </button>
+            </div>
+          )}
+          {!editingBasis && <VendorPanel vendors={rankedVendors} priority={workOrder.sourcingPriority} />}
         </section>
 
         {/* Parts */}
@@ -210,10 +313,13 @@ function WorksheetInner() {
                 key={part._id}
                 workOrderId={workOrderId}
                 part={part}
-                vendors={vendors}
+                vendors={sellerVendors}
                 compareMode={compareMode}
                 mutate={mutate}
                 onSplit={setSplitTarget}
+                onAddVendor={handleAddVendor}
+                isManager={isManager}
+                markupPercentage={settings?.partMarkupPercentage ?? 30}
               />
             ))
           )}

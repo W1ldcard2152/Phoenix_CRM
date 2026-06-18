@@ -8,6 +8,7 @@ const Schema = mongoose.Schema;
 // audit trail and future agent-training data. `price` is the UNIT purchase price
 // (what the shop pays for one), mirroring PartSchema.cost (unit, pre-markup).
 const OfferSchema = new Schema({
+  description: { type: String, trim: true },       // the part name this offer is for -> part.name on selection
   seller: { type: String, trim: true },           // -> part.vendor on selection
   marketplaceSeller: { type: String, trim: true }, // -> part.supplier on selection
   manufacturer: { type: String, trim: true },      // -> part.brand on selection
@@ -17,7 +18,7 @@ const OfferSchema = new Schema({
   url: { type: String, trim: true },
   eta: { type: String, trim: true },                // decision-time only; stays on offer
   inStock: { type: Boolean },                       // decision-time only; stays on offer
-  condition: { type: String, enum: ['new', 'used', 'reman'] }, // stays on offer
+  condition: { type: String, enum: ['new', 'aftermarket', 'used', 'reman'] }, // stays on offer
   // Distinguishes human- vs agent-captured offers for the future AI sourcing flow.
   source: { type: String, enum: ['manual', 'agent'], default: 'manual' }
 });
@@ -153,9 +154,21 @@ const PartSchema = new Schema({
     type: String,
     trim: true
   },
+  // Manager (admin/management) who approved + committed the selected offer's details
+  // onto this placeholder. Enrichment happens at approval, NOT at selection.
+  approvedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approvedByName: {
+    type: String,
+    trim: true
+  },
+  // pending → selected (a writer picked an offer; placeholder unchanged, awaiting
+  // approval) → approved (a manager reviewed/edited and committed it to the part).
   sourcingStatus: { // Source of truth for worksheet progress; WO status is derived from these
     type: String,
-    enum: ['pending', 'selected'],
+    enum: ['pending', 'selected', 'approved'],
     default: 'pending'
   }
 });
@@ -520,7 +533,9 @@ const WorkOrderSchema = new Schema(
     // --- Parts Purchase Worksheet ---
     // Primer questions, set at WO creation, steer the worksheet's vendor ranking.
     sourcingPriority: { type: String, enum: ['time', 'cost'] },
-    sourcingQuality: { type: String, enum: ['oem', 'aftermarket', 'used-ok'] },
+    // Acceptable parts qualities — MULTI-select (e.g. OEM + Used but not aftermarket).
+    // A scalar string from a pre-array WO is cast to a single-element array on load.
+    sourcingQuality: [{ type: String, enum: ['oem', 'aftermarket', 'used-ok'] }],
     sourcingNotes: { type: String, default: '' }, // Worksheet-level scratchpad
     // Customer approval is recorded internally by the service writer (no outbound comms).
     // Left without a default so existing/unrecorded WOs read as undefined ("not yet

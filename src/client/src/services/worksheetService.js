@@ -67,10 +67,18 @@ const WorksheetService = {
     return res.data;
   },
 
-  // Confirm a selection: enriches the part in place + derives retail via markup,
-  // stamps selectedBy/selectedByName, sets sourcingStatus 'selected'.
+  // Record a selection (which offer the writer picked). Does NOT enrich the part —
+  // that happens at manager approval. Sets sourcingStatus 'selected'.
   selectOffer: async (workOrderId, partId, offerId, selectionReason) => {
     const res = await API.post(`${base(workOrderId)}/parts/${partId}/select`, { offerId, selectionReason });
+    return res.data;
+  },
+
+  // Manager approval: commit the (possibly edited) selected-offer fields onto the
+  // placeholder part. fields = { name, vendor, supplier, brand, partNumber, cost,
+  // coreCharge, url, price? }. Admin/management only.
+  approvePart: async (workOrderId, partId, fields) => {
+    const res = await API.post(`${base(workOrderId)}/parts/${partId}/approve`, fields);
     return res.data;
   },
 

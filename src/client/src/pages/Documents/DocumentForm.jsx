@@ -28,7 +28,14 @@ const getValidationSchema = (isQuote) => Yup.object().shape({
   ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
   diagnosticNotes: Yup.string(),
-  ...(isQuote ? {} : { skipDiagnostics: Yup.boolean() })
+  ...(isQuote ? {} : {
+    skipDiagnostics: Yup.boolean(),
+    // Parts sourcing primer — answered at WO creation, shared with the worksheet.
+    sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
+    sourcingQuality: Yup.array()
+      .of(Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']))
+      .min(1, 'Select at least one acceptable parts quality')
+  })
 });
 
 const DocumentForm = ({ mode = 'workorder' }) => {
@@ -57,7 +64,7 @@ const DocumentForm = ({ mode = 'workorder' }) => {
     diagnosticNotes: '',
     parts: [],
     labor: [],
-    ...(isQuote ? {} : { status: 'Work Order Created', skipDiagnostics: false })
+    ...(isQuote ? {} : { status: 'Work Order Created', skipDiagnostics: false, sourcingPriority: '', sourcingQuality: [] })
   });
 
   useEffect(() => {
@@ -109,7 +116,10 @@ const DocumentForm = ({ mode = 'workorder' }) => {
             labor: docData.labor || [],
             ...(isQuote ? {} : {
               status: docData.status || 'Work Order Created',
-              skipDiagnostics: docData.skipDiagnostics || false
+              skipDiagnostics: docData.skipDiagnostics || false,
+              // No fallback: an unanswered WO loads empty so the worksheet still prompts.
+              sourcingPriority: docData.sourcingPriority || '',
+              sourcingQuality: docData.sourcingQuality || []
             })
           });
 
@@ -234,7 +244,9 @@ const DocumentForm = ({ mode = 'workorder' }) => {
         serviceRequested: values.services.map(s => s.description).join('\n'),
         ...(isQuote ? {} : {
           status: values.status,
-          skipDiagnostics: values.skipDiagnostics
+          skipDiagnostics: values.skipDiagnostics,
+          sourcingPriority: values.sourcingPriority,
+          sourcingQuality: values.sourcingQuality
         })
       };
 
@@ -284,6 +296,18 @@ const DocumentForm = ({ mode = 'workorder' }) => {
     { value: 'Normal', label: 'Normal' },
     { value: 'High', label: 'High' },
     { value: 'Urgent', label: 'Urgent' }
+  ];
+
+  // Parts sourcing primer (work orders only). Shared with the Parts Purchase Worksheet
+  // — answering here pre-fills it there, and editing it in either place updates the other.
+  const sourcingPriorityOptions = [
+    { value: 'cost', label: 'Lowest Cost' },
+    { value: 'time', label: 'Fastest Availability' }
+  ];
+  const sourcingQualityOptions = [
+    { value: 'oem', label: 'OEM' },
+    { value: 'aftermarket', label: 'Aftermarket' },
+    { value: 'used-ok', label: 'Used' }
   ];
 
   return (
@@ -380,6 +404,57 @@ const DocumentForm = ({ mode = 'workorder' }) => {
                     required
                   />
                 </div>
+
+                {/* Parts sourcing primer - Work Orders only. Shared with the worksheet. */}
+                {!isQuote && (
+                  <>
+                    <div>
+                      <SelectInput
+                        label="Sourcing Priority"
+                        name="sourcingPriority"
+                        options={sourcingPriorityOptions}
+                        value={values.sourcingPriority}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                        error={errors.sourcingPriority}
+                        touched={touched.sourcingPriority}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Acceptable Parts Quality <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {sourcingQualityOptions.map((opt) => {
+                          const checked = (values.sourcingQuality || []).includes(opt.value);
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => {
+                                const cur = values.sourcingQuality || [];
+                                const next = checked ? cur.filter((v) => v !== opt.value) : [...cur, opt.value];
+                                setFieldValue('sourcingQuality', next);
+                              }}
+                              className={`px-3 py-1.5 text-sm rounded-md border ${
+                                checked
+                                  ? 'border-primary-600 bg-primary-50 text-primary-700'
+                                  : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {typeof errors.sourcingQuality === 'string' && (
+                        <div className="text-red-500 text-sm mt-1">{errors.sourcingQuality}</div>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">Select every quality the customer will accept.</p>
+                    </div>
+                  </>
+                )}
 
                 {/* Skip Diagnostics - Work Orders only */}
                 {!isQuote && (

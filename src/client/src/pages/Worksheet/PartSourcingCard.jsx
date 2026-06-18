@@ -2,27 +2,44 @@ import React, { useState } from 'react';
 import OfferCard from './OfferCard';
 import CompareView from './CompareView';
 import AutosaveField from './AutosaveField';
+import ApprovalPanel from './ApprovalPanel';
 import WorksheetService from '../../services/worksheetService';
 
-// One placeholder part on the worksheet. Sourcing ENRICHES this existing part in
-// place — capturing offers, then confirming one. Already-selected parts stay
-// revisitable (re-selecting overwrites the enriched fields).
-export default function PartSourcingCard({ workOrderId, part, vendors, compareMode, mutate, onSplit }) {
+// One placeholder part on the worksheet. A writer captures offers and SELECTS one
+// (records the choice only); a manager then APPROVES — committing the chosen offer's
+// details onto the placeholder. pending → selected (awaiting approval) → approved.
+export default function PartSourcingCard({ workOrderId, part, vendors, compareMode, mutate, onSplit, onAddVendor, isManager, markupPercentage }) {
   const partId = part._id;
   const offers = part.offers || [];
   const isSelected = part.sourcingStatus === 'selected';
+  const isApproved = part.sourcingStatus === 'approved';
+  const selectedOffer = offers.find((o) => String(o._id) === String(part.selectedOfferId));
 
   // Star defaults to the currently-selected offer so revisiting shows it.
   const [starredOfferId, setStarredOfferId] = useState(part.selectedOfferId || null);
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState(part.selectionReason || '');
   const [qty, setQty] = useState(part.quantity || 1);
+  const [approving, setApproving] = useState(false);
 
-  const addOffer = () => mutate(() => WorksheetService.addOffer(workOrderId, partId, { source: 'manual' }));
+  const handleApprove = async (fields) => {
+    setApproving(true);
+    try {
+      await mutate(() => WorksheetService.approvePart(workOrderId, partId, fields));
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  // New offers prefill their description from the placeholder part name (the common
+  // case); the writer can refine it per offer, and the selected one replaces part.name.
+  const addOffer = () =>
+    mutate(() => WorksheetService.addOffer(workOrderId, partId, { source: 'manual', description: part.name }));
 
   const duplicateOffer = (o) =>
     mutate(() =>
       WorksheetService.addOffer(workOrderId, partId, {
+        description: o.description || part.name,
         partNumber: o.partNumber,
         manufacturer: o.manufacturer,
         condition: o.condition,
@@ -47,14 +64,24 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
 
   const starredOffer = offers.find((o) => o._id === starredOfferId);
 
+  const cardBorder = isApproved
+    ? 'border-emerald-300 bg-emerald-50/40'
+    : isSelected
+      ? 'border-green-300 bg-green-50/40'
+      : 'border-gray-200 bg-gray-50';
+
   return (
-    <div className={`rounded-lg border p-3 ${isSelected ? 'border-green-300 bg-green-50/40' : 'border-gray-200 bg-gray-50'}`}>
+    <div className={`rounded-lg border p-3 ${cardBorder}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-gray-900 truncate">{part.name}</h3>
-            {isSelected ? (
+            {isApproved ? (
+              <span className="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                approved
+              </span>
+            ) : isSelected ? (
               <span className="text-[10px] uppercase tracking-wide text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
                 selected
               </span>
@@ -64,13 +91,21 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
               </span>
             )}
           </div>
-          {isSelected && (
+          {isApproved ? (
+            // Committed values live on the part itself.
             <p className="text-xs text-gray-500 mt-0.5">
               {part.brand ? `${part.brand} ` : ''}
               {part.partNumber || ''} {part.vendor ? `· ${part.vendor}` : ''}
               {part.cost ? ` · $${Number(part.cost).toFixed(2)}/ea` : ''}
             </p>
-          )}
+          ) : isSelected && selectedOffer ? (
+            // Pre-approval: the placeholder is unchanged, so show the chosen OFFER's info.
+            <p className="text-xs text-gray-500 mt-0.5">
+              {selectedOffer.manufacturer ? `${selectedOffer.manufacturer} ` : ''}
+              {selectedOffer.partNumber || ''} {selectedOffer.seller ? `· ${selectedOffer.seller}` : ''}
+              {selectedOffer.price != null ? ` · $${Number(selectedOffer.price).toFixed(2)}/ea` : ''}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <label className="text-xs text-gray-500">Qty</label>
@@ -112,6 +147,7 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
                   isStarred={o._id === starredOfferId}
                   onStar={setStarredOfferId}
                   onChanged={mutate}
+                  onAddVendor={onAddVendor}
                 />
                 <button
                   type="button"
@@ -146,56 +182,86 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
         />
       </div>
 
-      {/* Selection */}
-      <div className="mt-3 border-t border-gray-200 pt-2">
-        {!confirming ? (
-          <button
-            type="button"
-            disabled={!starredOfferId}
-            onClick={() => setConfirming(true)}
-            className={`text-sm px-3 py-1.5 rounded-md text-white ${
-              starredOfferId ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'
-            }`}
-          >
-            {isSelected ? 'Change selection' : 'Confirm part selection'}
-          </button>
+      {/* Status / approval / selection */}
+      <div className="mt-3 border-t border-gray-200 pt-2 space-y-2">
+        {isApproved ? (
+          <div className="text-sm text-emerald-700">
+            <i className="fas fa-check-circle mr-1" />
+            Approved &amp; committed{part.approvedByName ? ` by ${part.approvedByName}` : ''}.
+          </div>
         ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-600">
-              Confirming{' '}
-              <span className="font-medium">
-                {starredOffer?.seller || starredOffer?.marketplaceSeller || 'starred offer'}
-                {starredOffer?.partNumber ? ` (${starredOffer.partNumber})` : ''}
-              </span>
-              . Why this one?
-            </p>
-            <textarea
-              rows={2}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="One sentence: why this offer was chosen."
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
-            />
-            <div className="flex gap-2">
+          <>
+            {/* A selected part awaits approval: managers get the commit form; others a notice. */}
+            {isSelected && (
+              isManager ? (
+                <ApprovalPanel
+                  offer={selectedOffer}
+                  markupPercentage={markupPercentage}
+                  saving={approving}
+                  onApprove={handleApprove}
+                />
+              ) : (
+                <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                  <i className="fas fa-hourglass-half mr-1" />Selected — awaiting manager approval.
+                </div>
+              )
+            )}
+
+            {/* Select / change selection — available until approved. */}
+            {!confirming ? (
               <button
                 type="button"
-                onClick={confirmSelection}
-                disabled={!reason.trim()}
-                className={`text-sm px-3 py-1.5 rounded-md text-white ${
-                  reason.trim() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'
+                disabled={!starredOfferId}
+                onClick={() => setConfirming(true)}
+                className={`text-sm px-3 py-1.5 rounded-md ${
+                  isSelected
+                    ? 'border border-gray-300 text-gray-700 hover:bg-white'
+                    : starredOfferId
+                      ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                      : 'bg-gray-300 cursor-not-allowed text-white'
                 }`}
               >
-                Confirm selection
+                {isSelected ? 'Change selection' : 'Confirm part selection'}
               </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="text-sm px-3 py-1.5 rounded-md border border-gray-300 hover:bg-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-600">
+                  Confirming{' '}
+                  <span className="font-medium">
+                    {starredOffer?.seller || starredOffer?.marketplaceSeller || 'starred offer'}
+                    {starredOffer?.partNumber ? ` (${starredOffer.partNumber})` : ''}
+                  </span>
+                  . Why this one?
+                </p>
+                <textarea
+                  rows={2}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="One sentence: why this offer was chosen."
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={confirmSelection}
+                    disabled={!reason.trim()}
+                    className={`text-sm px-3 py-1.5 rounded-md text-white ${
+                      reason.trim() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'
+                    }`}
+                  >
+                    Confirm selection
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    className="text-sm px-3 py-1.5 rounded-md border border-gray-300 hover:bg-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

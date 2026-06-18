@@ -141,145 +141,159 @@ const resetAll = () => {
 // =========================================================================
 //  selectOffer — the ported, non-mirrored code (markup + enrich-in-place)
 // =========================================================================
-// The enrichment is applied via WorkOrder.findOneAndUpdate($set, arrayFilters),
-// so the $set object is the assertion target (cf. how partFlow inspects updates).
+// Enrichment is applied via load-modify-save on the Mongoose subdoc, so the
+// mutated `part` object is the assertion target.
 describe('selectOffer', () => {
-  beforeEach(() => {
-    Settings.getSettings.mockResolvedValue({ partMarkupPercentage: 30 });
-    WorkOrder.findOneAndUpdate.mockResolvedValue({});
-  });
   afterEach(resetAll);
 
-  const runSelect = async ({ wo, part, offer, user, selectionReason = 'Cheapest in-stock new rotor' }) => {
+  const runSelect = async ({ wo, part, offer, user = makeUser(), selectionReason = 'Cheapest in-stock new rotor' }) => {
     WorkOrder.findById.mockResolvedValue(wo);
     const req = {
-      params: { id: wo._id.toString(), partId: part._id.toString(), offerId: offer._id.toString() },
-      body: { selectionReason },
+      params: { id: wo._id.toString(), partId: part._id.toString() },
+      body: { offerId: offer._id.toString(), selectionReason }, // offerId travels in the body
       user,
     };
     const next = mockNext();
     controller.selectOffer(req, mockRes(), next);
     await flushPromises();
-    expect(next).not.toHaveBeenCalled();
-    const call = WorkOrder.findOneAndUpdate.mock.calls[0];
-    return { set: call[1].$set, options: call[2], next };
+    return { next };
   };
 
-  it('maps offer.price→cost and DERIVES price=cost×1.30 as a UNIT value (qty untouched)', async () => {
+  it("records the choice (sourcingStatus 'selected', offer id, reason, selectedBy/Name)", async () => {
     const offer = makeOffer({ price: 100 });
-    const part = makePart({ quantity: 2, offers: [offer] });
-    const wo = makeWorkOrder({ parts: [part] });
-
-    const { set } = await runSelect({ wo, part, offer, user: makeUser() });
-
-    expect(set['parts.$[p].cost']).toBe(100);
-    expect(set['parts.$[p].price']).toBe(130);          // 100 × 1.30, NOT × quantity
-    expect(set['parts.$[p].price']).not.toBe(260);      // the "someone made it extended" regression
-    expect(set['parts.$[p].quantity']).toBeUndefined(); // quantity is never written by selection
-    expect(part.quantity).toBe(2);                      // in-memory quantity untouched
-  });
-
-  it('lands every enrich field on the correct part field', async () => {
-    const offer = makeOffer({
-      seller: 'FCP Euro',
-      marketplaceSeller: 'fcp-store',
-      manufacturer: 'ATE',
-      partNumber: 'ATE-999',
-      coreCharge: 12,
-      url: 'https://fcpeuro.com/p/ATE-999',
-      price: 80,
-    });
-    const part = makePart({ offers: [offer] });
-    const wo = makeWorkOrder({ parts: [part] });
-
-    const { set } = await runSelect({ wo, part, offer, user: makeUser() });
-
-    expect(set['parts.$[p].vendor']).toBe('FCP Euro');        // seller → vendor
-    expect(set['parts.$[p].supplier']).toBe('fcp-store');     // marketplaceSeller → supplier
-    expect(set['parts.$[p].brand']).toBe('ATE');              // manufacturer → brand
-    expect(set['parts.$[p].partNumber']).toBe('ATE-999');     // partNumber → partNumber
-    expect(set['parts.$[p].coreCharge']).toBe(12);            // coreCharge → coreCharge
-    expect(set['parts.$[p].url']).toBe('https://fcpeuro.com/p/ATE-999'); // url → url
-    expect(set['parts.$[p].cost']).toBe(80);                  // offer.price → cost
-  });
-
-  it('writes selectionReason to part.selectionReason and leaves part.notes UNTOUCHED', async () => {
-    const offer = makeOffer();
-    const part = makePart({ notes: 'Customer says pulsation under braking — check runout', offers: [offer] });
-    const wo = makeWorkOrder({ parts: [part] });
-
-    const { set } = await runSelect({ wo, part, offer, user: makeUser(), selectionReason: 'OEM-quality, fastest ETA' });
-
-    expect(set['parts.$[p].selectionReason']).toBe('OEM-quality, fastest ETA');
-    // The Phase 4 correction: selection must not overwrite or append to the human note.
-    expect(Object.keys(set)).not.toContain('parts.$[p].notes');
-    expect(part.notes).toBe('Customer says pulsation under braking — check runout');
-  });
-
-  it("sets sourcingStatus 'selected' and stamps selectedBy / selectedByName / selectedOfferId", async () => {
-    const offer = makeOffer();
     const part = makePart({ offers: [offer] });
     const wo = makeWorkOrder({ parts: [part] });
     const user = makeUser({ name: 'Dana Writer' });
 
-    const { set } = await runSelect({ wo, part, offer, user });
+    await runSelect({ wo, part, offer, user, selectionReason: 'Best ETA' });
 
-    expect(set['parts.$[p].sourcingStatus']).toBe('selected');
-    expect(set['parts.$[p].selectedBy']).toBe(user._id);
-    expect(set['parts.$[p].selectedByName']).toBe('Dana Writer');
-    expect(set['parts.$[p].selectedOfferId']).toBe(offer._id);
+    expect(part.sourcingStatus).toBe('selected');
+    expect(part.selectedOfferId).toBe(offer._id);
+    expect(part.selectionReason).toBe('Best ETA');
+    expect(part.selectedBy).toBe(user._id);
+    expect(part.selectedByName).toBe('Dana Writer');
   });
 
-  it('keeps eta / inStock / condition / source on the offer (NOT written to the part)', async () => {
-    const offer = makeOffer({ eta: '5 days', inStock: false, condition: 'reman', source: 'agent' });
-    const part = makePart({ offers: [offer] });
+  it('does NOT enrich the placeholder — name/cost/price/vendor stay put (deferred to approval)', async () => {
+    const offer = makeOffer({ description: 'Cam actuator OEM', seller: 'RockAuto', manufacturer: 'Bosch', partNumber: '10921AA23B', price: 100 });
+    const part = makePart({ name: 'Passenger Cam Actuator', cost: 0, price: 0, vendor: '', brand: '', partNumber: '', offers: [offer] });
     const wo = makeWorkOrder({ parts: [part] });
 
-    const { set } = await runSelect({ wo, part, offer, user: makeUser() });
+    await runSelect({ wo, part, offer });
 
-    const keys = Object.keys(set);
-    expect(keys).not.toContain('parts.$[p].eta');
-    expect(keys).not.toContain('parts.$[p].inStock');
-    expect(keys).not.toContain('parts.$[p].condition');
-    expect(keys).not.toContain('parts.$[p].source');
+    expect(part.name).toBe('Passenger Cam Actuator'); // unchanged
+    expect(part.cost).toBe(0);
+    expect(part.price).toBe(0);
+    expect(part.vendor).toBe('');
+    expect(part.brand).toBe('');
+    expect(part.partNumber).toBe('');
   });
 
-  it('re-selection overwrites enriched fields with the new offer and does NOT change WO status', async () => {
+  it('re-selection repoints to the new offer, clears prior approval, and does NOT change WO status', async () => {
     const offerA = makeOffer({ seller: 'RockAuto', price: 100 });
     const offerB = makeOffer({ seller: 'eBay.com', price: 50 });
-    // Part already selected against offerA.
     const part = makePart({
       offers: [offerA, offerB],
-      sourcingStatus: 'selected',
+      sourcingStatus: 'approved',
       selectedOfferId: offerA._id,
-      cost: 100,
-      price: 130,
-      vendor: 'RockAuto',
+      approvedByName: 'Mona Manager',
     });
-    const wo = makeWorkOrder({ parts: [part], status: 'Parts Sourcing - In Progress' });
+    const wo = makeWorkOrder({ parts: [part], status: 'Parts Selected - Pending Approval' });
 
-    const { set } = await runSelect({ wo, part, offer: offerB, user: makeUser() });
+    await runSelect({ wo, part, offer: offerB });
 
-    expect(set['parts.$[p].cost']).toBe(50);
-    expect(set['parts.$[p].price']).toBe(65);            // 50 × 1.30
-    expect(set['parts.$[p].vendor']).toBe('eBay.com');
-    expect(set['parts.$[p].selectedOfferId']).toBe(offerB._id);
-    expect(set['parts.$[p].sourcingStatus']).toBe('selected');
-
-    // Selection never touches WO status (status is evaluated only on close/reconcile).
-    expect(set.status).toBeUndefined();
-    expect(wo.status).toBe('Parts Sourcing - In Progress');
-    expect(wo.save).not.toHaveBeenCalled();
+    expect(part.selectedOfferId).toBe(offerB._id);
+    expect(part.sourcingStatus).toBe('selected');     // back to awaiting approval
+    expect(part.approvedByName).toBeUndefined();       // prior approval cleared
+    expect(wo.status).toBe('Parts Selected - Pending Approval'); // status untouched by selection
   });
 
-  it('scopes the update to the target part via arrayFilters', async () => {
-    const offer = makeOffer();
-    const part = makePart({ offers: [offer] });
+  it('returns 404 when the offer id is not on the part', async () => {
+    const part = makePart({ offers: [makeOffer()] });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+    const req = {
+      params: { id: wo._id.toString(), partId: part._id.toString() },
+      body: { offerId: objectId().toString(), selectionReason: 'x' },
+      user: makeUser(),
+    };
+    const next = mockNext();
+    controller.selectOffer(req, mockRes(), next);
+    await flushPromises();
+    expect(next.mock.calls[0][0].statusCode).toBe(404);
+  });
+});
+
+// =========================================================================
+//  approvePart — manager commit (enrichment + markup now live here)
+// =========================================================================
+describe('approvePart', () => {
+  beforeEach(() => {
+    Settings.getSettings.mockResolvedValue({ partMarkupPercentage: 30 });
+  });
+  afterEach(resetAll);
+
+  const runApprove = async ({ wo, part, body, user = makeUser({ role: 'management' }) }) => {
+    WorkOrder.findById.mockResolvedValue(wo);
+    const req = { params: { id: wo._id.toString(), partId: part._id.toString() }, body, user };
+    const next = mockNext();
+    controller.approvePart(req, mockRes(), next);
+    await flushPromises();
+    return { next };
+  };
+
+  it('commits the submitted fields onto the part and DERIVES price=cost×1.30 (unit)', async () => {
+    const part = makePart({ name: 'placeholder', quantity: 2, sourcingStatus: 'selected', offers: [makeOffer()] });
+    const wo = makeWorkOrder({ parts: [part] });
+    const user = makeUser({ name: 'Mona Manager', role: 'management' });
+
+    const { next } = await runApprove({
+      wo, part, user,
+      body: { name: 'Cam actuator', vendor: 'RockAuto', supplier: 's', brand: 'Bosch', partNumber: '10921AA23B', cost: 100, coreCharge: 5, url: 'u' },
+    });
+
+    expect(next).not.toHaveBeenCalled();
+    expect(part.name).toBe('Cam actuator');
+    expect(part.vendor).toBe('RockAuto');
+    expect(part.brand).toBe('Bosch');
+    expect(part.partNumber).toBe('10921AA23B');
+    expect(part.cost).toBe(100);
+    expect(part.price).toBe(130);   // markup, NOT × quantity
+    expect(part.quantity).toBe(2);
+    expect(part.coreCharge).toBe(5);
+    expect(part.sourcingStatus).toBe('approved');
+    expect(part.approvedBy).toBe(user._id);
+    expect(part.approvedByName).toBe('Mona Manager');
+  });
+
+  it('honors an explicit manager price override instead of deriving from markup', async () => {
+    const part = makePart({ sourcingStatus: 'selected', offers: [makeOffer()] });
     const wo = makeWorkOrder({ parts: [part] });
 
-    const { options } = await runSelect({ wo, part, offer, user: makeUser() });
+    await runApprove({ wo, part, body: { name: 'x', cost: 100, price: 199.99 } });
 
-    expect(options.arrayFilters).toEqual([{ 'p._id': part._id.toString() }]);
+    expect(part.cost).toBe(100);
+    expect(part.price).toBe(199.99);
+  });
+
+  it('rejects approving a part that is not selected (400)', async () => {
+    const part = makePart({ sourcingStatus: 'pending', offers: [makeOffer()] });
+    const wo = makeWorkOrder({ parts: [part] });
+
+    const { next } = await runApprove({ wo, part, body: { name: 'x', cost: 1 } });
+
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(part.sourcingStatus).toBe('pending'); // unchanged
+  });
+
+  it('never blanks the required name when none is submitted', async () => {
+    const part = makePart({ name: 'Keep me', sourcingStatus: 'selected', offers: [makeOffer()] });
+    const wo = makeWorkOrder({ parts: [part] });
+
+    await runApprove({ wo, part, body: { cost: 10 } });
+
+    expect(part.name).toBe('Keep me');
+    expect(part.sourcingStatus).toBe('approved');
   });
 });
 
@@ -353,6 +367,16 @@ describe('worksheet status transitions', () => {
       await callStatus(controller.closeWorksheet, wo);
       expect(wo.status).toBe('Parts Sourcing - In Progress');
       expect(wo.save).not.toHaveBeenCalled();
+    });
+
+    it("a mix of 'selected' and 'approved' (none pending) → 'Parts Selected - Pending Approval'", async () => {
+      const wo = makeWorkOrder({
+        status: 'Parts Sourcing - In Progress',
+        parts: [makePart({ sourcingStatus: 'approved' }), makePart({ sourcingStatus: 'selected' })],
+      });
+      await callStatus(controller.closeWorksheet, wo);
+      expect(wo.status).toBe('Parts Selected - Pending Approval');
+      expect(wo.save).toHaveBeenCalled();
     });
   });
 });

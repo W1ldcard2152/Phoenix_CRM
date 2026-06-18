@@ -14,6 +14,7 @@ import { useSaveTracker } from './SaveContext';
 export default function AutosaveField({
   initialValue = '',
   onPersist,
+  onValueChange,   // optional: fires on every keystroke so a parent can mirror the live value
   multiline = false,
   className = '',
   ...rest
@@ -22,14 +23,20 @@ export default function AutosaveField({
   const initialRef = useRef(initialValue == null ? '' : String(initialValue));
 
   const load = useCallback(() => Promise.resolve(initialRef.current), []);
-  const persist = useCallback((value) => track(() => onPersist(value)), [track, onPersist]);
+  // Swallow the rejection after track() records it: a failed autosave surfaces via the
+  // worksheet's save indicator (error state) rather than as an uncaught promise — the
+  // debounced timer and onBlur flush are fire-and-forget and must not crash the UI.
+  const persist = useCallback((value) => track(() => onPersist(value)).catch(() => {}), [track, onPersist]);
 
   const { content, onChange, saveNow } = useAutosaveScratchpad(load, persist, 2000);
 
   const commonProps = {
     className,
     value: content,
-    onChange: (e) => onChange(e.target.value),
+    onChange: (e) => {
+      onChange(e.target.value);
+      if (onValueChange) onValueChange(e.target.value);
+    },
     onBlur: () => saveNow(),
     ...rest,
   };

@@ -17,11 +17,14 @@ const QUALITY_OPTIONS = [
 // answers are written back to the WO ROOT, so they show everywhere afterward.
 export default function PrimerGate({ onSubmit, vehicleLabel }) {
   const [priority, setPriority] = useState('');
-  const [quality, setQuality] = useState('');
+  const [quality, setQuality] = useState([]); // multi-select: acceptable qualities
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const canSubmit = priority && quality && !saving;
+  const canSubmit = priority && quality.length > 0 && !saving;
+
+  const toggleQuality = (value) =>
+    setQuality((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -35,7 +38,8 @@ export default function PrimerGate({ onSubmit, vehicleLabel }) {
     }
   };
 
-  const OptionGroup = ({ title, prompt, options, value, onChange }) => (
+  // Single-select group (priority).
+  const SingleGroup = ({ title, prompt, options, value, onChange }) => (
     <div className="mb-6">
       <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
       <p className="text-xs text-gray-500 mb-2">{prompt}</p>
@@ -69,20 +73,40 @@ export default function PrimerGate({ onSubmit, vehicleLabel }) {
           ranking and offer capture unlock once both are set.
         </p>
 
-        <OptionGroup
+        <SingleGroup
           title="Sourcing Priority"
           prompt="What matters more for this job?"
           options={PRIORITY_OPTIONS}
           value={priority}
           onChange={setPriority}
         />
-        <OptionGroup
-          title="Parts Quality Preference"
-          prompt="What quality of parts is acceptable?"
-          options={QUALITY_OPTIONS}
-          value={quality}
-          onChange={setQuality}
-        />
+
+        {/* Quality is MULTI-select: every acceptable category. */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-900">Acceptable Parts Quality</h3>
+          <p className="text-xs text-gray-500 mb-2">Select every quality you'd accept (one or more).</p>
+          <div className="space-y-2">
+            {QUALITY_OPTIONS.map((opt) => {
+              const checked = quality.includes(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggleQuality(opt.value)}
+                  className={`w-full flex items-start gap-2 text-left px-3 py-2 rounded-md border transition ${
+                    checked ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600' : 'border-gray-300 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <i className={`mt-0.5 fas ${checked ? 'fa-check-square text-primary-600' : 'fa-square text-gray-300'}`} />
+                  <span>
+                    <span className="font-medium text-gray-900">{opt.label}</span>
+                    <span className="block text-xs text-gray-500">{opt.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 

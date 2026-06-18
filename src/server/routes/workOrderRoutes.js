@@ -71,6 +71,8 @@ router.post('/:id/worksheet/parts/:partId/offers', wsRoles, workOrderController.
 router.patch('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.updateOffer);
 router.delete('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.removeOffer);
 router.post('/:id/worksheet/parts/:partId/select', wsRoles, workOrderController.selectOffer);
+// Approval commits the selected offer onto the part — manager (admin/management) only.
+router.post('/:id/worksheet/parts/:partId/approve', authController.restrictTo('admin', 'management'), workOrderController.approvePart);
 router.post('/:id/worksheet/parts/:partId/split', wsRoles, workOrderController.splitPart);
 // Customer approval is recorded internally by the service writer — admin/management only.
 router.post('/:id/worksheet/customer-approval', authController.restrictTo('admin', 'management'), workOrderController.recordCustomerApproval);

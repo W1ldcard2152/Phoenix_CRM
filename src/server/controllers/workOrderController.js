@@ -470,8 +470,9 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
     const currentWO = await WorkOrder.findById(req.params.id);
     const currentStatus = workOrderData.status || currentWO?.status;
 
-    // If all parts are ordered, auto-set status to "Parts Ordered"
-    const preOrderStatuses = ['Work Order Created', 'Appointment Scheduled', 'Appointment Complete', 'Inspection In Progress', 'Inspection/Diag Complete'];
+    // If all parts are ordered, auto-set status to "Parts Ordered". Includes the
+    // worksheet sourcing statuses so ordering hands off cleanly from the worksheet.
+    const preOrderStatuses = ['Work Order Created', 'Appointment Scheduled', 'Appointment Complete', 'Inspection In Progress', 'Inspection/Diag Complete', 'Parts Sourcing - In Progress', 'Parts Selected - Pending Approval'];
     const allPartsOrdered = workOrderData.parts.every(part => part.ordered === true);
     if (allPartsOrdered && preOrderStatuses.includes(currentStatus)) {
       workOrderData.status = 'Parts Ordered';
@@ -1156,6 +1157,7 @@ const respondWithWorkOrder = async (res, workOrderId) => {
 // sub-doc and normalizes numeric/enum values).
 const sanitizeOfferInput = (body = {}) => {
   const offer = {};
+  if (body.description !== undefined) offer.description = body.description;
   if (body.seller !== undefined) offer.seller = body.seller;
   if (body.marketplaceSeller !== undefined) offer.marketplaceSeller = body.marketplaceSeller;
   if (body.manufacturer !== undefined) offer.manufacturer = body.manufacturer;
@@ -1188,8 +1190,10 @@ exports.addOffer = catchAsync(async (req, res, next) => {
   await respondWithWorkOrder(res, id);
 });
 
-// Field-by-field edit of an existing offer (positional via arrayFilters — never
-// resends the whole offers array).
+// Field-by-field edit of an existing offer. Load-modify-save (Mongoose writes only
+// the dirty subpath, so the offers array isn't resent). We use this rather than a
+// positional arrayFilters $set because Mongoose does not cast arrayFilters values
+// (string ids wouldn't match the stored ObjectIds).
 exports.updateOffer = catchAsync(async (req, res, next) => {
   const { id, partId, offerId } = req.params;
   const fields = sanitizeOfferInput(req.body);
@@ -1197,42 +1201,42 @@ exports.updateOffer = catchAsync(async (req, res, next) => {
     return next(new AppError('No valid offer fields to update', 400));
   }
 
-  const setObj = {};
-  for (const [key, value] of Object.entries(fields)) {
-    setObj[`parts.$[p].offers.$[o].${key}`] = value;
-  }
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+  const offer = part.offers.id(offerId);
+  if (!offer) return next(new AppError('Offer not found on this part', 404));
 
-  const result = await WorkOrder.findOneAndUpdate(
-    { _id: id },
-    { $set: setObj },
-    { new: true, arrayFilters: [{ 'p._id': partId }, { 'o._id': offerId }] }
-  );
-  if (!result) return next(new AppError('Work order not found', 404));
+  Object.entries(fields).forEach(([key, value]) => { offer[key] = value; });
+  workOrder.markModified('parts');
+  await workOrder.save();
 
   await respondWithWorkOrder(res, id);
 });
 
-// Remove an offer ($pull via arrayFilters). For mistaken/duplicate captures —
-// rejected-but-considered offers are normally KEPT as the audit trail.
+// Remove an offer. For mistaken/duplicate captures — rejected-but-considered offers
+// are normally KEPT as the audit trail.
 exports.removeOffer = catchAsync(async (req, res, next) => {
   const { id, partId, offerId } = req.params;
 
-  const result = await WorkOrder.findOneAndUpdate(
-    { _id: id },
-    { $pull: { 'parts.$[p].offers': { _id: offerId } } },
-    { new: true, arrayFilters: [{ 'p._id': partId }] }
-  );
-  if (!result) return next(new AppError('Work order not found', 404));
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+
+  part.offers.pull(offerId);
+  workOrder.markModified('parts');
+  await workOrder.save();
 
   await respondWithWorkOrder(res, id);
 });
 
-// Confirm a selection: enrich the placeholder part IN PLACE and derive retail
-// price server-side from the markup percentage. THIS is the one piece that is
-// new code rather than a mirror of the Service Package slice.
+// Record a selection. This ONLY marks which offer the writer picked — it does NOT
+// enrich the placeholder. Enrichment (and markup) happens later when a manager
+// approves (approvePart). A service writer may do this; a manager approves it.
 exports.selectOffer = catchAsync(async (req, res, next) => {
-  const { id, partId, offerId } = req.params;
-  const { selectionReason } = req.body;
+  const { id, partId } = req.params;
+  // offerId + selectionReason come in the body (route is .../parts/:partId/select).
+  const { offerId, selectionReason } = req.body;
 
   const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
   const part = workOrder.parts.id(partId);
@@ -1240,43 +1244,68 @@ exports.selectOffer = catchAsync(async (req, res, next) => {
   const offer = part.offers.id(offerId);
   if (!offer) return next(new AppError('Offer not found on this part', 404));
 
-  // Markup lives client-side in the part modal; port it to the server here.
-  // offer.price is the UNIT purchase price (what the shop pays for one) → part.cost.
-  // Retail is derived: price = round(cost × (1 + pct/100), 2). Quantity multiplies
-  // downstream (partsCost virtual), so cost/price stay unit values.
-  const settings = await Settings.getSettings();
-  const pct = settings.partMarkupPercentage != null ? settings.partMarkupPercentage : 30;
-  const cost = offer.price != null ? offer.price : 0;
-  const price = Math.round(cost * (1 + pct / 100) * 100) / 100;
+  // Selection records the choice only — the placeholder's name/cost/etc. are left
+  // untouched until a manager approves. Re-selection just repoints to a new offer.
+  part.selectedOfferId = offer._id;
+  part.selectionReason = selectionReason;
+  part.sourcingStatus = 'selected';
+  part.selectedBy = req.user._id;
+  part.selectedByName = req.user.name;
+  // A re-selection on an already-approved part drops it back to awaiting approval.
+  part.approvedBy = undefined;
+  part.approvedByName = undefined;
 
-  // Enrich-in-place mapping. eta / inStock / condition / source stay on the offer.
-  // NOTE: part.notes is intentionally NOT touched — it's an existing human note
-  // field (symptoms, reminders) that selection must not clobber. The selection
-  // rationale lives in its own dedicated part.selectionReason field below.
-  const enriched = {
-    'parts.$[p].vendor': offer.seller,
-    'parts.$[p].supplier': offer.marketplaceSeller,
-    'parts.$[p].brand': offer.manufacturer,
-    'parts.$[p].partNumber': offer.partNumber,
-    'parts.$[p].coreCharge': offer.coreCharge || 0,
-    'parts.$[p].url': offer.url,
-    'parts.$[p].cost': cost,
-    'parts.$[p].price': price,
-    'parts.$[p].selectedOfferId': offer._id,
-    'parts.$[p].selectionReason': selectionReason,
-    'parts.$[p].sourcingStatus': 'selected',
-    'parts.$[p].selectedBy': req.user._id,
-    'parts.$[p].selectedByName': req.user.name
-  };
+  workOrder.markModified('parts');
+  await workOrder.save();
 
-  await WorkOrder.findOneAndUpdate(
-    { _id: id },
-    { $set: enriched },
-    { new: true, arrayFilters: [{ 'p._id': partId }] }
-  );
+  // Status is evaluated only on close/reconcile, never per selection.
+  await respondWithWorkOrder(res, id);
+});
 
-  // Re-selection overwrites the enriched fields and must NOT churn WO status —
-  // status is evaluated only on close/reconcile, never per selection.
+// Manager approval (admin/management): review/edit the selected offer's details and
+// COMMIT them onto the placeholder part. This is where enrichment + markup happen —
+// the inversion vs. the Service Package slice (enrich existing part, don't create).
+exports.approvePart = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+  if (part.sourcingStatus !== 'selected') {
+    return next(new AppError('Only a selected part can be approved', 400));
+  }
+
+  // The manager submits the final (possibly edited) field values to commit. eta /
+  // inStock / condition / source stay on the offer; part.notes (human notes) is not
+  // touched — the selection rationale lives in part.selectionReason.
+  const { name, vendor, supplier, brand, partNumber, cost, coreCharge, url, price } = req.body;
+
+  if (name && name.trim()) part.name = name.trim(); // never blank the required name
+  part.vendor = vendor;
+  part.supplier = supplier;
+  part.brand = brand;
+  part.partNumber = partNumber;
+  part.url = url;
+  part.coreCharge = Number(coreCharge) || 0;
+
+  const numericCost = Number(cost) || 0;
+  part.cost = numericCost;
+  // Retail: honor an explicit manager override; otherwise derive from markup server-side.
+  if (price != null && price !== '') {
+    part.price = Number(price) || 0;
+  } else {
+    const settings = await Settings.getSettings();
+    const pct = settings.partMarkupPercentage != null ? settings.partMarkupPercentage : 30;
+    part.price = Math.round(numericCost * (1 + pct / 100) * 100) / 100;
+  }
+
+  part.sourcingStatus = 'approved';
+  part.approvedBy = req.user._id;
+  part.approvedByName = req.user.name;
+
+  workOrder.markModified('parts');
+  await workOrder.save();
+
   await respondWithWorkOrder(res, id);
 });
 
@@ -1377,11 +1406,13 @@ exports.updateSourcingNotes = catchAsync(async (req, res, next) => {
 exports.setPrimer = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const { sourcingPriority, sourcingQuality } = req.body;
+  const allowedQuality = ['oem', 'aftermarket', 'used-ok'];
   if (!['time', 'cost'].includes(sourcingPriority)) {
     return next(new AppError('sourcingPriority must be "time" or "cost"', 400));
   }
-  if (!['oem', 'aftermarket', 'used-ok'].includes(sourcingQuality)) {
-    return next(new AppError('sourcingQuality must be "oem", "aftermarket" or "used-ok"', 400));
+  if (!Array.isArray(sourcingQuality) || sourcingQuality.length === 0 ||
+      sourcingQuality.some(q => !allowedQuality.includes(q))) {
+    return next(new AppError('sourcingQuality must be a non-empty list of oem/aftermarket/used-ok', 400));
   }
 
   const result = await WorkOrder.findByIdAndUpdate(
@@ -1405,11 +1436,11 @@ exports.openWorksheet = catchAsync(async (req, res, next) => {
   if (workOrder.status === 'Inspection/Diag Complete') {
     newStatus = 'Parts Sourcing - In Progress';
   }
-  // Reconcile-on-load: parts are the source of truth. If everything is already
-  // selected but status lags in sourcing, resolve it forward.
+  // Reconcile-on-load: parts are the source of truth. If everything is sourced
+  // (selected or approved — i.e. nothing still pending) but status lags, move forward.
   const parts = workOrder.parts || [];
-  const allSelected = parts.length > 0 && parts.every(p => p.sourcingStatus === 'selected');
-  if (newStatus === 'Parts Sourcing - In Progress' && allSelected) {
+  const allSourced = parts.length > 0 && parts.every(p => p.sourcingStatus !== 'pending');
+  if (newStatus === 'Parts Sourcing - In Progress' && allSourced) {
     newStatus = 'Parts Selected - Pending Approval';
   }
 
@@ -1430,7 +1461,8 @@ exports.closeWorksheet = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
 
   const parts = workOrder.parts || [];
-  const readyForApproval = parts.length === 0 || parts.every(p => p.sourcingStatus === 'selected');
+  // Sourced = selected or approved (nothing still pending). Zero parts also qualifies.
+  const readyForApproval = parts.length === 0 || parts.every(p => p.sourcingStatus !== 'pending');
 
   if (readyForApproval && workOrder.status !== 'Parts Selected - Pending Approval') {
     workOrder.status = 'Parts Selected - Pending Approval';
@@ -2053,7 +2085,10 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
       'Work Order Created',
       'Appointment Scheduled',
       'Inspection In Progress',
-      'Inspection/Diag Complete'
+      'Inspection/Diag Complete',
+      // Worksheet sourcing statuses — ordering from here advances to "Parts Ordered".
+      'Parts Sourcing - In Progress',
+      'Parts Selected - Pending Approval'
     ];
 
     if (allPartsOrdered && preOrderStatuses.includes(workOrder.status)) {

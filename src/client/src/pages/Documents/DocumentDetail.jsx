@@ -2002,22 +2002,6 @@ const DocumentDetail = () => {
             <Button to={`/work-orders/${id}/edit`} variant="primary">Edit Work Order</Button>
           )}
 
-          {/* Parts Purchase Worksheet — opens a narrow split-screen window. Always
-              available on a work order (not status-gated); the openWorksheet endpoint
-              guard prevents a re-open from dragging status backward. */}
-          {!isQuote && (
-            <Button
-              variant="outline"
-              onClick={() => window.open(
-                `/worksheet/${id}`,
-                `worksheet-${id}`,
-                'width=480,height=950,menubar=no,toolbar=no,location=no,status=no'
-              )}
-            >
-              <i className="fas fa-clipboard-list mr-1"></i>Worksheet
-            </Button>
-          )}
-
           <Button variant="outline" onClick={() => setFollowUpModalOpen(true)}>
             <i className="fas fa-thumbtack mr-1"></i>Follow-Up
           </Button>
@@ -2570,6 +2554,29 @@ const DocumentDetail = () => {
           <h2 className="text-lg font-bold text-gray-800">{isQuote ? 'Quoted Work' : 'Jobs'}</h2>
           {!isInvoiced && (
             <div className="flex flex-wrap items-center gap-2">
+              {/* Parts Purchase Worksheet — one per work order. Opens a narrow
+                  split-screen window; not status-gated (the openWorksheet endpoint
+                  guard keeps a re-open from dragging status backward). */}
+              {!isQuote && (
+                <Button
+                  onClick={() => {
+                    const w = 480;
+                    const h = 950;
+                    // Center over the current browser window (not the top-left default).
+                    const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+                    const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+                    window.open(
+                      `/worksheet/${id}`,
+                      `worksheet-${id}`,
+                      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+                    );
+                  }}
+                  variant="outline"
+                  size="sm"
+                >
+                  <i className="fas fa-clipboard-list mr-1"></i>Worksheet
+                </Button>
+              )}
               {!isQuote && permissions.workOrders.canAddParts(currentUser) && (
                 <Button onClick={() => setServiceModalOpen(true)} variant="outline" size="sm">
                   <i className="fas fa-box-open mr-1"></i>Service Package

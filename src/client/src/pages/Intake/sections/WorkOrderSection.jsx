@@ -22,7 +22,9 @@ const WorkOrderSchema = Yup.object().shape({
     .nullable(),
   skipDiagnostics: Yup.boolean(),
   sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
-  sourcingQuality: Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']).required('Parts quality is required')
+  sourcingQuality: Yup.array()
+    .of(Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']))
+    .min(1, 'Select at least one acceptable parts quality')
 });
 
 const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', onSaved, onError }, ref) => {
@@ -118,7 +120,7 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
   const sourcingQualityOptions = [
     { value: 'oem', label: 'OEM' },
     { value: 'aftermarket', label: 'Aftermarket' },
-    { value: 'used-ok', label: 'Used OK' }
+    { value: 'used-ok', label: 'Used' }
   ];
 
   return (
@@ -148,7 +150,7 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
           // No default: the writer must answer time-vs-cost and quality fresh per WO.
           // Empty is invalid (required), so the form won't submit until a human picks.
           sourcingPriority: '',
-          sourcingQuality: ''
+          sourcingQuality: [] // multi-select: every acceptable quality
         }}
         validationSchema={WorkOrderSchema}
         onSubmit={handleCreateWorkOrder}
@@ -296,17 +298,39 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
                     required
                   />
 
-                  <SelectInput
-                    label="Parts Quality Preference"
-                    name="sourcingQuality"
-                    options={sourcingQualityOptions}
-                    value={values.sourcingQuality}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.sourcingQuality}
-                    touched={touched.sourcingQuality}
-                    required
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Acceptable Parts Quality <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {sourcingQualityOptions.map((opt) => {
+                        const checked = values.sourcingQuality.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              const next = checked
+                                ? values.sourcingQuality.filter((v) => v !== opt.value)
+                                : [...values.sourcingQuality, opt.value];
+                              setFieldValue('sourcingQuality', next);
+                            }}
+                            className={`px-3 py-1.5 text-sm rounded-md border ${
+                              checked
+                                ? 'border-primary-600 bg-primary-50 text-primary-700'
+                                : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {typeof errors.sourcingQuality === 'string' && (
+                      <div className="text-red-500 text-sm mt-1">{errors.sourcingQuality}</div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">Select every quality the customer will accept.</p>
+                  </div>
                 </div>
               )}
 
