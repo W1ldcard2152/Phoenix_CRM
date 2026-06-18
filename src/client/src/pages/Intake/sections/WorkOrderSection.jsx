@@ -20,7 +20,9 @@ const WorkOrderSchema = Yup.object().shape({
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
     .nullable(),
-  skipDiagnostics: Yup.boolean()
+  skipDiagnostics: Yup.boolean(),
+  sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
+  sourcingQuality: Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']).required('Parts quality is required')
 });
 
 const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', onSaved, onError }, ref) => {
@@ -56,6 +58,13 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
         parts: [],
         labor: []
       };
+
+      // Sourcing primer questions steer the Parts Purchase Worksheet's vendor ranking.
+      // Work-order-only; not relevant to quotes.
+      if (!isQuoteMode) {
+        data.sourcingPriority = values.sourcingPriority;
+        data.sourcingQuality = values.sourcingQuality;
+      }
 
       if (isQuoteMode) {
         const response = await QuoteService.createQuote(data);
@@ -101,6 +110,17 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
     { value: 'Urgent', label: 'Urgent' }
   ];
 
+  const sourcingPriorityOptions = [
+    { value: 'cost', label: 'Lowest Cost' },
+    { value: 'time', label: 'Fastest Availability' }
+  ];
+
+  const sourcingQualityOptions = [
+    { value: 'oem', label: 'OEM' },
+    { value: 'aftermarket', label: 'Aftermarket' },
+    { value: 'used-ok', label: 'Used OK' }
+  ];
+
   return (
     <div className="space-y-4">
       {/* Context summary */}
@@ -124,7 +144,11 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
           priority: 'Normal',
           diagnosticNotes: '',
           currentMileage: vehicle?.currentMileage || '',
-          skipDiagnostics: false
+          skipDiagnostics: false,
+          // No default: the writer must answer time-vs-cost and quality fresh per WO.
+          // Empty is invalid (required), so the form won't submit until a human picks.
+          sourcingPriority: '',
+          sourcingQuality: ''
         }}
         validationSchema={WorkOrderSchema}
         onSubmit={handleCreateWorkOrder}
@@ -256,6 +280,35 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
                 rows={3}
                 placeholder="Any initial observations, customer complaints, or diagnostic notes..."
               />
+
+              {/* Parts sourcing primer (work orders only) — steers worksheet ranking */}
+              {!isQuoteMode && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <SelectInput
+                    label="Sourcing Priority"
+                    name="sourcingPriority"
+                    options={sourcingPriorityOptions}
+                    value={values.sourcingPriority}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.sourcingPriority}
+                    touched={touched.sourcingPriority}
+                    required
+                  />
+
+                  <SelectInput
+                    label="Parts Quality Preference"
+                    name="sourcingQuality"
+                    options={sourcingQualityOptions}
+                    value={values.sourcingQuality}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.sourcingQuality}
+                    touched={touched.sourcingQuality}
+                    required
+                  />
+                </div>
+              )}
 
               {/* Skip Diagnostics (not shown for quotes) */}
               {!isQuoteMode && (

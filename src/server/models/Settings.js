@@ -14,6 +14,21 @@ const defaultVendorHostnames = [
   { hostname: 'fcpeuro.com', vendor: 'FCP Euro' }
 ];
 
+// Tagged vendor objects power the Parts Purchase Worksheet's ranking. Tiers are
+// numeric (lower = better: faster / cheaper); the worksheet sorts by speedTier for
+// time-priority WOs and costTier for cost-priority WOs, with sortOrder as the
+// tiebreaker. `makes: ['all']` means the vendor is offered for every vehicle make.
+// Defaults are derived from defaultVendorHostnames so the two stay aligned.
+const defaultCustomVendors = () => defaultVendorHostnames.map((v, idx) => ({
+  name: v.vendor,
+  hostnames: [v.hostname],
+  makes: ['all'],
+  type: '',
+  speedTier: 0,
+  costTier: 0,
+  sortOrder: idx
+}));
+
 const SettingsSchema = new Schema(
   {
     partMarkupPercentage: {
@@ -27,12 +42,18 @@ const SettingsSchema = new Schema(
       min: 0
     },
     customVendors: {
-      type: [String],
-      default: [
-        'Walmart', 'Tractor Supply', 'Advance Auto Parts', 'Autozone',
-        'Napa Auto Parts', 'Rock Auto', 'eBay.com', 'Amazon.com',
-        'ECS Tuning', 'FCP Euro'
-      ]
+      // Upgraded from String[] to tagged objects for the Parts Purchase Worksheet.
+      // Legacy string entries are migrated in getSettings() below.
+      type: [{
+        name: { type: String, trim: true },
+        hostnames: { type: [String], default: [] },
+        makes: { type: [String], default: ['all'] }, // ['all'] or specific vehicle makes
+        type: { type: String, trim: true, default: '' }, // e.g. dealer / marketplace / retailer
+        speedTier: { type: Number, default: 0 }, // lower = faster
+        costTier: { type: Number, default: 0 },  // lower = cheaper
+        sortOrder: { type: Number, default: 0 }   // manual tiebreaker for ranking
+      }],
+      default: defaultCustomVendors
     },
     customCategories: {
       type: [String],
@@ -123,12 +144,29 @@ SettingsSchema.statics.getSettings = async function () {
   } else {
     // Backfill defaults for fields added after initial document creation
     let needsSave = false;
-    if (!settings.customVendors || settings.customVendors.length === 0) {
-      settings.customVendors = [
-        'Walmart', 'Tractor Supply', 'Advance Auto Parts', 'Autozone',
-        'Napa Auto Parts', 'Rock Auto', 'eBay.com', 'Amazon.com',
-        'ECS Tuning', 'FCP Euro'
-      ];
+
+    // Migrate customVendors from legacy String[] to tagged object[]. Read the raw
+    // document via the native driver because Mongoose hydration against the new
+    // object schema would discard plain-string array entries before we see them.
+    const raw = await this.collection.findOne({ _id: settings._id });
+    const rawVendors = raw && raw.customVendors;
+    if (Array.isArray(rawVendors) && rawVendors.length > 0 && typeof rawVendors[0] === 'string') {
+      const hostnameMap = (raw.vendorHostnames && raw.vendorHostnames.length)
+        ? raw.vendorHostnames
+        : defaultVendorHostnames;
+      settings.customVendors = rawVendors.map((name, idx) => ({
+        name,
+        // Seed hostnames from existing vendorHostnames entries that name this vendor.
+        hostnames: hostnameMap.filter(h => h.vendor === name).map(h => h.hostname),
+        makes: ['all'],
+        type: '',
+        speedTier: 0,
+        costTier: 0,
+        sortOrder: idx
+      }));
+      needsSave = true;
+    } else if (!settings.customVendors || settings.customVendors.length === 0) {
+      settings.customVendors = defaultCustomVendors();
       needsSave = true;
     }
     if (!settings.customCategories || settings.customCategories.length === 0) {

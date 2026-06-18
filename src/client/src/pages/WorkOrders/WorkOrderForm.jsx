@@ -28,7 +28,9 @@ const WorkOrderSchema = Yup.object().shape({
   ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
   diagnosticNotes: Yup.string(),
-  skipDiagnostics: Yup.boolean()
+  skipDiagnostics: Yup.boolean(),
+  sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
+  sourcingQuality: Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']).required('Parts quality is required')
 });
 
 const WorkOrderForm = () => {
@@ -55,6 +57,10 @@ const WorkOrderForm = () => {
     status: 'Work Order Created',
     diagnosticNotes: '',
     skipDiagnostics: false,
+    // No default: the writer must answer time-vs-cost and quality fresh per WO.
+    // Empty is invalid (required), so the form won't submit until a human picks.
+    sourcingPriority: '',
+    sourcingQuality: '',
     parts: [],
     labor: []
   });
@@ -114,6 +120,10 @@ const WorkOrderForm = () => {
             status: workOrderData.status || 'Created',
             diagnosticNotes: workOrderData.diagnosticNotes || '',
             skipDiagnostics: workOrderData.skipDiagnostics || false,
+            // No fallback: a pre-existing WO with no sourcing answer loads as empty so the
+            // writer is prompted to answer, rather than silently inheriting a default.
+            sourcingPriority: workOrderData.sourcingPriority || '',
+            sourcingQuality: workOrderData.sourcingQuality || '',
             parts: workOrderData.parts || [],
             labor: workOrderData.labor || []
           });
@@ -282,6 +292,18 @@ const WorkOrderForm = () => {
     { value: 'Urgent', label: 'Urgent' }
   ];
 
+  // Parts sourcing primer options — steer the Parts Purchase Worksheet's vendor ranking
+  const sourcingPriorityOptions = [
+    { value: 'cost', label: 'Lowest Cost' },
+    { value: 'time', label: 'Fastest Availability' }
+  ];
+
+  const sourcingQualityOptions = [
+    { value: 'oem', label: 'OEM' },
+    { value: 'aftermarket', label: 'Aftermarket' },
+    { value: 'used-ok', label: 'Used OK' }
+  ];
+
   return (
     <div className="container mx-auto">
       <div className="mb-6">
@@ -375,7 +397,35 @@ const WorkOrderForm = () => {
                     required
                   />
                 </div>
-                
+
+                <div>
+                  <SelectInput
+                    label="Sourcing Priority"
+                    name="sourcingPriority"
+                    options={sourcingPriorityOptions}
+                    value={values.sourcingPriority}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.sourcingPriority}
+                    touched={touched.sourcingPriority}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <SelectInput
+                    label="Parts Quality Preference"
+                    name="sourcingQuality"
+                    options={sourcingQualityOptions}
+                    value={values.sourcingQuality}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.sourcingQuality}
+                    touched={touched.sourcingQuality}
+                    required
+                  />
+                </div>
+
                 {/* Skip Diagnostics Checkbox */}
                 <div className="md:col-span-2">
                   <div className="flex items-center">

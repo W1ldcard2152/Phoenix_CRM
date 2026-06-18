@@ -44,6 +44,11 @@ exports.updateSettings = catchAsync(async (req, res) => {
   }
   if (req.body.customVendors !== undefined) {
     settings.customVendors = req.body.customVendors;
+    // Keep the legacy vendorHostnames map (used by the part-modal URL detection)
+    // in sync with the per-vendor hostnames so both detection paths agree.
+    settings.vendorHostnames = (req.body.customVendors || []).flatMap((v) =>
+      (v.hostnames || []).map((h) => ({ hostname: h, vendor: v.name }))
+    );
   }
   if (req.body.customCategories !== undefined) {
     settings.customCategories = req.body.customCategories;
@@ -147,19 +152,30 @@ exports.addVendor = catchAsync(async (req, res) => {
   const settings = await Settings.getSettings();
   const trimmed = vendor.trim();
 
+  // customVendors are tagged objects now; match/insert on the name.
   const exists = settings.customVendors.some(
-    v => v.toLowerCase() === trimmed.toLowerCase()
+    v => (v.name || '').toLowerCase() === trimmed.toLowerCase()
   );
   if (exists) {
     return res.status(400).json({ status: 'fail', message: 'This vendor already exists in the list' });
   }
 
-  settings.customVendors.push(trimmed);
+  const cleanHostname = (hostname && hostname.trim())
+    ? hostname.trim().toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '')
+    : null;
 
-  // Store hostname mapping for URL auto-detection
-  if (hostname && hostname.trim()) {
-    const cleanHostname = hostname.trim().toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '');
-    // Remove existing mapping for this hostname if any, then add
+  settings.customVendors.push({
+    name: trimmed,
+    hostnames: cleanHostname ? [cleanHostname] : [],
+    makes: ['all'],
+    type: '',
+    speedTier: 0,
+    costTier: 0,
+    sortOrder: settings.customVendors.length
+  });
+
+  // Keep the legacy hostname map in sync for the part-modal URL auto-detection.
+  if (cleanHostname) {
     settings.vendorHostnames = settings.vendorHostnames.filter(h => h.hostname !== cleanHostname);
     settings.vendorHostnames.push({ hostname: cleanHostname, vendor: trimmed });
   }
@@ -176,7 +192,7 @@ exports.removeVendor = catchAsync(async (req, res) => {
   }
 
   const settings = await Settings.getSettings();
-  settings.customVendors = settings.customVendors.filter(v => v !== vendor);
+  settings.customVendors = settings.customVendors.filter(v => v.name !== vendor);
 
   // Also remove any hostname mappings for this vendor
   settings.vendorHostnames = settings.vendorHostnames.filter(h => h.vendor !== vendor);

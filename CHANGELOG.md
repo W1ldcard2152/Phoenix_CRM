@@ -2,6 +2,18 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-18
+
+### Added
+- **Parts Purchase Worksheet** — a split-screen sourcing tool for work orders. Open it from any work order (the **Worksheet** button) in a narrow window beside your parts-supplier tabs. For each part the technician listed, capture competing vendor offers (paste a product URL and the seller auto-fills), flip to **Compare** to sort them by price or ETA, then star one and confirm it with a one-line reason. Confirming fills the part's vendor, brand, part number, cost, and core charge in place and sets the retail price from your markup automatically. Per-part and worksheet notes autosave as you type, with a single "saved" indicator.
+- **Line split** on the worksheet — split a single placeholder (e.g. "tie rod ends, qty 2") into separately-sourced lines when each side needs a different part number.
+- **Sourcing primer** on new work orders — choose a sourcing priority (lowest cost vs. fastest availability) and a parts-quality preference (OEM / aftermarket / used OK). These steer how the worksheet ranks your vendors, and must be answered before sourcing: a work order that reaches the worksheet without them (e.g. a converted quote) is asked first.
+- **Parts Vendors** settings (Shop tab) — manage your supplier list with hostnames (for URL seller auto-detection), the vehicle makes each serves (`all` for any), a type, and cost/speed tiers. Reorder the list to set the tiebreaker the worksheet uses when ranking vendors.
+- Two new work-order statuses, **Parts Sourcing - In Progress** and **Parts Selected - Pending Approval**, so a job's sourcing stage is visible at a glance — opening the worksheet moves an inspected job into sourcing, and closing it with every part selected (or with no parts) moves it to pending approval.
+
+### Fixed
+- Importing a part from a product URL now keeps the detected **brand/manufacturer** instead of silently dropping it when the part is saved.
+
 ## 2026-06-16
 
 ### Added

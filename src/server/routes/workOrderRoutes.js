@@ -58,6 +58,23 @@ router.post('/:id/service-package', authController.restrictTo('admin', 'manageme
 router.post('/:id/commit-service-package', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.commitServicePackage);
 router.post('/:id/remove-service-package', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.removeServicePackage);
 
+// Parts Purchase Worksheet (office staff or own assigned WO). Offers append via
+// $push, edit positionally via arrayFilters, never resend the whole array.
+const wsRoles = restrictToOwnWorkOrder('admin', 'management', 'service-writer');
+router.post('/:id/worksheet/open', wsRoles, workOrderController.openWorksheet);
+router.post('/:id/worksheet/close', wsRoles, workOrderController.closeWorksheet);
+router.patch('/:id/worksheet/primer', wsRoles, workOrderController.setPrimer);
+router.patch('/:id/worksheet/notes', wsRoles, workOrderController.updateSourcingNotes);
+router.patch('/:id/worksheet/parts/:partId/scratchpad', wsRoles, workOrderController.updateScratchpad);
+router.patch('/:id/worksheet/parts/:partId/quantity', wsRoles, workOrderController.updatePartQuantity);
+router.post('/:id/worksheet/parts/:partId/offers', wsRoles, workOrderController.addOffer);
+router.patch('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.updateOffer);
+router.delete('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.removeOffer);
+router.post('/:id/worksheet/parts/:partId/select', wsRoles, workOrderController.selectOffer);
+router.post('/:id/worksheet/parts/:partId/split', wsRoles, workOrderController.splitPart);
+// Customer approval is recorded internally by the service writer — admin/management only.
+router.post('/:id/worksheet/customer-approval', authController.restrictTo('admin', 'management'), workOrderController.recordCustomerApproval);
+
 // Add labor to work order (office staff or own assigned WO)
 router.post('/:id/labor', restrictToOwnWorkOrder('admin', 'management', 'service-writer'), workOrderController.addLabor);
 

@@ -1123,6 +1123,343 @@ exports.removeServicePackage = catchAsync(async (req, res, next) => {
   });
 });
 
+// ===========================================================================
+// Parts Purchase Worksheet
+// ---------------------------------------------------------------------------
+// Sourcing ENRICHES an existing placeholder part in place (the inversion vs. the
+// Service Package slice, which CREATES parts). Offers are append-only and never
+// discarded — rejected offers are the approval audit trail. WO status is a
+// derived convenience driven by worksheet open/close + reconcile-on-load; the
+// parts' own sourcingStatus is the source of truth. No state machine / no
+// transition guard layer.
+//
+// `offers` lives at parts[].offers[] — a doubly-nested array — so updates/removal
+// use arrayFilters (positional `$` only reaches one array level).
+// ===========================================================================
+
+// Shared tail: re-fetch with detailed population, bust caches, respond.
+const respondWithWorkOrder = async (res, workOrderId) => {
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(workOrderId),
+    'workOrder',
+    'detailed'
+  );
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+  res.status(200).json({
+    status: 'success',
+    data: { workOrder: populatedWorkOrder }
+  });
+};
+
+// Whitelist of offer fields a client may write (keeps arbitrary keys out of the
+// sub-doc and normalizes numeric/enum values).
+const sanitizeOfferInput = (body = {}) => {
+  const offer = {};
+  if (body.seller !== undefined) offer.seller = body.seller;
+  if (body.marketplaceSeller !== undefined) offer.marketplaceSeller = body.marketplaceSeller;
+  if (body.manufacturer !== undefined) offer.manufacturer = body.manufacturer;
+  if (body.partNumber !== undefined) offer.partNumber = body.partNumber;
+  if (body.price !== undefined) offer.price = body.price === null ? undefined : Number(body.price);
+  if (body.coreCharge !== undefined) offer.coreCharge = Number(body.coreCharge) || 0;
+  if (body.url !== undefined) offer.url = body.url;
+  if (body.eta !== undefined) offer.eta = body.eta;
+  if (body.inStock !== undefined) offer.inStock = body.inStock === null ? undefined : !!body.inStock;
+  if (body.condition !== undefined) offer.condition = body.condition || undefined;
+  // source distinguishes human- vs agent-captured offers; only 'agent' opts out of default.
+  if (body.source === 'agent') offer.source = 'agent';
+  return offer;
+};
+
+// Append an offer to a part (atomic $push — avoids lost-update races between
+// rapid card adds). The placeholder part is NOT created here; it must exist.
+exports.addOffer = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+  const offer = sanitizeOfferInput(req.body);
+  offer.source = offer.source || 'manual';
+
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id, 'parts._id': partId },
+    { $push: { 'parts.$.offers': offer } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order or part not found', 404));
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Field-by-field edit of an existing offer (positional via arrayFilters — never
+// resends the whole offers array).
+exports.updateOffer = catchAsync(async (req, res, next) => {
+  const { id, partId, offerId } = req.params;
+  const fields = sanitizeOfferInput(req.body);
+  if (Object.keys(fields).length === 0) {
+    return next(new AppError('No valid offer fields to update', 400));
+  }
+
+  const setObj = {};
+  for (const [key, value] of Object.entries(fields)) {
+    setObj[`parts.$[p].offers.$[o].${key}`] = value;
+  }
+
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id },
+    { $set: setObj },
+    { new: true, arrayFilters: [{ 'p._id': partId }, { 'o._id': offerId }] }
+  );
+  if (!result) return next(new AppError('Work order not found', 404));
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Remove an offer ($pull via arrayFilters). For mistaken/duplicate captures —
+// rejected-but-considered offers are normally KEPT as the audit trail.
+exports.removeOffer = catchAsync(async (req, res, next) => {
+  const { id, partId, offerId } = req.params;
+
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id },
+    { $pull: { 'parts.$[p].offers': { _id: offerId } } },
+    { new: true, arrayFilters: [{ 'p._id': partId }] }
+  );
+  if (!result) return next(new AppError('Work order not found', 404));
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Confirm a selection: enrich the placeholder part IN PLACE and derive retail
+// price server-side from the markup percentage. THIS is the one piece that is
+// new code rather than a mirror of the Service Package slice.
+exports.selectOffer = catchAsync(async (req, res, next) => {
+  const { id, partId, offerId } = req.params;
+  const { selectionReason } = req.body;
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+  const offer = part.offers.id(offerId);
+  if (!offer) return next(new AppError('Offer not found on this part', 404));
+
+  // Markup lives client-side in the part modal; port it to the server here.
+  // offer.price is the UNIT purchase price (what the shop pays for one) → part.cost.
+  // Retail is derived: price = round(cost × (1 + pct/100), 2). Quantity multiplies
+  // downstream (partsCost virtual), so cost/price stay unit values.
+  const settings = await Settings.getSettings();
+  const pct = settings.partMarkupPercentage != null ? settings.partMarkupPercentage : 30;
+  const cost = offer.price != null ? offer.price : 0;
+  const price = Math.round(cost * (1 + pct / 100) * 100) / 100;
+
+  // Enrich-in-place mapping. eta / inStock / condition / source stay on the offer.
+  // NOTE: part.notes is intentionally NOT touched — it's an existing human note
+  // field (symptoms, reminders) that selection must not clobber. The selection
+  // rationale lives in its own dedicated part.selectionReason field below.
+  const enriched = {
+    'parts.$[p].vendor': offer.seller,
+    'parts.$[p].supplier': offer.marketplaceSeller,
+    'parts.$[p].brand': offer.manufacturer,
+    'parts.$[p].partNumber': offer.partNumber,
+    'parts.$[p].coreCharge': offer.coreCharge || 0,
+    'parts.$[p].url': offer.url,
+    'parts.$[p].cost': cost,
+    'parts.$[p].price': price,
+    'parts.$[p].selectedOfferId': offer._id,
+    'parts.$[p].selectionReason': selectionReason,
+    'parts.$[p].sourcingStatus': 'selected',
+    'parts.$[p].selectedBy': req.user._id,
+    'parts.$[p].selectedByName': req.user.name
+  };
+
+  await WorkOrder.findOneAndUpdate(
+    { _id: id },
+    { $set: enriched },
+    { new: true, arrayFilters: [{ 'p._id': partId }] }
+  );
+
+  // Re-selection overwrites the enriched fields and must NOT churn WO status —
+  // status is evaluated only on close/reconcile, never per selection.
+  await respondWithWorkOrder(res, id);
+});
+
+// Split one placeholder into N independently-sourced lines (clones the
+// placeholder, redistributes quantity). The ONLY sanctioned part creation here.
+exports.splitPart = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+  const { splits } = req.body;
+
+  if (!Array.isArray(splits) || splits.length < 2) {
+    return next(new AppError('A split requires at least two lines', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+
+  const totalQty = part.quantity || 1;
+  const sum = splits.reduce((t, s) => t + (parseInt(s.quantity, 10) || 0), 0);
+  if (sum !== totalQty) {
+    return next(new AppError(`Split quantities (${sum}) must sum to the original (${totalQty})`, 400));
+  }
+  if (splits.some(s => !s.name || !String(s.name).trim() || (parseInt(s.quantity, 10) || 0) < 1)) {
+    return next(new AppError('Each split line needs a name and a quantity of at least 1', 400));
+  }
+
+  // Clone the placeholder into fresh pending lines. Each clone keeps the
+  // placeholder's contextual fields but resets all sourcing state so it sources
+  // independently (no offers, no selection carried over).
+  const original = part.toObject();
+  const clones = splits.map(s => {
+    const { _id, offers, selectedOfferId, selectionReason, selectedBy, selectedByName, ...rest } = original;
+    return {
+      ...rest,
+      name: String(s.name).trim(),
+      quantity: parseInt(s.quantity, 10),
+      offers: [],
+      sourcingStatus: 'pending',
+      scratchpad: ''
+    };
+  });
+
+  // Replace the original part with its clones, preserving order.
+  const idx = workOrder.parts.findIndex(p => p._id.toString() === partId);
+  workOrder.parts.splice(idx, 1, ...clones);
+
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Per-part scratchpad (single-level positional).
+exports.updateScratchpad = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id, 'parts._id': partId },
+    { $set: { 'parts.$.scratchpad': req.body.scratchpad || '' } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order or part not found', 404));
+  await respondWithWorkOrder(res, id);
+});
+
+// Update a placeholder part's requested quantity (writer may change it before a split).
+exports.updatePartQuantity = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+  const quantity = parseInt(req.body.quantity, 10);
+  if (!quantity || quantity < 1) {
+    return next(new AppError('Quantity must be a positive integer', 400));
+  }
+
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id, 'parts._id': partId },
+    { $set: { 'parts.$.quantity': quantity } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order or part not found', 404));
+
+  result.totalEstimate = calculateWorkOrderTotal(result.parts, result.labor, result.servicePackages);
+  await result.save();
+  await respondWithWorkOrder(res, id);
+});
+
+// Worksheet-level scratchpad (WO root).
+exports.updateSourcingNotes = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const result = await WorkOrder.findByIdAndUpdate(
+    id,
+    { $set: { sourcingNotes: req.body.sourcingNotes || '' } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order not found', 404));
+  await respondWithWorkOrder(res, id);
+});
+
+// Hard-gate primer write-back to the WO root (same fields the creation form sets).
+exports.setPrimer = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { sourcingPriority, sourcingQuality } = req.body;
+  if (!['time', 'cost'].includes(sourcingPriority)) {
+    return next(new AppError('sourcingPriority must be "time" or "cost"', 400));
+  }
+  if (!['oem', 'aftermarket', 'used-ok'].includes(sourcingQuality)) {
+    return next(new AppError('sourcingQuality must be "oem", "aftermarket" or "used-ok"', 400));
+  }
+
+  const result = await WorkOrder.findByIdAndUpdate(
+    id,
+    { $set: { sourcingPriority, sourcingQuality } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order not found', 404));
+  await respondWithWorkOrder(res, id);
+});
+
+// Open the worksheet. Transition to sourcing ONLY from the exact pre-sourcing
+// status; from any other status it's a no-op on status (the launcher button is
+// unconditional, so this strict guard is what prevents a re-open from dragging
+// status backward). Also self-heals an abandoned session (reconcile-on-load).
+exports.openWorksheet = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+
+  let newStatus = workOrder.status;
+  if (workOrder.status === 'Inspection/Diag Complete') {
+    newStatus = 'Parts Sourcing - In Progress';
+  }
+  // Reconcile-on-load: parts are the source of truth. If everything is already
+  // selected but status lags in sourcing, resolve it forward.
+  const parts = workOrder.parts || [];
+  const allSelected = parts.length > 0 && parts.every(p => p.sourcingStatus === 'selected');
+  if (newStatus === 'Parts Sourcing - In Progress' && allSelected) {
+    newStatus = 'Parts Selected - Pending Approval';
+  }
+
+  if (newStatus !== workOrder.status) {
+    workOrder.status = newStatus;
+    await workOrder.save();
+  }
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Close the worksheet: derive status from the parts' sourcingStatus. Every part
+// selected OR zero parts → pending approval (zero-parts skip-to-approval is the
+// intended signal for an approver to ask why a WO has no parts). Any pending
+// part → no-op (stays In Progress). Never drags a later status backward.
+exports.closeWorksheet = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+
+  const parts = workOrder.parts || [];
+  const readyForApproval = parts.length === 0 || parts.every(p => p.sourcingStatus === 'selected');
+
+  if (readyForApproval && workOrder.status !== 'Parts Selected - Pending Approval') {
+    workOrder.status = 'Parts Selected - Pending Approval';
+    await workOrder.save();
+  }
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Record customer approval internally (no outbound comms). Admin/management only.
+exports.recordCustomerApproval = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const approved = req.body.approvedByCustomer !== undefined ? !!req.body.approvedByCustomer : true;
+
+  const result = await WorkOrder.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        approvedByCustomer: approved,
+        customerApprovalRecordedBy: req.user._id,
+        customerApprovalAt: new Date()
+      }
+    },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order not found', 404));
+  await respondWithWorkOrder(res, id);
+});
+
 // Add labor to work order
 exports.addLabor = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');

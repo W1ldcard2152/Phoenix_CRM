@@ -2,6 +2,26 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
 // Sub-schemas
+
+// A single sourcing offer captured against a placeholder part on the worksheet.
+// Offers are append-only and NEVER discarded — rejected offers are the approval
+// audit trail and future agent-training data. `price` is the UNIT purchase price
+// (what the shop pays for one), mirroring PartSchema.cost (unit, pre-markup).
+const OfferSchema = new Schema({
+  seller: { type: String, trim: true },           // -> part.vendor on selection
+  marketplaceSeller: { type: String, trim: true }, // -> part.supplier on selection
+  manufacturer: { type: String, trim: true },      // -> part.brand on selection
+  partNumber: { type: String, trim: true },
+  price: { type: Number, min: 0 },                  // unit purchase price -> part.cost
+  coreCharge: { type: Number, min: 0, default: 0 },
+  url: { type: String, trim: true },
+  eta: { type: String, trim: true },                // decision-time only; stays on offer
+  inStock: { type: Boolean },                       // decision-time only; stays on offer
+  condition: { type: String, enum: ['new', 'used', 'reman'] }, // stays on offer
+  // Distinguishes human- vs agent-captured offers for the future AI sourcing flow.
+  source: { type: String, enum: ['manual', 'agent'], default: 'manual' }
+});
+
 const PartSchema = new Schema({
   name: {
     type: String,
@@ -104,6 +124,39 @@ const PartSchema = new Schema({
   serviceId: { // -> WorkOrder.services[]._id; null/unset = "General" job bucket
     type: Schema.Types.ObjectId,
     default: null
+  },
+  // --- Parts Purchase Worksheet: sourcing enriches THIS existing placeholder part in place ---
+  brand: { // Manufacturer/brand. Previously dropped silently from the URL-extract button.
+    type: String,
+    trim: true
+  },
+  offers: { // Append-only sourcing offers captured on the worksheet
+    type: [OfferSchema],
+    default: []
+  },
+  selectedOfferId: { // -> the chosen offer's _id within offers[]
+    type: Schema.Types.ObjectId
+  },
+  selectionReason: { // One-sentence rationale captured at selection -> also copied to notes
+    type: String,
+    trim: true
+  },
+  scratchpad: { // Per-part worksheet scratch notes (debounced autosave)
+    type: String,
+    default: ''
+  },
+  selectedBy: { // User who confirmed the selection
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  selectedByName: { // Denormalized for display (cf. createdByName on WorkOrderNote)
+    type: String,
+    trim: true
+  },
+  sourcingStatus: { // Source of truth for worksheet progress; WO status is derived from these
+    type: String,
+    enum: ['pending', 'selected'],
+    default: 'pending'
   }
 });
 
@@ -363,6 +416,8 @@ const WorkOrderSchema = new Schema(
         'Appointment Complete',
         'Inspection In Progress',
         'Inspection/Diag Complete',
+        'Parts Sourcing - In Progress',
+        'Parts Selected - Pending Approval',
         'Parts Ordered',
         'Parts Received',
         'Repair In Progress',
@@ -460,7 +515,19 @@ const WorkOrderSchema = new Schema(
     },
     // Checklists for technician workflow
     inspectionChecklist: InspectionChecklistSchema,
-    repairChecklist: RepairChecklistSchema
+    repairChecklist: RepairChecklistSchema,
+
+    // --- Parts Purchase Worksheet ---
+    // Primer questions, set at WO creation, steer the worksheet's vendor ranking.
+    sourcingPriority: { type: String, enum: ['time', 'cost'] },
+    sourcingQuality: { type: String, enum: ['oem', 'aftermarket', 'used-ok'] },
+    sourcingNotes: { type: String, default: '' }, // Worksheet-level scratchpad
+    // Customer approval is recorded internally by the service writer (no outbound comms).
+    // Left without a default so existing/unrecorded WOs read as undefined ("not yet
+    // recorded") rather than a misleading explicit `false` ("declined").
+    approvedByCustomer: { type: Boolean },
+    customerApprovalRecordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    customerApprovalAt: { type: Date }
   },
   {
     timestamps: true

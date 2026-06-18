@@ -40,6 +40,7 @@ import SettingsPage from './pages/Settings/SettingsPage';
 import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import new FeedbackAdminPage
 import IntakePage from './pages/Intake/IntakePage';
 import FollowUpList from './pages/FollowUps/FollowUpList';
+import Worksheet from './pages/Worksheet/Worksheet';
 
 // Schedule Block Pages
 import ScheduleBlockList from './pages/ScheduleBlocks/ScheduleBlockList';
@@ -93,6 +94,12 @@ const App = () => {
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<OAuthCallback />} />
+
+          {/* Parts Purchase Worksheet — chrome-free standalone route, designed to
+              open in a narrow window (window.open) split-screen beside a browser.
+              Auth-protected but intentionally outside the sidebar/navbar layout. */}
+          <Route path="/worksheet/:workOrderId" element={<PrivateRoute><Worksheet /></PrivateRoute>} />
+
           
           {/* App Routes with Layout */}
           <Route path="/*" element={

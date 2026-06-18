@@ -226,7 +226,7 @@ const DocumentDetail = () => {
     try {
       const response = await SettingsService.addVendor(newVendorName.trim(), newVendorHostname.trim() || undefined);
       const updatedSettings = response.data.settings;
-      setVendorList(updatedSettings.customVendors);
+      setVendorList((updatedSettings.customVendors || []).map(v => v.name));
       if (updatedSettings.vendorHostnames) {
         setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
       }
@@ -245,7 +245,7 @@ const DocumentDetail = () => {
     try {
       const response = await SettingsService.removeVendor(vendor);
       const updatedSettings = response.data.settings;
-      setVendorList(updatedSettings.customVendors);
+      setVendorList((updatedSettings.customVendors || []).map(v => v.name));
       if (updatedSettings.vendorHostnames) {
         setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
       }
@@ -440,7 +440,7 @@ const DocumentDetail = () => {
         setWorkOrder(fetchedDoc);
         setMarkupPercentage(settings.partMarkupPercentage);
         if (typeof settings.defaultLaborRate === 'number') setDefaultLaborRate(settings.defaultLaborRate);
-        setVendorList(settings.customVendors || []);
+        setVendorList((settings.customVendors || []).map(v => v.name));
         setCategoryList(settings.customCategories || []);
         setLaborTypeList(settings.laborTypes || []);
         if (settings.vendorHostnames) {
@@ -2000,6 +2000,22 @@ const DocumentDetail = () => {
           {/* WO primary buttons */}
           {!isQuote && permissions.workOrders.canEdit(currentUser) && (
             <Button to={`/work-orders/${id}/edit`} variant="primary">Edit Work Order</Button>
+          )}
+
+          {/* Parts Purchase Worksheet — opens a narrow split-screen window. Always
+              available on a work order (not status-gated); the openWorksheet endpoint
+              guard prevents a re-open from dragging status backward. */}
+          {!isQuote && (
+            <Button
+              variant="outline"
+              onClick={() => window.open(
+                `/worksheet/${id}`,
+                `worksheet-${id}`,
+                'width=480,height=950,menubar=no,toolbar=no,location=no,status=no'
+              )}
+            >
+              <i className="fas fa-clipboard-list mr-1"></i>Worksheet
+            </Button>
           )}
 
           <Button variant="outline" onClick={() => setFollowUpModalOpen(true)}>

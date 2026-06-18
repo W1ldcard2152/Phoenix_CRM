@@ -94,6 +94,14 @@ const SettingsPage = () => {
   const [laborTypesMessage, setLaborTypesMessage] = useState({ type: '', text: '' });
   const [laborTypeBusy, setLaborTypeBusy] = useState(false);
 
+  // Parts Vendors State (admin/management only) — tagged vendors that drive the
+  // Parts Purchase Worksheet's vendor ranking (cost/speed tier + manual order).
+  const [vendors, setVendors] = useState([]);
+  const [vendorsMessage, setVendorsMessage] = useState({ type: '', text: '' });
+  const [vendorBusy, setVendorBusy] = useState(false);
+  // null = editor closed; { index: -1 } = adding a new vendor; index >= 0 = editing.
+  const [vendorEditor, setVendorEditor] = useState(null);
+
   useEffect(() => {
     if (isAdmin) {
       SettingsService.getSettings()
@@ -103,6 +111,7 @@ const SettingsPage = () => {
             defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
           });
           setLaborTypes(res.data.settings.laborTypes || []);
+          setVendors([...(res.data.settings.customVendors || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
           setShopHours(res.data.settings.shopHours || DEFAULT_SHOP_HOURS);
           const s = res.data.settings;
           setCompanyProfile({
@@ -228,6 +237,95 @@ const SettingsPage = () => {
       showLaborTypesMessage('error', err.response?.data?.message || 'Failed to remove labor type');
     } finally {
       setLaborTypeBusy(false);
+    }
+  };
+
+  // ---- Parts Vendors ----
+  const showVendorsMessage = (type, text) => {
+    setVendorsMessage({ type, text });
+    setTimeout(() => setVendorsMessage({ type: '', text: '' }), 3000);
+  };
+
+  // Persist the whole vendor list, reindexing sortOrder to match display order
+  // (the worksheet ranking uses sortOrder as its tiebreaker). The server rebuilds
+  // the legacy vendorHostnames map from each vendor's hostnames.
+  const persistVendors = async (next) => {
+    const reindexed = next.map((v, i) => ({ ...v, sortOrder: i }));
+    setVendorBusy(true);
+    try {
+      const res = await SettingsService.updateSettings({ customVendors: reindexed });
+      setVendors([...(res.data.settings.customVendors || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+      return true;
+    } catch (err) {
+      showVendorsMessage('error', err.response?.data?.message || 'Failed to save vendors');
+      return false;
+    } finally {
+      setVendorBusy(false);
+    }
+  };
+
+  const moveVendor = async (index, dir) => {
+    const target = index + dir;
+    if (target < 0 || target >= vendors.length) return;
+    const next = [...vendors];
+    [next[index], next[target]] = [next[target], next[index]];
+    setVendors(next); // optimistic; persistVendors reconciles
+    await persistVendors(next);
+  };
+
+  const handleRemoveVendor = async (index) => {
+    const v = vendors[index];
+    if (!window.confirm(`Remove "${v.name}" from the vendor list? Existing parts are unaffected.`)) return;
+    const next = vendors.filter((_, i) => i !== index);
+    if (await persistVendors(next)) showVendorsMessage('success', `Removed "${v.name}"`);
+  };
+
+  const openVendorEditor = (index) => {
+    if (index === -1) {
+      setVendorEditor({ index: -1, name: '', hostnames: '', makes: 'all', type: '', speedTier: 0, costTier: 0 });
+    } else {
+      const v = vendors[index];
+      setVendorEditor({
+        index,
+        name: v.name || '',
+        hostnames: (v.hostnames || []).join(', '),
+        makes: (v.makes && v.makes.length ? v.makes : ['all']).join(', '),
+        type: v.type || '',
+        speedTier: v.speedTier ?? 0,
+        costTier: v.costTier ?? 0
+      });
+    }
+  };
+
+  const saveVendorEditor = async () => {
+    const ed = vendorEditor;
+    const name = ed.name.trim();
+    if (!name) { showVendorsMessage('error', 'Vendor name is required'); return; }
+
+    const dup = vendors.some((v, i) => i !== ed.index && (v.name || '').toLowerCase() === name.toLowerCase());
+    if (dup) { showVendorsMessage('error', 'A vendor with that name already exists'); return; }
+
+    const parseList = (s) => s.split(',').map(x => x.trim()).filter(Boolean);
+    const hostnames = parseList(ed.hostnames)
+      .map(h => h.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, ''));
+    const makes = parseList(ed.makes);
+
+    const vendorObj = {
+      name,
+      hostnames,
+      makes: makes.length ? makes : ['all'],
+      type: ed.type.trim(),
+      speedTier: Number(ed.speedTier) || 0,
+      costTier: Number(ed.costTier) || 0
+    };
+
+    const next = ed.index === -1
+      ? [...vendors, vendorObj]
+      : vendors.map((v, i) => (i === ed.index ? { ...v, ...vendorObj } : v));
+
+    if (await persistVendors(next)) {
+      setVendorEditor(null);
+      showVendorsMessage('success', ed.index === -1 ? `Added "${name}"` : `Saved "${name}"`);
     }
   };
 
@@ -976,6 +1074,178 @@ const SettingsPage = () => {
                 >
                   Add
                 </button>
+              </div>
+            </div>
+
+            {/* Parts Vendors — tagged vendors that drive the Parts Purchase
+                Worksheet's ranking. Order here is the ranking tiebreaker. */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-xl font-semibold text-gray-800">Parts Vendors</h2>
+                {!vendorEditor && (
+                  <button
+                    onClick={() => openVendorEditor(-1)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    <i className="fas fa-plus mr-1"></i>Add Vendor
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Suppliers the worksheet ranks when sourcing parts. The worksheet sorts by cost tier (cost-priority
+                jobs) or speed tier (time-priority jobs) — <span className="font-medium">lower = better</span> — and
+                uses this list's order to break ties. Makes filter a vendor to specific vehicles (<span className="font-medium">all</span> = every make).
+              </p>
+
+              {vendorsMessage.text && (
+                <div className={`mb-4 p-3 rounded ${
+                  vendorsMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
+                }`}>
+                  {vendorsMessage.text}
+                </div>
+              )}
+
+              {/* Add/Edit editor */}
+              {vendorEditor && (
+                <div className="mb-4 border border-blue-200 bg-blue-50/40 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3">
+                    {vendorEditor.index === -1 ? 'Add Vendor' : `Edit “${vendors[vendorEditor.index]?.name}”`}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={vendorEditor.name}
+                        onChange={(e) => setVendorEditor({ ...vendorEditor, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. FCP Euro"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Hostnames</label>
+                      <input
+                        type="text"
+                        value={vendorEditor.hostnames}
+                        onChange={(e) => setVendorEditor({ ...vendorEditor, hostnames: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="comma-separated, e.g. fcpeuro.com, ecstuning.com"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Used to auto-detect the seller from a pasted product URL.</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Makes</label>
+                      <input
+                        type="text"
+                        value={vendorEditor.makes}
+                        onChange={(e) => setVendorEditor({ ...vendorEditor, makes: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="all  (or e.g. BMW, Audi, Volkswagen)"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                      <input
+                        type="text"
+                        value={vendorEditor.type}
+                        onChange={(e) => setVendorEditor({ ...vendorEditor, type: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g. dealer / marketplace / retailer"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Cost tier</label>
+                        <input
+                          type="number"
+                          value={vendorEditor.costTier}
+                          onChange={(e) => setVendorEditor({ ...vendorEditor, costTier: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Speed tier</label>
+                        <input
+                          type="number"
+                          value={vendorEditor.speedTier}
+                          onChange={(e) => setVendorEditor({ ...vendorEditor, speedTier: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={saveVendorEditor}
+                      disabled={vendorBusy || !vendorEditor.name.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-blue-400"
+                    >
+                      {vendorBusy ? 'Saving...' : 'Save Vendor'}
+                    </button>
+                    <button
+                      onClick={() => setVendorEditor(null)}
+                      disabled={vendorBusy}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Vendor list (display order = ranking tiebreaker) */}
+              <div className="space-y-2">
+                {vendors.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No vendors defined yet.</p>
+                ) : (
+                  vendors.map((v, index) => (
+                    <div key={v._id || v.name || index} className="flex items-center gap-3 py-2 px-3 border border-gray-200 rounded">
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => moveVendor(index, -1)}
+                          disabled={vendorBusy || index === 0}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30 leading-none"
+                          title="Move up"
+                        >
+                          <i className="fas fa-chevron-up text-xs"></i>
+                        </button>
+                        <button
+                          onClick={() => moveVendor(index, 1)}
+                          disabled={vendorBusy || index === vendors.length - 1}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30 leading-none"
+                          title="Move down"
+                        >
+                          <i className="fas fa-chevron-down text-xs"></i>
+                        </button>
+                      </div>
+                      <span className="w-6 text-xs text-gray-400">{index + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-gray-900 font-medium">{v.name}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          Cost {v.costTier ?? 0} · Speed {v.speedTier ?? 0}
+                          {v.type ? ` · ${v.type}` : ''}
+                          {' · '}
+                          {(v.makes && v.makes.length ? v.makes : ['all']).join(', ')}
+                          {v.hostnames && v.hostnames.length ? ` · ${v.hostnames.join(', ')}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openVendorEditor(index)}
+                        disabled={vendorBusy}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleRemoveVendor(index)}
+                        disabled={vendorBusy}
+                        className="text-sm text-red-600 hover:text-red-800"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
