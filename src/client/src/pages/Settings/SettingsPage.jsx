@@ -431,7 +431,11 @@ const SettingsPage = () => {
 
   const tabs = [
     { id: 'profile', label: 'My Account', icon: 'fa-user' },
-    ...(isAdmin ? [{ id: 'shop', label: 'Shop', icon: 'fa-store' }] : [])
+    ...(isAdmin ? [
+      { id: 'company', label: 'Company Profile', icon: 'fa-building' },
+      { id: 'shopSettings', label: 'Shop Settings', icon: 'fa-sliders-h' },
+      { id: 'vendors', label: 'Vendors / Suppliers', icon: 'fa-truck' },
+    ] : [])
   ];
 
   const tabButtonClass = (id) =>
@@ -695,10 +699,10 @@ const SettingsPage = () => {
           </div>
         )}
 
-        {activeTab === 'shop' && isAdmin && (
+        {isAdmin && ['company', 'shopSettings', 'vendors'].includes(activeTab) && (
           <div className="space-y-6">
-            {/* Company Profile — name + logo + contact info shown in the app header
-                and printed on invoices/quotes */}
+            {/* ===== Company Profile tab: Company Profile + Shop Hours ===== */}
+            {activeTab === 'company' && (
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-1">Company Profile</h2>
               <p className="text-sm text-gray-500 mb-4">
@@ -810,7 +814,10 @@ const SettingsPage = () => {
                 </div>
               </form>
             </div>
+            )}
 
+            {/* ===== Shop Settings tab: Shop Settings + Labor Types ===== */}
+            {activeTab === 'shopSettings' && (
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-1">Shop Settings</h2>
               <p className="text-sm text-gray-500 mb-4">
@@ -887,7 +894,9 @@ const SettingsPage = () => {
                 </div>
               </form>
             </div>
+            )}
 
+            {activeTab === 'company' && (
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-1">Shop Hours</h2>
               <p className="text-sm text-gray-500 mb-4">
@@ -985,7 +994,9 @@ const SettingsPage = () => {
                 {shopHoursBusy ? 'Saving...' : 'Save Shop Hours'}
               </button>
             </div>
+            )}
 
+            {activeTab === 'shopSettings' && (
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-1">Labor Types</h2>
               <p className="text-sm text-gray-500 mb-4">
@@ -1076,9 +1087,10 @@ const SettingsPage = () => {
                 </button>
               </div>
             </div>
+            )}
 
-            {/* Parts Vendors — tagged vendors that drive the Parts Purchase
-                Worksheet's ranking. Order here is the ranking tiebreaker. */}
+            {/* ===== Vendors / Suppliers tab: Parts Vendors ===== */}
+            {activeTab === 'vendors' && (
             <div className="bg-white shadow rounded-lg p-6">
               <div className="flex items-center justify-between mb-1">
                 <h2 className="text-xl font-semibold text-gray-800">Parts Vendors</h2>
@@ -1248,6 +1260,7 @@ const SettingsPage = () => {
                 )}
               </div>
             </div>
+            )}
           </div>
         )}
       </div>

@@ -24,7 +24,8 @@ const WorkOrderSchema = Yup.object().shape({
   sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
   sourcingQuality: Yup.array()
     .of(Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']))
-    .min(1, 'Select at least one acceptable parts quality')
+    .min(1, 'Select at least one acceptable parts quality'),
+  sourcingNotes: Yup.string()
 });
 
 const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', onSaved, onError }, ref) => {
@@ -61,12 +62,11 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
         labor: []
       };
 
-      // Sourcing primer questions steer the Parts Purchase Worksheet's vendor ranking.
-      // Work-order-only; not relevant to quotes.
-      if (!isQuoteMode) {
-        data.sourcingPriority = values.sourcingPriority;
-        data.sourcingQuality = values.sourcingQuality;
-      }
+      // Sourcing primer steers the worksheet's vendor ranking — captured on quotes AND
+      // work orders (a quote can be sourced, then converted, carrying its answers).
+      data.sourcingPriority = values.sourcingPriority;
+      data.sourcingQuality = values.sourcingQuality;
+      data.sourcingNotes = values.sourcingNotes;
 
       if (isQuoteMode) {
         const response = await QuoteService.createQuote(data);
@@ -113,14 +113,14 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
   ];
 
   const sourcingPriorityOptions = [
-    { value: 'cost', label: 'Lowest Cost' },
-    { value: 'time', label: 'Fastest Availability' }
+    { value: 'cost', label: 'Cost-driven' },
+    { value: 'time', label: 'Time-driven' }
   ];
 
   const sourcingQualityOptions = [
-    { value: 'oem', label: 'OEM' },
-    { value: 'aftermarket', label: 'Aftermarket' },
-    { value: 'used-ok', label: 'Used' }
+    { value: 'oem', label: 'OEM (New)' },
+    { value: 'used-ok', label: 'OEM (Used)' },
+    { value: 'aftermarket', label: 'Aftermarket' }
   ];
 
   return (
@@ -147,10 +147,11 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
           diagnosticNotes: '',
           currentMileage: vehicle?.currentMileage || '',
           skipDiagnostics: false,
-          // No default: the writer must answer time-vs-cost and quality fresh per WO.
+          // No default: the writer must answer time-vs-cost and quality fresh per doc.
           // Empty is invalid (required), so the form won't submit until a human picks.
           sourcingPriority: '',
-          sourcingQuality: [] // multi-select: every acceptable quality
+          sourcingQuality: [], // multi-select: every acceptable quality
+          sourcingNotes: ''
         }}
         validationSchema={WorkOrderSchema}
         onSubmit={handleCreateWorkOrder}
@@ -283,20 +284,24 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
                 placeholder="Any initial observations, customer complaints, or diagnostic notes..."
               />
 
-              {/* Parts sourcing primer (work orders only) — steers worksheet ranking */}
-              {!isQuoteMode && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <SelectInput
-                    label="Sourcing Priority"
-                    name="sourcingPriority"
-                    options={sourcingPriorityOptions}
-                    value={values.sourcingPriority}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.sourcingPriority}
-                    touched={touched.sourcingPriority}
-                    required
-                  />
+              {/* Parts sourcing primer — quotes AND work orders; steers worksheet ranking */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <SelectInput
+                      label="Sourcing Priority"
+                      name="sourcingPriority"
+                      options={sourcingPriorityOptions}
+                      value={values.sourcingPriority}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={errors.sourcingPriority}
+                      touched={touched.sourcingPriority}
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Cost-driven = lowest price (sometimes with a wait); time-driven = fastest turnaround (sometimes a higher price).
+                    </p>
+                  </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -332,7 +337,19 @@ const WorkOrderSection = forwardRef(({ customer, vehicle, mode = 'workOrder', on
                     <p className="text-xs text-gray-500 mt-1">Select every quality the customer will accept.</p>
                   </div>
                 </div>
-              )}
+
+              {/* Sourcing Notes — nuance behind the primer answers */}
+              <TextArea
+                label="Sourcing Notes"
+                name="sourcingNotes"
+                value={values.sourcingNotes}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                error={errors.sourcingNotes}
+                touched={touched.sourcingNotes}
+                rows={2}
+                placeholder="Nuance for sourcing — e.g. “not urgent, but the car must be drivable before Friday”."
+              />
 
               {/* Skip Diagnostics (not shown for quotes) */}
               {!isQuoteMode && (

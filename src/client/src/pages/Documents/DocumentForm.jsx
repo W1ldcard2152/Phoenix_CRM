@@ -10,7 +10,6 @@ import Button from '../../components/common/Button';
 import DocumentService from '../../services/documentService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService';
-import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - skipDiagnostics only for work orders
 const getValidationSchema = (isQuote) => Yup.object().shape({
@@ -28,14 +27,14 @@ const getValidationSchema = (isQuote) => Yup.object().shape({
   ).min(1, 'At least one service item is required'),
   priority: Yup.string().required('Priority is required'),
   diagnosticNotes: Yup.string(),
-  ...(isQuote ? {} : {
-    skipDiagnostics: Yup.boolean(),
-    // Parts sourcing primer — answered at WO creation, shared with the worksheet.
-    sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
-    sourcingQuality: Yup.array()
-      .of(Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']))
-      .min(1, 'Select at least one acceptable parts quality')
-  })
+  // Parts sourcing primer — applies to quotes AND work orders (a quote can be sourced
+  // and then converted), shared with the worksheet.
+  sourcingPriority: Yup.string().oneOf(['time', 'cost']).required('Sourcing priority is required'),
+  sourcingQuality: Yup.array()
+    .of(Yup.string().oneOf(['oem', 'aftermarket', 'used-ok']))
+    .min(1, 'Select at least one acceptable parts quality'),
+  sourcingNotes: Yup.string(),
+  ...(isQuote ? {} : { skipDiagnostics: Yup.boolean() })
 });
 
 const DocumentForm = ({ mode = 'workorder' }) => {
@@ -57,14 +56,16 @@ const DocumentForm = ({ mode = 'workorder' }) => {
   const [initialValues, setInitialValues] = useState({
     customer: customerIdParam || '',
     vehicle: vehicleIdParam || '',
-    date: getTodayForInput(),
     currentMileage: '',
     services: [{ description: '' }],
     priority: 'Normal',
     diagnosticNotes: '',
     parts: [],
     labor: [],
-    ...(isQuote ? {} : { status: 'Work Order Created', skipDiagnostics: false, sourcingPriority: '', sourcingQuality: [] })
+    sourcingPriority: '',
+    sourcingQuality: [],
+    sourcingNotes: '',
+    ...(isQuote ? {} : { status: 'Work Order Created', skipDiagnostics: false })
   });
 
   useEffect(() => {
@@ -108,18 +109,18 @@ const DocumentForm = ({ mode = 'workorder' }) => {
               : docData.customer,
             vehicle: loadedVehicleId,
             currentMileage: docData.currentMileage || '',
-            date: formatDateForInput(docData.date),
             services: servicesArray,
             priority: docData.priority || 'Normal',
             diagnosticNotes: docData.diagnosticNotes || '',
             parts: docData.parts || [],
             labor: docData.labor || [],
+            // No fallback: an unanswered doc loads empty so the worksheet still prompts.
+            sourcingPriority: docData.sourcingPriority || '',
+            sourcingQuality: docData.sourcingQuality || [],
+            sourcingNotes: docData.sourcingNotes || '',
             ...(isQuote ? {} : {
               status: docData.status || 'Work Order Created',
-              skipDiagnostics: docData.skipDiagnostics || false,
-              // No fallback: an unanswered WO loads empty so the worksheet still prompts.
-              sourcingPriority: docData.sourcingPriority || '',
-              sourcingQuality: docData.sourcingQuality || []
+              skipDiagnostics: docData.skipDiagnostics || false
             })
           });
 
@@ -237,16 +238,17 @@ const DocumentForm = ({ mode = 'workorder' }) => {
         customer: values.customer,
         vehicle: values.vehicle,
         currentMileage: values.currentMileage,
-        date: values.date,
+        // `date` (creation date) is auto-captured server-side; not user-editable.
         services: values.services,
         priority: values.priority,
         diagnosticNotes: values.diagnosticNotes,
         serviceRequested: values.services.map(s => s.description).join('\n'),
+        sourcingPriority: values.sourcingPriority,
+        sourcingQuality: values.sourcingQuality,
+        sourcingNotes: values.sourcingNotes,
         ...(isQuote ? {} : {
           status: values.status,
-          skipDiagnostics: values.skipDiagnostics,
-          sourcingPriority: values.sourcingPriority,
-          sourcingQuality: values.sourcingQuality
+          skipDiagnostics: values.skipDiagnostics
         })
       };
 
@@ -301,13 +303,13 @@ const DocumentForm = ({ mode = 'workorder' }) => {
   // Parts sourcing primer (work orders only). Shared with the Parts Purchase Worksheet
   // — answering here pre-fills it there, and editing it in either place updates the other.
   const sourcingPriorityOptions = [
-    { value: 'cost', label: 'Lowest Cost' },
-    { value: 'time', label: 'Fastest Availability' }
+    { value: 'cost', label: 'Cost-driven' },
+    { value: 'time', label: 'Time-driven' }
   ];
   const sourcingQualityOptions = [
-    { value: 'oem', label: 'OEM' },
-    { value: 'aftermarket', label: 'Aftermarket' },
-    { value: 'used-ok', label: 'Used' }
+    { value: 'oem', label: 'OEM (New)' },
+    { value: 'used-ok', label: 'OEM (Used)' },
+    { value: 'aftermarket', label: 'Aftermarket' }
   ];
 
   return (
@@ -378,20 +380,6 @@ const DocumentForm = ({ mode = 'workorder' }) => {
                 </div>
 
                 <div>
-                  <Input
-                    label="Date"
-                    name="date"
-                    type="date"
-                    value={values.date}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    error={errors.date}
-                    touched={touched.date}
-                    required
-                  />
-                </div>
-
-                <div>
                   <SelectInput
                     label="Priority"
                     name="priority"
@@ -405,9 +393,10 @@ const DocumentForm = ({ mode = 'workorder' }) => {
                   />
                 </div>
 
-                {/* Parts sourcing primer - Work Orders only. Shared with the worksheet. */}
-                {!isQuote && (
-                  <>
+                {/* Parts sourcing primer — quotes AND work orders. Shared with the worksheet. */}
+                <div className="md:col-span-2 rounded-lg border border-gray-300 bg-gray-100 p-4 shadow-sm">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Parts Sourcing</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <SelectInput
                         label="Sourcing Priority"
@@ -420,6 +409,9 @@ const DocumentForm = ({ mode = 'workorder' }) => {
                         touched={touched.sourcingPriority}
                         required
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Cost-driven = lowest price (sometimes with a wait); time-driven = fastest turnaround (sometimes a higher price).
+                      </p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -453,8 +445,19 @@ const DocumentForm = ({ mode = 'workorder' }) => {
                       )}
                       <p className="text-xs text-gray-500 mt-1">Select every quality the customer will accept.</p>
                     </div>
-                  </>
-                )}
+                  </div>
+                  <div className="mt-4">
+                    <TextArea
+                      label="Sourcing Notes"
+                      name="sourcingNotes"
+                      value={values.sourcingNotes}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      rows={2}
+                      placeholder="Nuance for sourcing — e.g. “not urgent, but the car must be drivable before Friday”."
+                    />
+                  </div>
+                </div>
 
                 {/* Skip Diagnostics - Work Orders only */}
                 {!isQuote && (

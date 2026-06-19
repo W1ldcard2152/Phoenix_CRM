@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 
 const PRIORITY_OPTIONS = [
-  { value: 'cost', label: 'Lowest Cost', hint: 'Cheapest source wins; willing to wait.' },
-  { value: 'time', label: 'Fastest Availability', hint: 'Get it here soonest; cost is secondary.' },
+  { value: 'cost', label: 'Cost-driven', hint: 'Lowest price — sometimes with a wait.' },
+  { value: 'time', label: 'Time-driven', hint: 'Fastest turnaround — sometimes a higher price.' },
 ];
 
 const QUALITY_OPTIONS = [
-  { value: 'oem', label: 'OEM', hint: 'Original-equipment parts only.' },
+  { value: 'oem', label: 'OEM (New)', hint: 'New original-equipment parts.' },
+  { value: 'used-ok', label: 'OEM (Used)', hint: 'Good used OEM parts acceptable.' },
   { value: 'aftermarket', label: 'Aftermarket', hint: 'Quality aftermarket acceptable.' },
-  { value: 'used-ok', label: 'Used OK', hint: 'Good used parts acceptable.' },
 ];
 
 // Hard gate shown when a WO reaches sourcing with an unanswered primer (e.g. a
@@ -75,7 +75,7 @@ export default function PrimerGate({ onSubmit, vehicleLabel }) {
 
         <SingleGroup
           title="Sourcing Priority"
-          prompt="What matters more for this job?"
+          prompt="When shopping for parts, what should drive the choice?"
           options={PRIORITY_OPTIONS}
           value={priority}
           onChange={setPriority}

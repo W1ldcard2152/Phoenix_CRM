@@ -65,6 +65,7 @@ router.post('/:id/worksheet/open', wsRoles, workOrderController.openWorksheet);
 router.post('/:id/worksheet/close', wsRoles, workOrderController.closeWorksheet);
 router.patch('/:id/worksheet/primer', wsRoles, workOrderController.setPrimer);
 router.patch('/:id/worksheet/notes', wsRoles, workOrderController.updateSourcingNotes);
+router.post('/:id/worksheet/parts', wsRoles, workOrderController.addWorksheetPart);
 router.patch('/:id/worksheet/parts/:partId/scratchpad', wsRoles, workOrderController.updateScratchpad);
 router.patch('/:id/worksheet/parts/:partId/quantity', wsRoles, workOrderController.updatePartQuantity);
 router.post('/:id/worksheet/parts/:partId/offers', wsRoles, workOrderController.addOffer);

@@ -1388,6 +1388,7 @@ const DocumentDetail = () => {
       ? { ...workOrder.discount, amount: discountAmount }
       : null,
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    taxRate: 8,
     technicianName: getCustomerFacingName(workOrder.assignedTechnician),
     serviceAdvisorName: getCustomerFacingName(workOrder.createdBy)
   });
@@ -2554,29 +2555,27 @@ const DocumentDetail = () => {
           <h2 className="text-lg font-bold text-gray-800">{isQuote ? 'Quoted Work' : 'Jobs'}</h2>
           {!isInvoiced && (
             <div className="flex flex-wrap items-center gap-2">
-              {/* Parts Purchase Worksheet — one per work order. Opens a narrow
-                  split-screen window; not status-gated (the openWorksheet endpoint
-                  guard keeps a re-open from dragging status backward). */}
-              {!isQuote && (
-                <Button
-                  onClick={() => {
-                    const w = 480;
-                    const h = 950;
-                    // Center over the current browser window (not the top-left default).
-                    const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
-                    const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
-                    window.open(
-                      `/worksheet/${id}`,
-                      `worksheet-${id}`,
-                      `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
-                    );
-                  }}
-                  variant="outline"
-                  size="sm"
-                >
-                  <i className="fas fa-clipboard-list mr-1"></i>Worksheet
-                </Button>
-              )}
+              {/* Parts Purchase Worksheet — available on work orders AND quotes (parts
+                  prep on a quote carries over on conversion). Opens a narrow split-screen
+                  window; on quotes the worksheet never changes the quote's status. */}
+              <Button
+                onClick={() => {
+                  const w = 480;
+                  const h = 950;
+                  // Center over the current browser window (not the top-left default).
+                  const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+                  const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+                  window.open(
+                    `/worksheet/${id}`,
+                    `worksheet-${id}`,
+                    `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
+                  );
+                }}
+                variant="outline"
+                size="sm"
+              >
+                <i className="fas fa-clipboard-list mr-1"></i>Worksheet
+              </Button>
               {!isQuote && permissions.workOrders.canAddParts(currentUser) && (
                 <Button onClick={() => setServiceModalOpen(true)} variant="outline" size="sm">
                   <i className="fas fa-box-open mr-1"></i>Service Package

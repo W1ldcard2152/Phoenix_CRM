@@ -1138,6 +1138,10 @@ exports.removeServicePackage = catchAsync(async (req, res, next) => {
 // use arrayFilters (positional `$` only reaches one array level).
 // ===========================================================================
 
+// Quotes use the worksheet for parts prep but keep their own lifecycle (Quote →
+// converted to WO). The worksheet's WO-status transitions must be no-ops on quotes.
+const isQuoteStatus = (status) => typeof status === 'string' && status.startsWith('Quote');
+
 // Shared tail: re-fetch with detailed population, bust caches, respond.
 const respondWithWorkOrder = async (res, workOrderId) => {
   const populatedWorkOrder = await applyPopulation(
@@ -1358,6 +1362,28 @@ exports.splitPart = catchAsync(async (req, res, next) => {
   await respondWithWorkOrder(res, id);
 });
 
+// Add a new placeholder part to a job from the worksheet (so a writer can keep
+// sourcing without bouncing back to the work order to add it). Starts 'pending'.
+exports.addWorksheetPart = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { name, quantity, serviceId } = req.body;
+  if (!name || !name.trim()) {
+    return next(new AppError('Part name is required', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  workOrder.parts.push({
+    name: name.trim(),
+    quantity: Math.max(1, parseInt(quantity, 10) || 1),
+    serviceId: serviceId || null,
+    sourcingStatus: 'pending'
+  });
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  await respondWithWorkOrder(res, id);
+});
+
 // Per-part scratchpad (single-level positional).
 exports.updateScratchpad = catchAsync(async (req, res, next) => {
   const { id, partId } = req.params;
@@ -1432,21 +1458,24 @@ exports.openWorksheet = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
 
-  let newStatus = workOrder.status;
-  if (workOrder.status === 'Inspection/Diag Complete') {
-    newStatus = 'Parts Sourcing - In Progress';
-  }
-  // Reconcile-on-load: parts are the source of truth. If everything is sourced
-  // (selected or approved — i.e. nothing still pending) but status lags, move forward.
-  const parts = workOrder.parts || [];
-  const allSourced = parts.length > 0 && parts.every(p => p.sourcingStatus !== 'pending');
-  if (newStatus === 'Parts Sourcing - In Progress' && allSourced) {
-    newStatus = 'Parts Selected - Pending Approval';
-  }
+  // Quotes keep their own status — sourcing data is captured, status untouched.
+  if (!isQuoteStatus(workOrder.status)) {
+    let newStatus = workOrder.status;
+    if (workOrder.status === 'Inspection/Diag Complete') {
+      newStatus = 'Parts Sourcing - In Progress';
+    }
+    // Reconcile-on-load: parts are the source of truth. If everything is sourced
+    // (selected or approved — i.e. nothing still pending) but status lags, move forward.
+    const parts = workOrder.parts || [];
+    const allSourced = parts.length > 0 && parts.every(p => p.sourcingStatus !== 'pending');
+    if (newStatus === 'Parts Sourcing - In Progress' && allSourced) {
+      newStatus = 'Parts Selected - Pending Approval';
+    }
 
-  if (newStatus !== workOrder.status) {
-    workOrder.status = newStatus;
-    await workOrder.save();
+    if (newStatus !== workOrder.status) {
+      workOrder.status = newStatus;
+      await workOrder.save();
+    }
   }
 
   await respondWithWorkOrder(res, id);
@@ -1460,13 +1489,16 @@ exports.closeWorksheet = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
 
-  const parts = workOrder.parts || [];
-  // Sourced = selected or approved (nothing still pending). Zero parts also qualifies.
-  const readyForApproval = parts.length === 0 || parts.every(p => p.sourcingStatus !== 'pending');
+  // Quotes keep their own status — closing the worksheet doesn't advance a quote.
+  if (!isQuoteStatus(workOrder.status)) {
+    const parts = workOrder.parts || [];
+    // Sourced = selected or approved (nothing still pending). Zero parts also qualifies.
+    const readyForApproval = parts.length === 0 || parts.every(p => p.sourcingStatus !== 'pending');
 
-  if (readyForApproval && workOrder.status !== 'Parts Selected - Pending Approval') {
-    workOrder.status = 'Parts Selected - Pending Approval';
-    await workOrder.save();
+    if (readyForApproval && workOrder.status !== 'Parts Selected - Pending Approval') {
+      workOrder.status = 'Parts Selected - Pending Approval';
+      await workOrder.save();
+    }
   }
 
   await respondWithWorkOrder(res, id);
@@ -2603,6 +2635,10 @@ exports.convertQuoteToWorkOrder = catchAsync(async (req, res, next) => {
       status: 'Work Order Created',
       services: copiedServices,
       serviceRequested: quote.serviceRequested,
+      // Carry sourcing prep done on the quote over to the new work order.
+      sourcingPriority: quote.sourcingPriority,
+      sourcingQuality: quote.sourcingQuality,
+      sourcingNotes: quote.sourcingNotes,
       diagnosticNotes: `Converted from Quote #${quote._id.toString().slice(-8).toUpperCase()}`,
       parts: partsToMove.map(part => {
         const { _id, ...partData } = part.toObject ? part.toObject() : part;

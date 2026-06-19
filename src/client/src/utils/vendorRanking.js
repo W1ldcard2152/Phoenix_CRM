@@ -49,15 +49,23 @@ export function vendorServesMake(vendor, make) {
 // it never hard-excludes. Vehicle make filters to vendors serving that make (or
 // 'all'); the active priority chooses the tier to sort by (cost→costTier,
 // time→speedTier, lower = better); sortOrder breaks ties.
+//
+// An UNSET tier (0 or blank) ranks LAST, not first — so a newly-added vendor with
+// no tiers yet doesn't jump above an established, ranked list. Among unset (and
+// among equal) tiers, sortOrder breaks the tie.
 export function rankVendors(vendors = [], { priority, make } = {}) {
   const tierKey = priority === 'time' ? 'speedTier' : 'costTier';
+  const effectiveTier = (v) => {
+    const t = v[tierKey];
+    return (t == null || t === 0) ? Number.POSITIVE_INFINITY : t; // unset → worst
+  };
   return vendors
     .filter(v => vendorServesMake(v, make))
     .slice()
     .sort((a, b) => {
-      const at = a[tierKey] ?? 0;
-      const bt = b[tierKey] ?? 0;
-      if (at !== bt) return at - bt;                 // lower tier = better
+      const at = effectiveTier(a);
+      const bt = effectiveTier(b);
+      if (at !== bt) return at - bt;                 // lower tier = better; unset last
       return (a.sortOrder ?? 0) - (b.sortOrder ?? 0); // tiebreaker
     });
 }

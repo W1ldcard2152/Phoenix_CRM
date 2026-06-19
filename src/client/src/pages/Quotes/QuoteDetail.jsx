@@ -363,6 +363,7 @@ const QuoteDetail = () => {
     labor: quote.labor || [],
     servicePackages: quote.servicePackages || [],
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
+    taxRate: 8,
     technicianName: getCustomerFacingName(quote.assignedTechnician),
     serviceAdvisorName: getCustomerFacingName(quote.createdBy),
     company

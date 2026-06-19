@@ -2,6 +2,24 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-19
+
+### Added
+- **Worksheet now works on quotes** — source and prep parts on a quote, then convert to a work order. Opening or closing the worksheet never changes a quote's status, and the sourcing answers + captured offers carry over when the quote converts.
+- **Add a part from inside the worksheet** — drop a new placeholder onto any job without going back to the work order, so you can keep pricing and comparing in one place.
+- **Sourcing Notes** on the primer (quotes and work orders) for nuance like *"not urgent, but the car must be drivable by Friday."* It's the same note shown in the worksheet.
+
+### Changed
+- The **sourcing primer now appears on quotes** too, identical to work orders.
+- Parts quality options are now **OEM (New) · OEM (Used) · Aftermarket** (relabeled and reordered).
+- Sourcing priority is now framed as **Cost-driven vs. Time-driven**, with a plain-language note that cost-driven means lowest price (sometimes a wait) and time-driven means fastest turnaround (sometimes a higher price).
+- The create/edit work-order/quote form is tidier: the sourcing questions are grouped into a single **Parts Sourcing** panel, and the manually-editable **Date** field was removed — creation date is captured automatically.
+- **Settings** is split from one Shop tab into three: **Company Profile** (profile + shop hours), **Shop Settings** (defaults + labor types), and **Vendors / Suppliers**.
+- In the worksheet's vendor ranking, vendors with **no cost/speed tier set now sort to the bottom**, so newly-added vendors don't outrank your established list.
+
+### Fixed
+- **Tax now prints on work orders and quotes.** The printed/PDF output was computing tax at 0% because the tax rate was never passed to the PDF generator (it showed on screen, which calculates tax separately). Printouts now apply the same 8% used on screen, so the tax line and total are correct.
+
 ## 2026-06-18
 
 ### Added

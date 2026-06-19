@@ -11,16 +11,16 @@ import PartSourcingCard from './PartSourcingCard';
 import SplitPartModal from './SplitPartModal';
 import AutosaveField from './AutosaveField';
 
-const PRIORITY_LABEL = { cost: 'Lowest Cost', time: 'Fastest Availability' };
-const QUALITY_LABEL = { oem: 'OEM', aftermarket: 'Aftermarket', 'used-ok': 'Used' };
+const PRIORITY_LABEL = { cost: 'Cost-driven', time: 'Time-driven' };
+const QUALITY_LABEL = { oem: 'OEM (New)', 'used-ok': 'OEM (Used)', aftermarket: 'Aftermarket' };
 const PRIORITY_OPTIONS = [
-  { value: 'cost', label: 'Lowest Cost' },
-  { value: 'time', label: 'Fastest Availability' },
+  { value: 'cost', label: 'Cost-driven' },
+  { value: 'time', label: 'Time-driven' },
 ];
 const QUALITY_OPTIONS = [
-  { value: 'oem', label: 'OEM' },
+  { value: 'oem', label: 'OEM (New)' },
+  { value: 'used-ok', label: 'OEM (Used)' },
   { value: 'aftermarket', label: 'Aftermarket' },
-  { value: 'used-ok', label: 'Used' },
 ];
 
 const qualityLabels = (arr) => (arr || []).map((q) => QUALITY_LABEL[q] || q).join(', ');
@@ -105,6 +105,62 @@ function VendorPanel({ vendors, priority }) {
   );
 }
 
+// Add a new placeholder part to a job without leaving the worksheet.
+function AddPartForm({ services, onAdd, onCancel }) {
+  const [name, setName] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [serviceId, setServiceId] = useState(services[0]?._id || '');
+  const [saving, setSaving] = useState(false);
+  const canAdd = name.trim() && !saving;
+
+  const submit = async () => {
+    if (!canAdd) return;
+    setSaving(true);
+    try {
+      await onAdd({ name: name.trim(), quantity: parseInt(quantity, 10) || 1, serviceId: serviceId || null });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500';
+
+  return (
+    <div className="bg-white border border-primary-200 rounded-lg p-3 space-y-2">
+      <input
+        className={`${inputCls} w-full`}
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+        placeholder="New part name"
+      />
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-gray-500">Qty</label>
+        <input type="number" min="1" className={`${inputCls} w-16`} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <label className="text-xs text-gray-500 ml-1">Job</label>
+        <select className={`${inputCls} flex-1 min-w-0`} value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+          {services.map((s) => (
+            <option key={s._id} value={s._id}>{s.description}</option>
+          ))}
+          <option value="">General (no job)</option>
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canAdd}
+          className={`px-3 py-1 text-sm rounded-md text-white ${canAdd ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
+        >
+          {saving ? 'Adding…' : 'Add part'}
+        </button>
+        <button type="button" onClick={onCancel} className="px-3 py-1 text-sm rounded-md border border-gray-300">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 function WorksheetInner() {
   const { workOrderId } = useParams();
   const { track } = useSaveTracker();
@@ -120,6 +176,7 @@ function WorksheetInner() {
   const [closed, setClosed] = useState(false);
   const [editingBasis, setEditingBasis] = useState(false);
   const [savingBasis, setSavingBasis] = useState(false);
+  const [addingPart, setAddingPart] = useState(false);
 
   const reload = useCallback(async () => {
     const resp = await WorkOrderService.getWorkOrder(workOrderId);
@@ -184,6 +241,11 @@ function WorksheetInner() {
     setSplitTarget(null);
   };
 
+  const handleAddPart = async (fields) => {
+    await mutate(() => WorksheetService.addPart(workOrderId, fields));
+    setAddingPart(false);
+  };
+
   if (loading) return <div className="p-8 text-center text-gray-500">Loading worksheet…</div>;
   if (loadError) return <div className="p-8 text-center text-red-600">{loadError}</div>;
   if (!workOrder) return null;
@@ -217,7 +279,9 @@ function WorksheetInner() {
   const sellerVendors = rankVendors(allVendors, { priority: workOrder.sourcingPriority });
 
   const parts = workOrder.parts || [];
-  const allSelected = parts.length > 0 && parts.every((p) => p.sourcingStatus === 'selected');
+  const allSourced = parts.length > 0 && parts.every((p) => p.sourcingStatus !== 'pending');
+  const isQuoteDoc = String(workOrder.status || '').startsWith('Quote');
+  const services = workOrder.services || [];
 
   return (
     <div className="min-h-screen bg-parchment">
@@ -302,10 +366,26 @@ function WorksheetInner() {
 
         {/* Parts */}
         <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">Parts</h2>
+            {!addingPart && (
+              <button
+                type="button"
+                onClick={() => setAddingPart(true)}
+                className="text-sm text-primary-600 hover:text-primary-800"
+              >
+                <i className="fas fa-plus mr-1" />Add part
+              </button>
+            )}
+          </div>
+          {addingPart && (
+            <AddPartForm services={services} onAdd={handleAddPart} onCancel={() => setAddingPart(false)} />
+          )}
           {parts.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-              This work order has no parts. Closing the worksheet will send it to approval so an approver can ask
-              why.
+              {isQuoteDoc
+                ? 'This quote has no parts yet — add one above to start sourcing.'
+                : 'This work order has no parts. Closing the worksheet will send it to approval so an approver can ask why.'}
             </div>
           ) : (
             parts.map((part) => (
@@ -340,9 +420,11 @@ function WorksheetInner() {
 
         {parts.length > 0 && (
           <p className="text-xs text-gray-500 text-center">
-            {allSelected
-              ? 'All parts selected — closing will send this WO to “Parts Selected - Pending Approval”.'
-              : 'Some parts are still pending — closing keeps this WO in sourcing.'}
+            {isQuoteDoc
+              ? 'Sourcing on a quote — closing won’t change the quote’s status. Answers and offers carry over when it converts.'
+              : allSourced
+                ? 'All parts sourced — closing will send this WO to “Parts Selected - Pending Approval”.'
+                : 'Some parts are still pending — closing keeps this WO in sourcing.'}
           </p>
         )}
       </div>

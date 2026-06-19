@@ -48,6 +48,12 @@ const WorksheetService = {
     return res.data;
   },
 
+  // Add a new placeholder part to a job from the worksheet. { name, quantity, serviceId }.
+  addPart: async (workOrderId, { name, quantity, serviceId }) => {
+    const res = await API.post(`${base(workOrderId)}/parts`, { name, quantity, serviceId });
+    return res.data;
+  },
+
   // Append a new offer to a part (server-side $push).
   addOffer: async (workOrderId, partId, offer) => {
     const res = await API.post(`${base(workOrderId)}/parts/${partId}/offers`, offer);

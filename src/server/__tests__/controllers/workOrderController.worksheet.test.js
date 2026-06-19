@@ -298,6 +298,41 @@ describe('approvePart', () => {
 });
 
 // =========================================================================
+//  addWorksheetPart — add a placeholder to a job from the worksheet
+// =========================================================================
+describe('addWorksheetPart', () => {
+  afterEach(resetAll);
+
+  it('pushes a pending placeholder to the given job', async () => {
+    const wo = makeWorkOrder({ parts: [] });
+    WorkOrder.findById.mockResolvedValue(wo);
+    const sid = objectId().toString();
+    const req = { params: { id: wo._id.toString() }, body: { name: 'Cam actuator', quantity: 2, serviceId: sid }, user: makeUser() };
+    const next = mockNext();
+    controller.addWorksheetPart(req, mockRes(), next);
+    await flushPromises();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(wo.parts).toHaveLength(1);
+    expect(wo.parts[0].name).toBe('Cam actuator');
+    expect(wo.parts[0].quantity).toBe(2);
+    expect(wo.parts[0].sourcingStatus).toBe('pending');
+    expect(String(wo.parts[0].serviceId)).toBe(sid);
+    expect(wo.save).toHaveBeenCalled();
+  });
+
+  it('returns 400 when the name is missing', async () => {
+    const wo = makeWorkOrder({ parts: [] });
+    WorkOrder.findById.mockResolvedValue(wo);
+    const req = { params: { id: wo._id.toString() }, body: { quantity: 1 }, user: makeUser() };
+    const next = mockNext();
+    controller.addWorksheetPart(req, mockRes(), next);
+    await flushPromises();
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+  });
+});
+
+// =========================================================================
 //  open / close / reconcile — the status rules most likely to be "corrected"
 // =========================================================================
 describe('worksheet status transitions', () => {
@@ -339,6 +374,16 @@ describe('worksheet status transitions', () => {
       expect(wo.status).toBe('Parts Selected - Pending Approval');
       expect(wo.save).toHaveBeenCalled();
     });
+
+    it('on a QUOTE → status untouched (no-op), even with all parts sourced', async () => {
+      const wo = makeWorkOrder({
+        status: 'Quote',
+        parts: [makePart({ sourcingStatus: 'selected' }), makePart({ sourcingStatus: 'approved' })],
+      });
+      await callStatus(controller.openWorksheet, wo);
+      expect(wo.status).toBe('Quote');
+      expect(wo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('closeWorksheet', () => {
@@ -377,6 +422,13 @@ describe('worksheet status transitions', () => {
       await callStatus(controller.closeWorksheet, wo);
       expect(wo.status).toBe('Parts Selected - Pending Approval');
       expect(wo.save).toHaveBeenCalled();
+    });
+
+    it('on a QUOTE → status untouched (no-op), even with all parts selected', async () => {
+      const wo = makeWorkOrder({ status: 'Quote', parts: [makePart({ sourcingStatus: 'selected' })] });
+      await callStatus(controller.closeWorksheet, wo);
+      expect(wo.status).toBe('Quote');
+      expect(wo.save).not.toHaveBeenCalled();
     });
   });
 });
