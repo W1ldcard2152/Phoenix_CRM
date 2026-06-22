@@ -42,6 +42,9 @@ exports.updateSettings = catchAsync(async (req, res) => {
   if (req.body.defaultLaborRate !== undefined) {
     settings.defaultLaborRate = req.body.defaultLaborRate;
   }
+  if (req.body.taxRate !== undefined) {
+    settings.taxRate = req.body.taxRate;
+  }
   if (req.body.customVendors !== undefined) {
     settings.customVendors = req.body.customVendors;
     // Keep the legacy vendorHostnames map (used by the part-modal URL detection)

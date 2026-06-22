@@ -149,6 +149,7 @@ const DocumentDetail = () => {
   const [isOtherVendor, setIsOtherVendor] = useState(false);
   const [markupPercentage, setMarkupPercentage] = useState(30);
   const [defaultLaborRate, setDefaultLaborRate] = useState(75);
+  const [taxRatePercent, setTaxRatePercent] = useState(8); // sales tax %, from Settings
   const [overridePrice, setOverridePrice] = useState(false);
   const [partsSortConfig, setPartsSortConfig] = useState([]);
   const [vendorList, setVendorList] = useState([]);
@@ -440,6 +441,7 @@ const DocumentDetail = () => {
         setWorkOrder(fetchedDoc);
         setMarkupPercentage(settings.partMarkupPercentage);
         if (typeof settings.defaultLaborRate === 'number') setDefaultLaborRate(settings.defaultLaborRate);
+        if (typeof settings.taxRate === 'number') setTaxRatePercent(settings.taxRate);
         setVendorList((settings.customVendors || []).map(v => v.name));
         setCategoryList(settings.customCategories || []);
         setLaborTypeList(settings.laborTypes || []);
@@ -1388,7 +1390,7 @@ const DocumentDetail = () => {
       ? { ...workOrder.discount, amount: discountAmount }
       : null,
     customerFacingNotes: notes.filter(n => n.isCustomerFacing),
-    taxRate: 8,
+    taxRate: taxRatePercent,
     technicianName: getCustomerFacingName(workOrder.assignedTechnician),
     serviceAdvisorName: getCustomerFacingName(workOrder.createdBy)
   });
@@ -1508,7 +1510,7 @@ const DocumentDetail = () => {
     workOrder.discount
   );
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-  const taxRate = 0.08;
+  const taxRate = taxRatePercent / 100;
   const taxAmount = discountedSubtotal * taxRate;
   const totalWithTax = discountedSubtotal + taxAmount;
 

@@ -2,6 +2,11 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-22
+
+### Changed
+- **Sales tax rate is now configurable** in Settings → Shop Settings (same place as the labor rate), instead of being hardcoded at 8%. The rate applies to work orders and quotes — on screen and on printed PDFs. (Invoices continue to use their own per-invoice tax rate.)
+
 ## 2026-06-19
 
 ### Added
@@ -18,7 +23,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - In the worksheet's vendor ranking, vendors with **no cost/speed tier set now sort to the bottom**, so newly-added vendors don't outrank your established list.
 
 ### Fixed
-- **Tax now prints on work orders and quotes.** The printed/PDF output was computing tax at 0% because the tax rate was never passed to the PDF generator (it showed on screen, which calculates tax separately). Printouts now apply the same 8% used on screen, so the tax line and total are correct.
+- **Tax now prints on work orders and quotes.** The printed/PDF output was computing tax at 0% because the tax rate was never passed to the PDF generator (it showed on screen, which calculates tax separately). Printouts now apply the shop's tax rate (8% by default), so the tax line and total are correct.
 
 ## 2026-06-18
 

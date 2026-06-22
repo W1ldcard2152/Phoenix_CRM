@@ -67,7 +67,7 @@ const SettingsPage = () => {
   const [showPasswordSection, setShowPasswordSection] = useState(false);
 
   // Shop Settings State (admin/management only)
-  const [shopSettings, setShopSettings] = useState({ partMarkupPercentage: 30, defaultLaborRate: 75 });
+  const [shopSettings, setShopSettings] = useState({ partMarkupPercentage: 30, defaultLaborRate: 75, taxRate: 8 });
   const [shopSettingsMessage, setShopSettingsMessage] = useState({ type: '', text: '' });
   const [isUpdatingShopSettings, setIsUpdatingShopSettings] = useState(false);
 
@@ -108,7 +108,8 @@ const SettingsPage = () => {
         .then(res => {
           setShopSettings({
             partMarkupPercentage: res.data.settings.partMarkupPercentage ?? 30,
-            defaultLaborRate: res.data.settings.defaultLaborRate ?? 75
+            defaultLaborRate: res.data.settings.defaultLaborRate ?? 75,
+            taxRate: res.data.settings.taxRate ?? 8
           });
           setLaborTypes(res.data.settings.laborTypes || []);
           setVendors([...(res.data.settings.customVendors || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
@@ -336,11 +337,13 @@ const SettingsPage = () => {
     try {
       const response = await SettingsService.updateSettings({
         partMarkupPercentage: Number(shopSettings.partMarkupPercentage),
-        defaultLaborRate: Number(shopSettings.defaultLaborRate)
+        defaultLaborRate: Number(shopSettings.defaultLaborRate),
+        taxRate: Number(shopSettings.taxRate)
       });
       setShopSettings({
         partMarkupPercentage: response.data.settings.partMarkupPercentage ?? 30,
-        defaultLaborRate: response.data.settings.defaultLaborRate ?? 75
+        defaultLaborRate: response.data.settings.defaultLaborRate ?? 75,
+        taxRate: response.data.settings.taxRate ?? 8
       });
       setShopSettingsMessage({
         type: 'success',
@@ -872,6 +875,26 @@ const SettingsPage = () => {
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
                       Applied to part cost to calculate retail price. Currently: cost x {(1 + Number(shopSettings.partMarkupPercentage) / 100).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Sales Tax Rate
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={shopSettings.taxRate}
+                        onChange={(e) => setShopSettings({ ...shopSettings, taxRate: e.target.value })}
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-gray-600">%</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Applied to invoices, quotes, and work orders — on screen and on printed PDFs.
                     </p>
                   </div>
 

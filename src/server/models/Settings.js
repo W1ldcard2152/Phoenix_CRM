@@ -41,6 +41,13 @@ const SettingsSchema = new Schema(
       default: 75,
       min: 0
     },
+    // Sales tax percentage applied to invoices/quotes/work orders (on screen and on
+    // printed PDFs). Single source of truth — previously hardcoded at 8% in four places.
+    taxRate: {
+      type: Number,
+      default: 8,
+      min: 0
+    },
     customVendors: {
       // Upgraded from String[] to tagged objects for the Parts Purchase Worksheet.
       // Legacy string entries are migrated in getSettings() below.
