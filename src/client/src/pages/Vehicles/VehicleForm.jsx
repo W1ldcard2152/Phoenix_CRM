@@ -9,6 +9,7 @@ import TextArea from '../../components/common/TextArea';
 import SelectInput from '../../components/common/SelectInput';
 import SearchableDropdown from '../../components/common/SearchableDropdown';
 import Button from '../../components/common/Button';
+import { VEHICLE_MAKES } from '../../utils/vehicleMakes';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 import vinService from '../../services/vinService';
@@ -470,6 +471,7 @@ const VehicleForm = () => {
                   <Input
                     label="Make"
                     name="make"
+                    list="vehicle-makes"
                     value={values.make}
                     onChange={handleChange}
                     onBlur={handleBlur}
@@ -477,6 +479,10 @@ const VehicleForm = () => {
                     touched={touched.make}
                     required
                   />
+                  {/* Suggestions only — VIN decode / AI extractor can still set any value. */}
+                  <datalist id="vehicle-makes">
+                    {VEHICLE_MAKES.map((m) => <option key={m} value={m} />)}
+                  </datalist>
                 </div>
                 
                 <div className="md:col-span-2">

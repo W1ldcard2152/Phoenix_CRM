@@ -7,6 +7,7 @@ import vinService from '../../../services/vinService';
 import Button from '../../common/Button';
 import Input from '../../common/Input';
 import SelectInput from '../../common/SelectInput';
+import { VEHICLE_MAKES } from '../../../utils/vehicleMakes';
 
 const VehicleSchema = Yup.object().shape({
   year: Yup.number()
@@ -174,6 +175,7 @@ const VehicleStep = ({ customer, onVehicleSelect, onError, setLoading, loading }
                 <Input
                   label="Make"
                   name="make"
+                  list="vehicle-makes"
                   value={values.make}
                   onChange={handleChange}
                   onBlur={handleBlur}
@@ -182,6 +184,10 @@ const VehicleStep = ({ customer, onVehicleSelect, onError, setLoading, loading }
                   required
                   placeholder="Toyota, Ford, BMW, etc."
                 />
+                {/* Suggestions only — VIN decode / AI extractor can still set any value. */}
+                <datalist id="vehicle-makes">
+                  {VEHICLE_MAKES.map((m) => <option key={m} value={m} />)}
+                </datalist>
 
                 <Input
                   label="Model"

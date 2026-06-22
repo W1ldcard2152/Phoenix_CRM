@@ -94,6 +94,10 @@ const SettingsSchema = new Schema(
         'Remove & Replace', 'Inspect/Diagnose', 'Repair'
       ]
     },
+    vendorTypes: {
+      type: [String],
+      default: ['dealer', 'marketplace', 'retail', 'wholesale']
+    },
     vendorHostnames: {
       type: [{ hostname: String, vendor: String }],
       default: () => [...defaultVendorHostnames]
@@ -210,6 +214,10 @@ SettingsSchema.statics.getSettings = async function () {
     }
     if (!settings.laborTypes || settings.laborTypes.length === 0) {
       settings.laborTypes = ['Remove & Replace', 'Inspect/Diagnose', 'Repair'];
+      needsSave = true;
+    }
+    if (!settings.vendorTypes || settings.vendorTypes.length === 0) {
+      settings.vendorTypes = ['dealer', 'marketplace', 'retail', 'wholesale'];
       needsSave = true;
     }
     if (!settings.vendorHostnames || settings.vendorHostnames.length === 0) {

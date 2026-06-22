@@ -5,6 +5,7 @@ import { useCompany } from '../../contexts/CompanyContext';
 import AuthService from '../../services/authService';
 import SettingsService from '../../services/settingsService';
 import { formatDate } from '../../utils/formatters';
+import { VEHICLE_MAKES } from '../../utils/vehicleMakes';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Mon–Sun display order
@@ -97,10 +98,14 @@ const SettingsPage = () => {
   // Parts Vendors State (admin/management only) — tagged vendors that drive the
   // Parts Purchase Worksheet's vendor ranking (cost/speed tier + manual order).
   const [vendors, setVendors] = useState([]);
+  const [vendorTypes, setVendorTypes] = useState([]);
   const [vendorsMessage, setVendorsMessage] = useState({ type: '', text: '' });
   const [vendorBusy, setVendorBusy] = useState(false);
   // null = editor closed; { index: -1 } = adding a new vendor; index >= 0 = editing.
   const [vendorEditor, setVendorEditor] = useState(null);
+  // Inline "add a new vendor type" within the editor's type dropdown.
+  const [addingVendorType, setAddingVendorType] = useState(false);
+  const [newVendorType, setNewVendorType] = useState('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -112,6 +117,7 @@ const SettingsPage = () => {
             taxRate: res.data.settings.taxRate ?? 8
           });
           setLaborTypes(res.data.settings.laborTypes || []);
+          setVendorTypes(res.data.settings.vendorTypes || []);
           setVendors([...(res.data.settings.customVendors || [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
           setShopHours(res.data.settings.shopHours || DEFAULT_SHOP_HOURS);
           const s = res.data.settings;
@@ -282,15 +288,17 @@ const SettingsPage = () => {
   };
 
   const openVendorEditor = (index) => {
+    setAddingVendorType(false);
+    setNewVendorType('');
     if (index === -1) {
-      setVendorEditor({ index: -1, name: '', hostnames: '', makes: 'all', usedFor: ['parts'], type: '', speedTier: 0, costTier: 0 });
+      setVendorEditor({ index: -1, name: '', hostnames: '', makes: ['all'], usedFor: ['parts'], type: '', speedTier: 0, costTier: 0 });
     } else {
       const v = vendors[index];
       setVendorEditor({
         index,
         name: v.name || '',
         hostnames: (v.hostnames || []).join(', '),
-        makes: (v.makes && v.makes.length ? v.makes : ['all']).join(', '),
+        makes: (v.makes && v.makes.length ? v.makes : ['all']),
         usedFor: (v.usedFor && v.usedFor.length ? v.usedFor : ['parts']),
         type: v.type || '',
         speedTier: v.speedTier ?? 0,
@@ -304,6 +312,17 @@ const SettingsPage = () => {
     return { ...ed, usedFor: cur.includes(val) ? cur.filter(u => u !== val) : [...cur, val] };
   });
 
+  // Makes multi-select: 'all' is exclusive; picking a specific make drops 'all'.
+  const setVendorMakesAll = () => setVendorEditor((ed) => ({ ...ed, makes: ['all'] }));
+  const addVendorMake = (make) => setVendorEditor((ed) => {
+    const cur = (ed.makes || []).filter(m => m !== 'all');
+    return cur.includes(make) ? ed : { ...ed, makes: [...cur, make] };
+  });
+  const removeVendorMake = (make) => setVendorEditor((ed) => {
+    const next = (ed.makes || []).filter(m => m !== make);
+    return { ...ed, makes: next.length ? next : ['all'] };
+  });
+
   const saveVendorEditor = async () => {
     const ed = vendorEditor;
     const name = ed.name.trim();
@@ -315,12 +334,11 @@ const SettingsPage = () => {
     const parseList = (s) => s.split(',').map(x => x.trim()).filter(Boolean);
     const hostnames = parseList(ed.hostnames)
       .map(h => h.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, ''));
-    const makes = parseList(ed.makes);
 
     const vendorObj = {
       name,
       hostnames,
-      makes: makes.length ? makes : ['all'],
+      makes: (ed.makes && ed.makes.length) ? ed.makes : ['all'],
       usedFor: (ed.usedFor && ed.usedFor.length) ? ed.usedFor : ['parts'],
       type: ed.type.trim(),
       speedTier: Number(ed.speedTier) || 0,
@@ -334,6 +352,20 @@ const SettingsPage = () => {
     if (await persistVendors(next)) {
       setVendorEditor(null);
       showVendorsMessage('success', ed.index === -1 ? `Added "${name}"` : `Saved "${name}"`);
+    }
+  };
+
+  const handleAddVendorType = async () => {
+    const name = newVendorType.trim();
+    if (!name) return;
+    try {
+      const res = await SettingsService.addVendorType(name);
+      setVendorTypes(res.data.settings.vendorTypes || []);
+      setVendorEditor((ed) => ({ ...ed, type: name })); // select the new type
+      setAddingVendorType(false);
+      setNewVendorType('');
+    } catch (err) {
+      showVendorsMessage('error', err.response?.data?.message || 'Failed to add vendor type');
     }
   };
 
@@ -1175,20 +1207,59 @@ const SettingsPage = () => {
                       />
                       <p className="mt-1 text-xs text-gray-400">Used to auto-detect the seller from a pasted product URL.</p>
                     </div>
+                    {/* Vendor type — independent of "Used for" */}
                     <div className="sm:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Makes</label>
-                      <input
-                        type="text"
-                        value={vendorEditor.makes}
-                        onChange={(e) => setVendorEditor({ ...vendorEditor, makes: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="all  (or e.g. BMW, Audi, Volkswagen)"
-                      />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Vendor Type</label>
+                      {addingVendorType ? (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={newVendorType}
+                            onChange={(e) => setNewVendorType(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddVendorType(); } }}
+                            placeholder="New vendor type"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddVendorType}
+                            disabled={!newVendorType.trim()}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-300 text-sm"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAddingVendorType(false); setNewVendorType(''); }}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          value={vendorEditor.type || ''}
+                          onChange={(e) => {
+                            if (e.target.value === '__add__') { setAddingVendorType(true); return; }
+                            setVendorEditor({ ...vendorEditor, type: e.target.value });
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Select type…</option>
+                          {(vendorEditor.type && !vendorTypes.includes(vendorEditor.type) ? [vendorEditor.type, ...vendorTypes] : vendorTypes).map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                          <option value="__add__">+ Add vendor type…</option>
+                        </select>
+                      )}
                     </div>
+
+                    {/* Used for — gates the parts-sourcing fields below */}
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Used for</label>
                       <div className="flex gap-2">
-                        {[{ value: 'parts', label: 'Parts sourcing' }, { value: 'inventory', label: 'Inventory' }].map((opt) => {
+                        {[{ value: 'parts', label: 'Parts sourcing' }, { value: 'inventory', label: 'Shop Inventory' }].map((opt) => {
                           const on = (vendorEditor.usedFor || []).includes(opt.value);
                           return (
                             <button
@@ -1206,36 +1277,69 @@ const SettingsPage = () => {
                       </div>
                       <p className="mt-1 text-xs text-gray-400">Parts-sourcing vendors appear in the worksheet/part picker; inventory vendors appear when stocking inventory.</p>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                      <input
-                        type="text"
-                        value={vendorEditor.type}
-                        onChange={(e) => setVendorEditor({ ...vendorEditor, type: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g. dealer / marketplace / retailer"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Cost tier</label>
-                        <input
-                          type="number"
-                          value={vendorEditor.costTier}
-                          onChange={(e) => setVendorEditor({ ...vendorEditor, costTier: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Speed tier</label>
-                        <input
-                          type="number"
-                          value={vendorEditor.speedTier}
-                          onChange={(e) => setVendorEditor({ ...vendorEditor, speedTier: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
+
+                    {/* Parts-sourcing-only: makes filter + ranking tiers */}
+                    {(vendorEditor.usedFor || []).includes('parts') && (
+                      <>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Makes</label>
+                          {(() => {
+                            const makes = vendorEditor.makes || ['all'];
+                            const isAll = makes.includes('all');
+                            const pill = (active) =>
+                              `px-2.5 py-1 text-sm rounded-md border ${active ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`;
+                            return (
+                              <>
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <button type="button" className={pill(isAll)} onClick={setVendorMakesAll}>All makes</button>
+                                  {!isAll && makes.map((m) => (
+                                    <span key={m} className="inline-flex items-center gap-1 px-2 py-1 text-sm rounded-md border border-blue-600 bg-blue-50 text-blue-700">
+                                      {m}
+                                      <button type="button" onClick={() => removeVendorMake(m)} className="text-blue-500 hover:text-blue-800" title="Remove">
+                                        <i className="fas fa-times text-xs"></i>
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                                <select
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) addVendorMake(e.target.value); }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">{isAll ? '+ Pick specific make(s)…' : '+ Add make…'}</option>
+                                  {VEHICLE_MAKES.filter((m) => !makes.includes(m)).map((m) => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
+                                </select>
+                                <p className="mt-1 text-xs text-gray-400">
+                                  "All makes" shows this vendor for every vehicle. Pick specific make(s) to limit it — that turns off "All".
+                                </p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Cost tier</label>
+                            <input
+                              type="number"
+                              value={vendorEditor.costTier}
+                              onChange={(e) => setVendorEditor({ ...vendorEditor, costTier: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Speed tier</label>
+                            <input
+                              type="number"
+                              value={vendorEditor.speedTier}
+                              onChange={(e) => setVendorEditor({ ...vendorEditor, speedTier: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div className="flex gap-2 mt-4">
                     <button
@@ -1287,7 +1391,7 @@ const SettingsPage = () => {
                           {v.name}
                           {(v.usedFor && v.usedFor.length ? v.usedFor : ['parts']).map((u) => (
                             <span key={u} className="ml-1.5 text-[10px] uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
-                              {u}
+                              {u === 'inventory' ? 'Shop Inventory' : 'Parts'}
                             </span>
                           ))}
                         </div>

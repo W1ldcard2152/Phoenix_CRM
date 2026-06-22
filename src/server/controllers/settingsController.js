@@ -460,6 +460,28 @@ exports.removePackageTag = catchAsync(async (req, res) => {
   res.status(200).json({ status: 'success', data: { settings } });
 });
 
+exports.addVendorType = catchAsync(async (req, res) => {
+  const { vendorType } = req.body;
+  if (!vendorType || !vendorType.trim()) {
+    return res.status(400).json({ status: 'fail', message: 'Vendor type is required' });
+  }
+
+  const settings = await Settings.getSettings();
+  const normalized = vendorType.trim();
+
+  const exists = (settings.vendorTypes || []).some(
+    t => t.toLowerCase() === normalized.toLowerCase()
+  );
+  if (exists) {
+    return res.status(400).json({ status: 'fail', message: 'This vendor type already exists' });
+  }
+
+  settings.vendorTypes = [...(settings.vendorTypes || []), normalized];
+  await settings.save();
+
+  res.status(200).json({ status: 'success', data: { settings } });
+});
+
 exports.addLaborType = catchAsync(async (req, res) => {
   const { laborType } = req.body;
   if (!laborType || !laborType.trim()) {

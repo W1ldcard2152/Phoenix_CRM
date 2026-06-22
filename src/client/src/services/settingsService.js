@@ -21,6 +21,11 @@ const SettingsService = {
     return response.data;
   },
 
+  addVendorType: async (vendorType) => {
+    const response = await API.post('/settings/vendor-types', { vendorType });
+    return response.data;
+  },
+
   addCategory: async (category) => {
     const response = await API.post('/settings/categories', { category });
     return response.data;
