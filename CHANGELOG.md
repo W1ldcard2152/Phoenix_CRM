@@ -6,6 +6,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 
 ### Changed
 - **Sales tax rate is now configurable** in Settings → Shop Settings (same place as the labor rate), instead of being hardcoded at 8%. The rate applies to work orders and quotes — on screen and on printed PDFs. (Invoices continue to use their own per-invoice tax rate.)
+- **One unified vendor directory** (Settings → Vendors / Suppliers) replaces the split between parts vendors and inventory vendors. Each vendor is tagged **Used for: Parts and/or Inventory** (plus the existing vehicle-make tags). Parts pickers (the worksheet and the work-order part modal) now show only **Parts**-tagged vendors that serve the vehicle's make — a make-specific vendor like FCP Euro (Land Rover/Audi) is hidden on a Ford, and supplies-only vendors (Zoro/Grainger) never appear in parts sourcing. Inventory items now pick their vendor from a **dropdown** of Inventory-tagged vendors (with an "Other" option for one-offs); existing free-text vendors are preserved. Dual-use vendors (Amazon, NAPA, Walmart) are entered once and tagged for both.
 
 ## 2026-06-19
 

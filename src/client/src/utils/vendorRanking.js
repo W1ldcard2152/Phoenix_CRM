@@ -53,14 +53,17 @@ export function vendorServesMake(vendor, make) {
 // An UNSET tier (0 or blank) ranks LAST, not first — so a newly-added vendor with
 // no tiers yet doesn't jump above an established, ranked list. Among unset (and
 // among equal) tiers, sortOrder breaks the tie.
-export function rankVendors(vendors = [], { priority, make } = {}) {
+// `usage` ('parts' | 'inventory') filters to vendors tagged for that use; vendors
+// missing usedFor are treated as parts vendors (back-compat). Omit usage to skip.
+export function rankVendors(vendors = [], { priority, make, usage } = {}) {
   const tierKey = priority === 'time' ? 'speedTier' : 'costTier';
   const effectiveTier = (v) => {
     const t = v[tierKey];
     return (t == null || t === 0) ? Number.POSITIVE_INFINITY : t; // unset → worst
   };
+  const servesUsage = (v) => !usage || (v.usedFor && v.usedFor.length ? v.usedFor : ['parts']).includes(usage);
   return vendors
-    .filter(v => vendorServesMake(v, make))
+    .filter(v => servesUsage(v) && vendorServesMake(v, make))
     .slice()
     .sort((a, b) => {
       const at = effectiveTier(a);

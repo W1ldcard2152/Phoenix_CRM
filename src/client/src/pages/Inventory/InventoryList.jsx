@@ -78,6 +78,7 @@ const InventoryList = () => {
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [showManageBrandsModal, setShowManageBrandsModal] = useState(false);
   const [brandOverrides, setBrandOverrides] = useState([]);
+  const [inventoryVendors, setInventoryVendors] = useState([]); // directory vendor names tagged for inventory
 
   const isAdmin = user?.role === 'admin' || user?.role === 'management';
 
@@ -142,6 +143,11 @@ const InventoryList = () => {
       setCategories(settings.inventoryCategories || []);
       setPackageTags(settings.packageTags || []);
       setBrandOverrides(settings.brandOverrides || []);
+      setInventoryVendors(
+        (settings.customVendors || [])
+          .filter(v => (v.usedFor && v.usedFor.length ? v.usedFor : ['parts']).includes('inventory'))
+          .map(v => v.name)
+      );
       if (settings.partMarkupPercentage != null) setMarkupPercentage(settings.partMarkupPercentage);
 
       // Calculate shopping list count
@@ -917,6 +923,7 @@ const InventoryList = () => {
                 categories={categories}
                 onCategoriesChange={setCategories}
                 packageTags={packageTags}
+                vendors={inventoryVendors}
                 isAdmin={isAdmin}
                 markupPercentage={markupPercentage}
               />

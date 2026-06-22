@@ -11,8 +11,8 @@ const SettingsService = {
     return response.data;
   },
 
-  addVendor: async (vendor, hostname) => {
-    const response = await API.post('/settings/vendors', { vendor, hostname });
+  addVendor: async (vendor, hostname, usedFor) => {
+    const response = await API.post('/settings/vendors', { vendor, hostname, usedFor });
     return response.data;
   },
 

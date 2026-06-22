@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -34,6 +34,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHtml } from '../../utils/pdfUtils';
 import { calculateDiscountAmount, describeDiscount } from '../../utils/discountUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
+import { rankVendors } from '../../utils/vendorRanking';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
 import { WARRANTY_OPTIONS, DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
@@ -152,7 +153,17 @@ const DocumentDetail = () => {
   const [taxRatePercent, setTaxRatePercent] = useState(8); // sales tax %, from Settings
   const [overridePrice, setOverridePrice] = useState(false);
   const [partsSortConfig, setPartsSortConfig] = useState([]);
-  const [vendorList, setVendorList] = useState([]);
+  const [vendorDirectory, setVendorDirectory] = useState([]);
+  // Vendor names shown in the part modal: parts-tagged vendors matching this doc's
+  // vehicle make (make-specific vendors hidden for other makes; "Other" covers one-offs).
+  const vendorList = useMemo(
+    () => rankVendors(vendorDirectory, {
+      priority: workOrder?.sourcingPriority,
+      make: typeof workOrder?.vehicle === 'object' ? workOrder?.vehicle?.make : undefined,
+      usage: 'parts',
+    }).map(v => v.name),
+    [vendorDirectory, workOrder]
+  );
   const [categoryList, setCategoryList] = useState([]);
   const [laborTypeList, setLaborTypeList] = useState([]);
   const [saveLaborTypePromptOpen, setSaveLaborTypePromptOpen] = useState(false);
@@ -225,9 +236,9 @@ const DocumentDetail = () => {
   const handleSaveNewVendor = async () => {
     if (!newVendorName.trim()) return;
     try {
-      const response = await SettingsService.addVendor(newVendorName.trim(), newVendorHostname.trim() || undefined);
+      const response = await SettingsService.addVendor(newVendorName.trim(), newVendorHostname.trim() || undefined, ['parts']);
       const updatedSettings = response.data.settings;
-      setVendorList((updatedSettings.customVendors || []).map(v => v.name));
+      setVendorDirectory(updatedSettings.customVendors || []);
       if (updatedSettings.vendorHostnames) {
         setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
       }
@@ -246,7 +257,7 @@ const DocumentDetail = () => {
     try {
       const response = await SettingsService.removeVendor(vendor);
       const updatedSettings = response.data.settings;
-      setVendorList((updatedSettings.customVendors || []).map(v => v.name));
+      setVendorDirectory(updatedSettings.customVendors || []);
       if (updatedSettings.vendorHostnames) {
         setVendorHostnameMap(hostnameArrayToMap(updatedSettings.vendorHostnames));
       }
@@ -442,7 +453,7 @@ const DocumentDetail = () => {
         setMarkupPercentage(settings.partMarkupPercentage);
         if (typeof settings.defaultLaborRate === 'number') setDefaultLaborRate(settings.defaultLaborRate);
         if (typeof settings.taxRate === 'number') setTaxRatePercent(settings.taxRate);
-        setVendorList((settings.customVendors || []).map(v => v.name));
+        setVendorDirectory(settings.customVendors || []);
         setCategoryList(settings.customCategories || []);
         setLaborTypeList(settings.laborTypes || []);
         if (settings.vendorHostnames) {

@@ -13,10 +13,13 @@ import { WARRANTY_OPTIONS } from '../../utils/warrantyOptions';
  *  - packageTags — package tags list
  *  - isAdmin — show category management controls
  */
-const InventoryItemForm = ({ formData, onChange, isEditing = false, categories = [], onCategoriesChange, packageTags = [], isAdmin = false, markupPercentage = 30 }) => {
+const InventoryItemForm = ({ formData, onChange, isEditing = false, categories = [], onCategoriesChange, packageTags = [], vendors = [], isAdmin = false, markupPercentage = 30 }) => {
   const [showCategoryMgmt, setShowCategoryMgmt] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [overridePrice, setOverridePrice] = useState(false);
+  // "Other" lets the user type a vendor not in the directory; an existing value not
+  // in the directory is still shown as a selectable option (back-compat).
+  const [vendorOther, setVendorOther] = useState(false);
 
   const multiplier = 1 + markupPercentage / 100;
   const unitsPerPurchase = Math.max(1, parseInt(formData.unitsPerPurchase) || 1);
@@ -179,13 +182,36 @@ const InventoryItemForm = ({ formData, onChange, isEditing = false, categories =
       {/* Vendor */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-        <input
-          type="text"
-          value={formData.vendor}
-          onChange={(e) => updateField('vendor', e.target.value)}
-          placeholder="e.g., Walmart, Amazon"
-          className={inputClass}
-        />
+        {vendorOther ? (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={formData.vendor}
+              onChange={(e) => updateField('vendor', e.target.value)}
+              placeholder="Type vendor name"
+              className={inputClass}
+              autoFocus
+            />
+            <button type="button" onClick={() => setVendorOther(false)} className="text-xs text-blue-600 hover:text-blue-800 whitespace-nowrap">
+              Use list
+            </button>
+          </div>
+        ) : (
+          <select
+            value={formData.vendor || ''}
+            onChange={(e) => {
+              if (e.target.value === '__other__') { setVendorOther(true); return; }
+              updateField('vendor', e.target.value);
+            }}
+            className={inputClass}
+          >
+            <option value="">Select vendor…</option>
+            {(formData.vendor && !vendors.includes(formData.vendor) ? [formData.vendor, ...vendors] : vendors).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+            <option value="__other__">Other…</option>
+          </select>
+        )}
       </div>
 
       {/* Cost + Price row */}

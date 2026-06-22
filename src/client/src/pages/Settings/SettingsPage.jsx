@@ -283,7 +283,7 @@ const SettingsPage = () => {
 
   const openVendorEditor = (index) => {
     if (index === -1) {
-      setVendorEditor({ index: -1, name: '', hostnames: '', makes: 'all', type: '', speedTier: 0, costTier: 0 });
+      setVendorEditor({ index: -1, name: '', hostnames: '', makes: 'all', usedFor: ['parts'], type: '', speedTier: 0, costTier: 0 });
     } else {
       const v = vendors[index];
       setVendorEditor({
@@ -291,12 +291,18 @@ const SettingsPage = () => {
         name: v.name || '',
         hostnames: (v.hostnames || []).join(', '),
         makes: (v.makes && v.makes.length ? v.makes : ['all']).join(', '),
+        usedFor: (v.usedFor && v.usedFor.length ? v.usedFor : ['parts']),
         type: v.type || '',
         speedTier: v.speedTier ?? 0,
         costTier: v.costTier ?? 0
       });
     }
   };
+
+  const toggleVendorUsedFor = (val) => setVendorEditor((ed) => {
+    const cur = ed.usedFor || [];
+    return { ...ed, usedFor: cur.includes(val) ? cur.filter(u => u !== val) : [...cur, val] };
+  });
 
   const saveVendorEditor = async () => {
     const ed = vendorEditor;
@@ -315,6 +321,7 @@ const SettingsPage = () => {
       name,
       hostnames,
       makes: makes.length ? makes : ['all'],
+      usedFor: (ed.usedFor && ed.usedFor.length) ? ed.usedFor : ['parts'],
       type: ed.type.trim(),
       speedTier: Number(ed.speedTier) || 0,
       costTier: Number(ed.costTier) || 0
@@ -1116,7 +1123,7 @@ const SettingsPage = () => {
             {activeTab === 'vendors' && (
             <div className="bg-white shadow rounded-lg p-6">
               <div className="flex items-center justify-between mb-1">
-                <h2 className="text-xl font-semibold text-gray-800">Parts Vendors</h2>
+                <h2 className="text-xl font-semibold text-gray-800">Vendors</h2>
                 {!vendorEditor && (
                   <button
                     onClick={() => openVendorEditor(-1)}
@@ -1177,6 +1184,27 @@ const SettingsPage = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="all  (or e.g. BMW, Audi, Volkswagen)"
                       />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Used for</label>
+                      <div className="flex gap-2">
+                        {[{ value: 'parts', label: 'Parts sourcing' }, { value: 'inventory', label: 'Inventory' }].map((opt) => {
+                          const on = (vendorEditor.usedFor || []).includes(opt.value);
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => toggleVendorUsedFor(opt.value)}
+                              className={`px-3 py-1.5 text-sm rounded-md border ${
+                                on ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">Parts-sourcing vendors appear in the worksheet/part picker; inventory vendors appear when stocking inventory.</p>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
@@ -1255,7 +1283,14 @@ const SettingsPage = () => {
                       </div>
                       <span className="w-6 text-xs text-gray-400">{index + 1}.</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-gray-900 font-medium">{v.name}</div>
+                        <div className="text-gray-900 font-medium">
+                          {v.name}
+                          {(v.usedFor && v.usedFor.length ? v.usedFor : ['parts']).map((u) => (
+                            <span key={u} className="ml-1.5 text-[10px] uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
+                              {u}
+                            </span>
+                          ))}
+                        </div>
                         <div className="text-xs text-gray-500 truncate">
                           Cost {v.costTier ?? 0} · Speed {v.speedTier ?? 0}
                           {v.type ? ` · ${v.type}` : ''}

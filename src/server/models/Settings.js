@@ -23,6 +23,7 @@ const defaultCustomVendors = () => defaultVendorHostnames.map((v, idx) => ({
   name: v.vendor,
   hostnames: [v.hostname],
   makes: ['all'],
+  usedFor: ['parts'],
   type: '',
   speedTier: 0,
   costTier: 0,
@@ -55,6 +56,7 @@ const SettingsSchema = new Schema(
         name: { type: String, trim: true },
         hostnames: { type: [String], default: [] },
         makes: { type: [String], default: ['all'] }, // ['all'] or specific vehicle makes
+        usedFor: { type: [String], default: ['parts'] }, // 'parts' and/or 'inventory'
         type: { type: String, trim: true, default: '' }, // e.g. dealer / marketplace / retailer
         speedTier: { type: Number, default: 0 }, // lower = faster
         costTier: { type: Number, default: 0 },  // lower = cheaper
@@ -166,6 +168,7 @@ SettingsSchema.statics.getSettings = async function () {
         // Seed hostnames from existing vendorHostnames entries that name this vendor.
         hostnames: hostnameMap.filter(h => h.vendor === name).map(h => h.hostname),
         makes: ['all'],
+        usedFor: ['parts'],
         type: '',
         speedTier: 0,
         costTier: 0,
@@ -175,6 +178,15 @@ SettingsSchema.statics.getSettings = async function () {
     } else if (!settings.customVendors || settings.customVendors.length === 0) {
       settings.customVendors = defaultCustomVendors();
       needsSave = true;
+    } else {
+      // Backfill usedFor on pre-existing tagged vendors (added before the unified
+      // directory). They were all parts vendors, so default to ['parts'].
+      settings.customVendors.forEach((v) => {
+        if (!v.usedFor || v.usedFor.length === 0) {
+          v.usedFor = ['parts'];
+          needsSave = true;
+        }
+      });
     }
     if (!settings.customCategories || settings.customCategories.length === 0) {
       settings.customCategories = [

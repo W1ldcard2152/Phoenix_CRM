@@ -147,7 +147,7 @@ exports.updateSettings = catchAsync(async (req, res) => {
 });
 
 exports.addVendor = catchAsync(async (req, res) => {
-  const { vendor, hostname } = req.body;
+  const { vendor, hostname, usedFor } = req.body;
   if (!vendor || !vendor.trim()) {
     return res.status(400).json({ status: 'fail', message: 'Vendor name is required' });
   }
@@ -167,10 +167,15 @@ exports.addVendor = catchAsync(async (req, res) => {
     ? hostname.trim().toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '')
     : null;
 
+  const validUsedFor = Array.isArray(usedFor)
+    ? usedFor.filter(u => ['parts', 'inventory'].includes(u))
+    : [];
+
   settings.customVendors.push({
     name: trimmed,
     hostnames: cleanHostname ? [cleanHostname] : [],
     makes: ['all'],
+    usedFor: validUsedFor.length ? validUsedFor : ['parts'],
     type: '',
     speedTier: 0,
     costTier: 0,

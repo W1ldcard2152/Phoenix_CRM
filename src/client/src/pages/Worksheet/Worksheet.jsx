@@ -223,7 +223,7 @@ function WorksheetInner() {
   // Add a vendor from the seller dropdown; refresh the local settings so the new
   // vendor appears in every card's dropdown and in the ranking. Returns its name.
   const handleAddVendor = useCallback(async (name, hostname) => {
-    const body = await track(() => SettingsService.addVendor(name, hostname));
+    const body = await track(() => SettingsService.addVendor(name, hostname, ['parts']));
     if (body?.data?.settings) setSettings(body.data.settings);
     return name;
   }, [track]);
@@ -269,14 +269,14 @@ function WorksheetInner() {
   }
 
   const allVendors = settings?.customVendors || [];
-  // Ranking panel: filtered to this vehicle's make (guidance only).
-  const rankedVendors = rankVendors(allVendors, {
+  // One list for both the ranking panel and the seller dropdown: parts-tagged vendors
+  // matching this vehicle's make (make-specific vendors are hidden, not just ranked
+  // down). Vendors tagged makes:['all'] always show; "Add new vendor" covers one-offs.
+  const partsVendors = rankVendors(allVendors, {
     priority: workOrder.sourcingPriority,
     make: vehicle?.make,
+    usage: 'parts',
   });
-  // Seller dropdown + URL detection: every vendor, ranked by priority. NOT make-
-  // filtered — a writer can still buy from a general vendor, so don't hard-exclude.
-  const sellerVendors = rankVendors(allVendors, { priority: workOrder.sourcingPriority });
 
   const parts = workOrder.parts || [];
   const allSourced = parts.length > 0 && parts.every((p) => p.sourcingStatus !== 'pending');
@@ -361,7 +361,7 @@ function WorksheetInner() {
               </button>
             </div>
           )}
-          {!editingBasis && <VendorPanel vendors={rankedVendors} priority={workOrder.sourcingPriority} />}
+          {!editingBasis && <VendorPanel vendors={partsVendors} priority={workOrder.sourcingPriority} />}
         </section>
 
         {/* Parts */}
@@ -393,7 +393,7 @@ function WorksheetInner() {
                 key={part._id}
                 workOrderId={workOrderId}
                 part={part}
-                vendors={sellerVendors}
+                vendors={partsVendors}
                 compareMode={compareMode}
                 mutate={mutate}
                 onSplit={setSplitTarget}
