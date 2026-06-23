@@ -11,6 +11,8 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - **Rename a part in the worksheet** — a pencil next to the part name fixes a mistyped placeholder (e.g. "struts" → "shocks") before sourcing.
 
 ### Changed
+- **The sidebar now scrolls on its own** when there are more links than fit on screen, instead of scrolling the whole page out from under you.
+- **Technicians, Administration, and Settings moved into a cog menu** next to your name at the bottom of the sidebar, trimming the main link list.
 - **The worksheet opens as a tall, narrow panel docked to the left** (400px, full height) for split-screen sourcing alongside the work order; it won't shrink below 400px.
 - **The worksheet now shows one part at a time** via a "Pricing part" dropdown at the top (which also holds "+ Add part"), instead of every part's cards stacked down the page. The vendor ranking is condensed to the top 5 with a "show more" toggle.
 - **Offer cards are tidier:** the collapsed card shows Manufacturer · Part # under the seller, there's a "Save offer" button to close a card, the "Add offer card" button sits below the existing offers, and a hint by "Confirm part selection" reminds you to star an offer first.

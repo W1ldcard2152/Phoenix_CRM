@@ -16,3 +16,23 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Sidebar scroll region — keep the scrollbar in the brand palette so it
+   blends with the solid sidebar color instead of showing a default gray bar */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #6b3a34 transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: #6b3a34;
+  border-radius: 3px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #824639;
+}
