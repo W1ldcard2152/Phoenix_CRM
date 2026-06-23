@@ -7,7 +7,14 @@ const MAX_REDIRECTS = 5;
 // Initialize Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Default model for high-volume / lower-stakes calls: duplicate detection,
+// registration scans, connection test.
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Model for the accuracy-sensitive extractors: receipt parsing and offer-screenshot
+// decode. 'flash' is the middle tier — much faster/cheaper than 'pro', stronger than
+// 'flash-lite'. Override with GEMINI_EXTRACT_MODEL (e.g. 'gemini-2.5-pro') if accuracy
+// needs the top tier. (extractFromUrl still hardcodes pro for JS-rendered pages.)
+const EXTRACT_MODEL = process.env.GEMINI_EXTRACT_MODEL || 'gemini-2.5-flash';
 
 // Normalize brand-name casing: words ≤3 letters stay all-caps (acronyms like BCA, NTK),
 // words ≥4 letters become Title Case ("BOSCH" → "Bosch", "MAHLE / CLEVITE" → "Mahle / Clevite").
@@ -41,7 +48,7 @@ exports.getModel = getModel;
  */
 exports.parseReceipt = async (receiptData, dataType = 'image', mimeType = 'image/png') => {
   try {
-    const model = getModel();
+    const model = getModel(EXTRACT_MODEL);
 
     const extractionPrompt = `You are a receipt parser for an auto repair shop. Extract ALL parts/items from this receipt.
 
@@ -150,7 +157,8 @@ Return a JSON array. Example format:
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.1,
-        maxOutputTokens: 4000
+        // Headroom for pro's thinking tokens + a multi-item receipt's JSON output.
+        maxOutputTokens: 8192
       }
     });
 
@@ -460,6 +468,99 @@ Return a JSON object with these fields.`;
   }
 
   throw new Error('Could not extract product details from this URL');
+};
+
+/**
+ * Decode a pasted screenshot of a SINGLE online parts listing/offer into structured
+ * offer fields. Same Gemini vision path as parseReceipt, but tuned for one live
+ * listing — and price IS wanted here (it's visible ground truth in the screenshot,
+ * unlike extractFromUrl which can't see live prices).
+ *
+ * @param {Buffer} imageBuffer - screenshot image bytes
+ * @param {String} mimeType - e.g. 'image/png'
+ * @returns {Promise<{name, brand, partNumber, price, vendor, marketplaceSeller, coreCharge, condition, eta}>}
+ */
+exports.parseOfferScreenshot = async (imageBuffer, mimeType = 'image/png') => {
+  try {
+    const model = getModel(EXTRACT_MODEL);
+
+    const prompt = `You are reading a screenshot — often a full browser window — of an online auto-parts listing (from a site like RockAuto, FCP Euro, eBay, Amazon, AutoZone, ECS Tuning, etc.). Extract the details of ONE part.
+
+WHICH part to extract:
+- If any row/line/item is HIGHLIGHTED in yellow (a highlighter-pen / yellow marker overlay the user drew over it), extract THAT highlighted item — it is the user's focus. Pull the brand, part number, and price from the highlighted line and IGNORE the other listings on the page.
+- Otherwise, extract the single most prominent/primary part shown.
+
+Extract these fields:
+1. name - A concise, clean description of the part itself (e.g. "Rear Shock Absorber", "Oil Filter"). Strip brand, seller, and marketing filler.
+2. brand - The manufacturer/brand ONLY (e.g. "Bosch", "FCS", "MAHLE", "Mobil 1"). SEPARATE from the part number. Empty string if not shown.
+3. partNumber - The manufacturer part number / SKU ONLY (e.g. "DT343309", "OX387D"). SEPARATE from the brand. Empty string if not shown.
+4. price - The per-unit price of the part in dollars, read EXACTLY as printed. Use the price on the highlighted line (or, if nothing is highlighted, the price for the part identified by the brand/part number, or the most prominent one). Number only, no currency symbol. null if no price is visible.
+5. vendor - The retailer/marketplace the listing is on, from the logo, header, watermark, or the address bar (e.g. "RockAuto", "eBay", "Amazon", "FCP Euro", "AutoZone"). Empty string if unclear.
+6. marketplaceSeller - For marketplaces (eBay/Amazon), the third-party store/seller name. Empty for direct retailers like RockAuto.
+7. coreCharge - A core charge amount in dollars if shown, else null.
+8. condition - One of exactly: "new", "aftermarket", "used", "reman" if determinable, else null.
+9. eta - A shipping/delivery time estimate if shown (e.g. "2 days", "In stock"), else empty string.
+10. url - The page URL if visible in the browser address bar — copy it EXACTLY as shown, including the https:// and full path if present. If only a bare domain is visible (e.g. "rockauto.com"), return that. Empty string if no URL/address bar is visible.
+
+Rules:
+- Brand and part number are ALWAYS separate fields — never merge them (e.g. never put "FCS DT343309" in one field).
+- Read the price EXACTLY; do not round or infer it from totals.
+- Do NOT guess fields that are not visible — use null/empty.
+
+Return a single JSON object with exactly these keys: name, brand, partNumber, price, vendor, marketplaceSeller, coreCharge, condition, eta, url.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [
+        { text: prompt },
+        { inlineData: { mimeType, data: imageBuffer.toString('base64') } }
+      ] }],
+      // gemini-2.5-pro is a thinking model: maxOutputTokens covers internal reasoning
+      // AND the visible answer, so it needs generous headroom or it returns empty.
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 }
+    });
+
+    const responseText = (result.response.text() || '').trim();
+    let parsed;
+    try {
+      if (!responseText) throw new Error('empty response');
+      parsed = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Gemini offer response:', JSON.stringify(responseText));
+      throw new Error('AI returned no readable data for this screenshot — try again, or use a clearer/cropped image.');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid response format: expected an offer object');
+    }
+
+    // Brand override map for consistent casing (same convention as parseReceipt).
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const overridesMap = {};
+    (settings.brandOverrides || []).forEach(b => { overridesMap[b.toLowerCase()] = b; });
+
+    const validConditions = ['new', 'aftermarket', 'used', 'reman'];
+    const condition = validConditions.includes(parsed.condition) ? parsed.condition : null;
+    const price = parsed.price == null ? null : (parseFloat(parsed.price) || null);
+    const coreCharge = parsed.coreCharge == null ? null : (parseFloat(parsed.coreCharge) || null);
+
+    return {
+      name: parsed.name || '',
+      brand: formatBrandName(parsed.brand || '', overridesMap),
+      partNumber: parsed.partNumber || '',
+      price,
+      vendor: parsed.vendor || '',
+      marketplaceSeller: parsed.marketplaceSeller || '',
+      coreCharge,
+      condition,
+      eta: parsed.eta || '',
+      // Address bars usually hide the scheme, so prepend https:// to keep the stored
+      // URL absolute (a bare "rockauto.com/…" would otherwise act as a relative link).
+      url: parsed.url ? (/^[a-z][a-z0-9+.-]*:\/\//i.test(parsed.url) ? parsed.url : `https://${parsed.url}`) : ''
+    };
+  } catch (error) {
+    console.error('Error decoding offer screenshot with Gemini:', error);
+    throw new AppError(`Offer decode failed: ${error.message}`, 502);
+  }
 };
 
 /**

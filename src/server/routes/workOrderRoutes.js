@@ -68,9 +68,12 @@ router.patch('/:id/worksheet/notes', wsRoles, workOrderController.updateSourcing
 router.post('/:id/worksheet/parts', wsRoles, workOrderController.addWorksheetPart);
 router.patch('/:id/worksheet/parts/:partId/scratchpad', wsRoles, workOrderController.updateScratchpad);
 router.patch('/:id/worksheet/parts/:partId/quantity', wsRoles, workOrderController.updatePartQuantity);
+router.patch('/:id/worksheet/parts/:partId/name', wsRoles, workOrderController.updatePartName);
 router.post('/:id/worksheet/parts/:partId/offers', wsRoles, workOrderController.addOffer);
 router.patch('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.updateOffer);
 router.delete('/:id/worksheet/parts/:partId/offers/:offerId', wsRoles, workOrderController.removeOffer);
+// Decode a pasted screenshot of a listing into the offer's fields (Gemini vision).
+router.post('/:id/worksheet/parts/:partId/offers/:offerId/decode', wsRoles, workOrderController.offerScreenshotUpload, workOrderController.decodeOfferScreenshot);
 router.post('/:id/worksheet/parts/:partId/select', wsRoles, workOrderController.selectOffer);
 // Approval commits the selected offer onto the part — manager (admin/management) only.
 router.post('/:id/worksheet/parts/:partId/approve', authController.restrictTo('admin', 'management'), workOrderController.approvePart);

@@ -15,15 +15,39 @@ const ADD_VENDOR = '__add_vendor__'; // sentinel select value for "add a new ven
 // expands to the full editor. Typed fields autosave (debounced) via AutosaveField;
 // the discrete controls (seller, condition, in-stock) save immediately. Offers are
 // the audit trail, so removal is for mistaken captures only.
-export default function OfferCard({ workOrderId, partId, offer, vendors, isStarred, onStar, onChanged, onAddVendor }) {
+export default function OfferCard({ workOrderId, partId, offer, vendors, isStarred, onStar, onChanged, onAddVendor, onDecode, startExpanded }) {
   const { track } = useSaveTracker();
   const offerId = offer._id;
 
-  // A freshly-added blank offer opens expanded for entry; filled ones start collapsed.
-  const [expanded, setExpanded] = useState(!offer.seller && offer.price == null);
+  // A freshly-added blank offer (or one just decoded) opens expanded; filled ones collapse.
+  const [expanded, setExpanded] = useState(startExpanded || (!offer.seller && offer.price == null));
+
+  // Screenshot decode (paste a listing image → AI fills the fields).
+  const [decoding, setDecoding] = useState(false);
+  const [decodeError, setDecodeError] = useState(null);
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items ? Array.from(e.clipboardData.items) : [];
+    const imgItem = items.find((it) => it.type && it.type.startsWith('image/'));
+    if (!imgItem || !onDecode) return; // let non-image pastes fall through
+    e.preventDefault();
+    const blob = imgItem.getAsFile();
+    if (!blob) return;
+    setDecoding(true);
+    setDecodeError(null);
+    try {
+      await onDecode(blob);
+      // On success the card remounts with the decoded values — no local reset needed.
+    } catch (err) {
+      setDecodeError(err.response?.data?.message || 'Could not decode screenshot.');
+      setDecoding(false);
+    }
+  };
   // Live-mirrored values so the collapsed summary reflects unsaved edits.
   const [seller, setSeller] = useState(offer.seller || '');
   const [priceDisplay, setPriceDisplay] = useState(offer.price != null ? String(offer.price) : '');
+  const [manufacturer, setManufacturer] = useState(offer.manufacturer || '');
+  const [partNumber, setPartNumber] = useState(offer.partNumber || '');
 
   // Inline "add new vendor" flow off the seller dropdown.
   const [addingVendor, setAddingVendor] = useState(false);
@@ -92,7 +116,7 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
       }`}
     >
       {/* Header / collapsed summary — always visible */}
-      <div className={`flex items-center gap-2 px-2 py-1.5 ${expanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}>
+      <div className={`flex items-center gap-2 px-2 py-1 ${expanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}>
         <button
           type="button"
           onClick={() => onStar(offerId)}
@@ -107,11 +131,18 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
           onClick={() => setExpanded((e) => !e)}
           className="flex-1 flex items-center gap-2 min-w-0 text-left"
         >
-          <i className={`fas fa-chevron-${expanded ? 'down' : 'right'} text-xs text-gray-400`} />
-          <span className={`truncate ${seller ? 'font-medium text-gray-900' : 'text-gray-400 italic'}`}>
-            {seller || 'No seller'}
+          <i className={`fas fa-chevron-${expanded ? 'down' : 'right'} text-xs text-gray-400 shrink-0`} />
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate ${seller ? 'font-medium text-gray-900' : 'text-gray-400 italic'}`}>
+              {seller || 'No seller'}
+            </span>
+            {!expanded && (manufacturer || partNumber) && (
+              <span className="block truncate text-[11px] text-gray-500">
+                {[manufacturer, partNumber].filter(Boolean).join(' · ')}
+              </span>
+            )}
           </span>
-          <span className="ml-auto text-sm text-gray-600 shrink-0">{priceText}</span>
+          <span className="text-sm text-gray-600 shrink-0">{priceText}</span>
         </button>
 
         {offer.source === 'agent' && (
@@ -129,9 +160,28 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
         </button>
       </div>
 
-      {/* Expanded editor */}
-      {expanded && (
-        <div className="p-2 grid grid-cols-2 gap-2">
+      {/* Editor — kept MOUNTED (just hidden) when collapsed. AutosaveField snapshots its
+          value at mount and field edits don't reload the offer prop, so unmounting on
+          collapse would re-read the stale prop and look empty on re-expand. */}
+      <div className={`p-2 grid grid-cols-2 gap-2 ${expanded ? '' : 'hidden'}`}>
+          {/* Paste a screenshot of the listing to AI-decode the fields below. */}
+          <div className="col-span-2">
+            <div
+              tabIndex={0}
+              onPaste={handlePaste}
+              title="Click here, then press Ctrl+V to paste a screenshot of the listing"
+              className={`cursor-text rounded border border-dashed px-2 py-2 text-center text-xs focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                decoding ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-primary-300 bg-primary-50/40 text-primary-700 hover:bg-primary-50'
+              }`}
+            >
+              {decoding ? (
+                <span><i className="fas fa-spinner fa-spin mr-1" />Decoding screenshot…</span>
+              ) : (
+                <span><i className="fas fa-paste mr-1" />Click &amp; press Ctrl+V to decode a screenshot</span>
+              )}
+            </div>
+            {decodeError && <p className="mt-1 text-[11px] text-red-600">{decodeError}</p>}
+          </div>
           <div className="col-span-2">
             <label className={labelCls}>Description</label>
             <AutosaveField
@@ -243,6 +293,7 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
               className={inputCls}
               initialValue={offer.manufacturer}
               placeholder="Brand"
+              onValueChange={setManufacturer}
               onPersist={(v) => persistField({ manufacturer: v })}
             />
           </div>
@@ -252,6 +303,7 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
               className={inputCls}
               initialValue={offer.partNumber}
               placeholder="PN"
+              onValueChange={setPartNumber}
               onPersist={(v) => persistField({ partNumber: v })}
             />
           </div>
@@ -301,8 +353,18 @@ export default function OfferCard({ workOrderId, partId, offer, vendors, isStarr
               In stock
             </label>
           </div>
+          {/* Everything autosaves; this just collapses the card. Clicking it also blurs
+              the active field, flushing any pending debounced save before it closes. */}
+          <div className="col-span-2 mt-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="px-3 py-1.5 text-sm rounded-md bg-primary-600 text-white hover:bg-primary-700"
+            >
+              <i className="fas fa-check mr-1" />Save offer
+            </button>
+          </div>
         </div>
-      )}
     </div>
   );
 }

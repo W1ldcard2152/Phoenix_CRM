@@ -39,6 +39,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
 import { WARRANTY_OPTIONS, DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
 
+// Ensure a stored product URL is treated as ABSOLUTE. The screenshot decoder (and
+// manual paste) can save a bare host/path like "rockauto.com/en/catalog/…" with no
+// scheme; rendered as href that resolves RELATIVE to the CRM and opens the app in a
+// new tab instead of the vendor site. Prepend https:// when no scheme is present.
+const toExternalHref = (url) => {
+  if (!url) return url;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`;
+};
+
 const DocumentDetail = () => {
   const { currentUser } = useAuth();
   const { id } = useParams();
@@ -1740,7 +1749,7 @@ const DocumentDetail = () => {
                   <div className="text-sm text-gray-900">
                     {part.vendor}
                     {part.url && (
-                      <a href={part.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 text-blue-500 hover:text-blue-700" title="Product link">
+                      <a href={toExternalHref(part.url)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 text-blue-500 hover:text-blue-700" title="Product link">
                         <i className="fas fa-external-link-alt text-xs"></i>
                       </a>
                     )}
@@ -1801,7 +1810,7 @@ const DocumentDetail = () => {
                       {part.url && (
                         <div>
                           <span className="font-medium text-gray-500">Product URL:</span>{' '}
-                          <a href={part.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all">
+                          <a href={toExternalHref(part.url)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all">
                             {part.url.length > 50 ? part.url.substring(0, 50) + '...' : part.url}
                             <i className="fas fa-external-link-alt text-xs ml-1"></i>
                           </a>
@@ -2573,11 +2582,14 @@ const DocumentDetail = () => {
                   window; on quotes the worksheet never changes the quote's status. */}
               <Button
                 onClick={() => {
-                  const w = 480;
-                  const h = 950;
-                  // Center over the current browser window (not the top-left default).
-                  const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
-                  const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+                  // Dock the worksheet to the left edge as a narrow full-height strip.
+                  // The work order stays put underneath; vendor links from the worksheet
+                  // open in a right-docked window, so the two new windows tile the screen
+                  // without ever touching the base window.
+                  const w = 400;
+                  const left = window.screen.availLeft ?? 0;
+                  const top = window.screen.availTop ?? 0;
+                  const h = window.screen.availHeight || 1040;
                   window.open(
                     `/worksheet/${id}`,
                     `worksheet-${id}`,

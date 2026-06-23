@@ -6,7 +6,7 @@ Auto repair shop CRM for a German vehicle specialist. Manages customers, vehicle
 
 - **Frontend**: React 18 + React Router v6, Tailwind CSS + Bootstrap, Axios, Formik/Yup, jsPDF
 - **Backend**: Node.js/Express, MongoDB/Mongoose, JWT (HTTP-only cookies), Passport.js (Google OAuth)
-- **External Services**: AWS S3 (media), SendGrid (email), Twilio (SMS), OpenAI (receipt extraction)
+- **External Services**: AWS S3 (media), SendGrid (email), Twilio (SMS), Google Gemini (all AI: receipt/offer/registration image extraction, URL product extraction, duplicate detection)
 
 ## Project Structure
 
@@ -128,7 +128,7 @@ Required in `.env`:
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME`, `AWS_REGION`
 - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
-- `OPENAI_API_KEY`
+- `GEMINI_API_KEY` (optional `GEMINI_MODEL`, defaults to `gemini-2.5-flash` for dup-detection/registration; optional `GEMINI_EXTRACT_MODEL` defaults to `gemini-2.5-flash` for receipt + offer-screenshot extraction; `extractFromUrl` hardcodes `gemini-2.5-pro`)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 
 ## Naming Conventions

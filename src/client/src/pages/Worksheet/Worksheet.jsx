@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import WorkOrderService from '../../services/workOrderService';
 import SettingsService from '../../services/settingsService';
 import WorksheetService from '../../services/worksheetService';
-import { rankVendors } from '../../utils/vendorRanking';
+import { rankVendors, vendorUrl } from '../../utils/vendorRanking';
 import { SaveProvider, useSaveTracker } from './SaveContext';
 import PrimerGate from './PrimerGate';
 import PartSourcingCard from './PartSourcingCard';
@@ -24,6 +24,83 @@ const QUALITY_OPTIONS = [
 ];
 
 const qualityLabels = (arr) => (arr || []).map((q) => QUALITY_LABEL[q] || q).join(', ');
+
+const ADD_PART_OPTION = '__add_part__';
+
+// Dropdown label for a part: a status marker (✓ approved, ◐ selected) + name + qty.
+const partOptionLabel = (p) => {
+  const mark = p.sourcingStatus === 'approved' ? '✓ ' : p.sourcingStatus === 'selected' ? '◐ ' : '';
+  const qty = p.quantity > 1 ? ` (×${p.quantity})` : '';
+  return `${mark}${p.name || 'Unnamed part'}${qty}`;
+};
+
+// The worksheet strip's width — vendor sites open in the remaining right slab.
+const WORKSHEET_W = 400;
+
+// Open a vendor's site in its OWN window docked to the right of the worksheet strip.
+// Browsers can't put multiple tabs in a script-created window, so each vendor gets a
+// separate window, cascaded ~30px (sharing the bottom-right corner) so stacked ones
+// stay clickable. Same-vendor clicks reuse that vendor's window instead of piling up
+// duplicates. Positioning a NEW window works the same in a browser tab or installed
+// PWA — none of the move-an-existing-window restrictions apply.
+const CASCADE_STEP = 30;   // px each new window steps in from the top-left
+const CASCADE_WRAP = 8;    // restart the cascade after this many windows
+// screen.availWidth under-reports the usable width on this scaled display, so a
+// flush-right window lands ~250px short. Bleed the right edge back out by that much
+// so the first (un-cascaded) window sits flush against the true right edge. If the
+// gap looks wrong on a given monitor, this is the one number to nudge.
+const RIGHT_BLEED = 250;
+// Small rightward nudge to absorb the invisible window border / DPI-rounding slop that
+// leaves a thin overlap at the worksheet↔vendor seam. Bump up if they still overlap,
+// down if a gap appears.
+const SEAM_NUDGE = 20;
+let vendorWinCount = 0;
+const vendorWindows = new Map(); // vendor key -> WindowProxy
+
+function openVendorBrowser(url) {
+  const left = window.screen.availLeft ?? 0;
+  const top = window.screen.availTop ?? 0;
+  const availW = window.screen.availWidth || 1920;
+  const h = window.screen.availHeight || 1040;
+
+  // Key the window by vendor host so re-clicking the same vendor reuses its window.
+  let host;
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { host = url; }
+  const name = `worksheet-vendor-${host}`;
+
+  const existing = vendorWindows.get(name);
+  if (existing && !existing.closed) {
+    try { existing.location = url; } catch (_) { /* cross-origin nav still allowed; ignore */ }
+    existing.focus();
+    return;
+  }
+
+  // All vendor windows share one right edge (flush to the screen's right); each new
+  // one steps its top-left in by CASCADE_STEP and shrinks to match, so the stack fans
+  // out from the top-left while the right/bottom edges stay put.
+  const offset = (vendorWinCount % CASCADE_WRAP) * CASCADE_STEP;
+  vendorWinCount += 1;
+  // Butt the vendor window against the worksheet's ACTUAL right edge. This code runs
+  // inside the worksheet popup, so its own frame is the source of truth — the browser
+  // can render the popup a bit wider than the requested WORKSHEET_W, which was causing
+  // the seam overlap. Fall back to the nominal width if we're not in a narrow popup
+  // (e.g. the worksheet was opened directly as a full browser tab).
+  const stripRight = window.outerWidth < availW * 0.6
+    ? window.screenX + window.outerWidth
+    : left + WORKSHEET_W;
+  const vendorLeft = stripRight + SEAM_NUDGE + offset;
+  const screenRight = left + availW + RIGHT_BLEED; // availWidth under-reports the true edge
+  const w = Math.max(640, screenRight - vendorLeft);
+  const win = window.open(
+    url,
+    name,
+    `width=${w},height=${h - offset},left=${vendorLeft},top=${top + offset}`
+  );
+  if (win) {
+    vendorWindows.set(name, win);
+    win.focus();
+  }
+}
 
 // Inline editor for the sourcing basis — writes back to the WO root via setPrimer,
 // so a change here is reflected on the work order form (and vice versa).
@@ -82,25 +159,51 @@ function SaveIndicator() {
   return <span className="text-xs text-gray-400">All changes save automatically</span>;
 }
 
+const VENDOR_PREVIEW = 5;
+
 function VendorPanel({ vendors, priority }) {
+  const [expanded, setExpanded] = useState(false);
   const tierLabel = priority === 'time' ? 'Speed' : 'Cost';
+  const shown = expanded ? vendors : vendors.slice(0, VENDOR_PREVIEW);
   return (
     <div className="text-sm">
       <div className="text-[11px] text-gray-400 mb-1">
         Ranked by {tierLabel.toLowerCase()} tier, then manual order. Quality is a capture hint, not a filter.
       </div>
       <ol className="space-y-1">
-        {vendors.map((v, i) => (
-          <li key={v._id || v.name || i} className="flex items-baseline justify-between gap-2">
-            <span className="text-gray-800">
-              <span className="text-gray-400 mr-1">{i + 1}.</span>
-              {v.name}
-            </span>
-            <span className="text-[11px] text-gray-400 shrink-0">{tierLabel} {priority === 'time' ? v.speedTier ?? 0 : v.costTier ?? 0}</span>
-          </li>
-        ))}
+        {shown.map((v, i) => {
+          const url = vendorUrl(v);
+          return (
+            <li key={v._id || v.name || i} className="flex items-baseline justify-between gap-2">
+              <span className="text-gray-800">
+                <span className="text-gray-400 mr-1">{i + 1}.</span>
+                {v.name}
+                {url && (
+                  <a
+                    href={url}
+                    onClick={(e) => { e.preventDefault(); openVendorBrowser(url); }}
+                    title={`Open ${v.name} (docks to the right)`}
+                    className="ml-1.5 text-primary-600 hover:text-primary-800"
+                  >
+                    <i className="fas fa-external-link-alt text-[11px]" />
+                  </a>
+                )}
+              </span>
+              <span className="text-[11px] text-gray-400 shrink-0">{tierLabel} {priority === 'time' ? v.speedTier ?? 0 : v.costTier ?? 0}</span>
+            </li>
+          );
+        })}
         {vendors.length === 0 && <li className="text-gray-400 italic">No vendors configured.</li>}
       </ol>
+      {vendors.length > VENDOR_PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-1.5 text-xs text-primary-600 hover:text-primary-800"
+        >
+          {expanded ? 'Show fewer' : `Show ${vendors.length - VENDOR_PREVIEW} more`}
+        </button>
+      )}
     </div>
   );
 }
@@ -177,6 +280,8 @@ function WorksheetInner() {
   const [editingBasis, setEditingBasis] = useState(false);
   const [savingBasis, setSavingBasis] = useState(false);
   const [addingPart, setAddingPart] = useState(false);
+  // Which part the worksheet is currently pricing (null → fall back to the first part).
+  const [selectedPartId, setSelectedPartId] = useState(null);
 
   const reload = useCallback(async () => {
     const resp = await WorkOrderService.getWorkOrder(workOrderId);
@@ -208,6 +313,20 @@ function WorksheetInner() {
     })();
     return () => { active = false; };
   }, [workOrderId]);
+
+  // Enforce a 400px minimum width. This page runs in a script-opened popup, so it's
+  // allowed to resize itself — if the user drags it narrower than the layout supports,
+  // snap it back. No-op when opened as a normal tab (resizeTo is ignored there).
+  useEffect(() => {
+    const MIN_W = 400;
+    const enforce = () => {
+      if (window.outerWidth < MIN_W) {
+        try { window.resizeTo(MIN_W, window.outerHeight); } catch (_) { /* not a popup */ }
+      }
+    };
+    window.addEventListener('resize', enforce);
+    return () => window.removeEventListener('resize', enforce);
+  }, []);
 
   // Structural mutation: run the call through the save tracker, then refetch.
   const mutate = useCallback(async (fn) => {
@@ -242,7 +361,11 @@ function WorksheetInner() {
   };
 
   const handleAddPart = async (fields) => {
-    await mutate(() => WorksheetService.addPart(workOrderId, fields));
+    const body = await track(() => WorksheetService.addPart(workOrderId, fields));
+    await reload();
+    // Jump straight to the part just added (it's appended last) so the user can price it.
+    const newParts = body?.data?.workOrder?.parts;
+    if (newParts?.length) setSelectedPartId(newParts[newParts.length - 1]._id);
     setAddingPart(false);
   };
 
@@ -282,6 +405,8 @@ function WorksheetInner() {
   const allSourced = parts.length > 0 && parts.every((p) => p.sourcingStatus !== 'pending');
   const isQuoteDoc = String(workOrder.status || '').startsWith('Quote');
   const services = workOrder.services || [];
+  // The part currently being priced. A stale/missing selection falls back to the first.
+  const currentPart = parts.find((p) => p._id === selectedPartId) || parts[0] || null;
 
   return (
     <div className="min-h-screen bg-parchment">
@@ -324,6 +449,30 @@ function WorksheetInner() {
       </header>
 
       <div className="p-3 space-y-4">
+        {/* Part picker — choose which part to price; last option adds a new one. */}
+        <section className="bg-white border border-gray-200 rounded-lg p-3">
+          <label className="block text-[11px] uppercase tracking-wide text-gray-400 mb-1">Pricing part</label>
+          <select
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+            value={addingPart ? ADD_PART_OPTION : currentPart?._id || ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === ADD_PART_OPTION) {
+                setAddingPart(true);
+              } else {
+                setAddingPart(false);
+                setSelectedPartId(v);
+              }
+            }}
+          >
+            {parts.length === 0 && <option value="" disabled>No parts yet</option>}
+            {parts.map((p) => (
+              <option key={p._id} value={p._id}>{partOptionLabel(p)}</option>
+            ))}
+            <option value={ADD_PART_OPTION}>+ Add part…</option>
+          </select>
+        </section>
+
         {/* Sourcing basis (editable — syncs with the work order form) + vendor ranking */}
         <section className="bg-white border border-gray-200 rounded-lg p-3">
           {editingBasis ? (
@@ -364,45 +513,30 @@ function WorksheetInner() {
           {!editingBasis && <VendorPanel vendors={partsVendors} priority={workOrder.sourcingPriority} />}
         </section>
 
-        {/* Parts */}
+        {/* The part being priced (or the add-part form). */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Parts</h2>
-            {!addingPart && (
-              <button
-                type="button"
-                onClick={() => setAddingPart(true)}
-                className="text-sm text-primary-600 hover:text-primary-800"
-              >
-                <i className="fas fa-plus mr-1" />Add part
-              </button>
-            )}
-          </div>
-          {addingPart && (
+          {addingPart ? (
             <AddPartForm services={services} onAdd={handleAddPart} onCancel={() => setAddingPart(false)} />
-          )}
-          {parts.length === 0 ? (
+          ) : parts.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
               {isQuoteDoc
-                ? 'This quote has no parts yet — add one above to start sourcing.'
+                ? 'This quote has no parts yet — pick “Add part” above to start sourcing.'
                 : 'This work order has no parts. Closing the worksheet will send it to approval so an approver can ask why.'}
             </div>
-          ) : (
-            parts.map((part) => (
-              <PartSourcingCard
-                key={part._id}
-                workOrderId={workOrderId}
-                part={part}
-                vendors={partsVendors}
-                compareMode={compareMode}
-                mutate={mutate}
-                onSplit={setSplitTarget}
-                onAddVendor={handleAddVendor}
-                isManager={isManager}
-                markupPercentage={settings?.partMarkupPercentage ?? 30}
-              />
-            ))
-          )}
+          ) : currentPart ? (
+            <PartSourcingCard
+              key={currentPart._id}
+              workOrderId={workOrderId}
+              part={currentPart}
+              vendors={partsVendors}
+              compareMode={compareMode}
+              mutate={mutate}
+              onSplit={setSplitTarget}
+              onAddVendor={handleAddVendor}
+              isManager={isManager}
+              markupPercentage={settings?.partMarkupPercentage ?? 30}
+            />
+          ) : null}
         </section>
 
         {/* Worksheet-level scratchpad */}

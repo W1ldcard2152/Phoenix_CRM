@@ -1376,7 +1376,10 @@ exports.addWorksheetPart = catchAsync(async (req, res, next) => {
     name: name.trim(),
     quantity: Math.max(1, parseInt(quantity, 10) || 1),
     serviceId: serviceId || null,
-    sourcingStatus: 'pending'
+    sourcingStatus: 'pending',
+    // Seed a blank offer card (description prefilled from the name) so a freshly-added
+    // part is immediately ready to capture — same as the open-worksheet seeding.
+    offers: [{ source: 'manual', description: name.trim() }]
   });
   workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   await workOrder.save();
@@ -1413,6 +1416,23 @@ exports.updatePartQuantity = catchAsync(async (req, res, next) => {
 
   result.totalEstimate = calculateWorkOrderTotal(result.parts, result.labor, result.servicePackages);
   await result.save();
+  await respondWithWorkOrder(res, id);
+});
+
+// Rename a placeholder part (e.g. a mistaken "rear struts" → "rear shocks"). Only
+// meaningful pre-approval — approval overwrites the name from the selected offer.
+exports.updatePartName = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+  const name = (req.body.name || '').trim();
+  if (!name) return next(new AppError('Part name is required', 400));
+
+  const result = await WorkOrder.findOneAndUpdate(
+    { _id: id, 'parts._id': partId },
+    { $set: { 'parts.$.name': name } },
+    { new: true }
+  );
+  if (!result) return next(new AppError('Work order or part not found', 404));
+
   await respondWithWorkOrder(res, id);
 });
 
@@ -1476,6 +1496,22 @@ exports.openWorksheet = catchAsync(async (req, res, next) => {
       workOrder.status = newStatus;
       await workOrder.save();
     }
+  }
+
+  // Seed a blank offer card for every part that has none, so the worksheet opens ready
+  // to capture/paste without a first "Add offer card" click. Idempotent (parts that
+  // already have offers are untouched) and applies to quotes too. The blank offer
+  // prefills its description from the part name, matching the Add-offer-card button.
+  let seededOffer = false;
+  (workOrder.parts || []).forEach((part) => {
+    if (!part.offers || part.offers.length === 0) {
+      part.offers.push({ source: 'manual', description: part.name });
+      seededOffer = true;
+    }
+  });
+  if (seededOffer) {
+    workOrder.markModified('parts');
+    await workOrder.save();
   }
 
   await respondWithWorkOrder(res, id);
@@ -1927,6 +1963,62 @@ const receiptUpload = multer({
   fileFilter: receiptFilter // images + PDF only
 }).single('receipt');
 exports.receiptUpload = receiptUpload;
+
+// Worksheet offer-screenshot decoder: a pasted listing image → fields for ONE existing
+// offer. Reuses the receipt image filter (images + PDF) and in-memory storage.
+const offerScreenshotUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: receiptFilter
+}).single('screenshot');
+exports.offerScreenshotUpload = offerScreenshotUpload;
+
+// Run the pasted screenshot through the same Gemini decoder as the receipt importer
+// and merge the extracted fields onto the target offer (load-modify-save, matching
+// updateOffer). Only fills fields the AI confidently read — never blanks existing data.
+exports.decodeOfferScreenshot = catchAsync(async (req, res, next) => {
+  const aiService = require('../services/aiService');
+  const { id, partId, offerId } = req.params;
+  if (!req.file) return next(new AppError('No screenshot uploaded', 400));
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+  const offer = part.offers.id(offerId);
+  if (!offer) return next(new AppError('Offer not found on this part', 404));
+
+  const decoded = await aiService.parseOfferScreenshot(req.file.buffer, req.file.mimetype);
+
+  const setIf = (key, value) => {
+    if (value === undefined || value === null || value === '') return;
+    offer[key] = value;
+  };
+  setIf('description', decoded.name);
+  setIf('manufacturer', decoded.brand);
+  setIf('partNumber', decoded.partNumber);
+  setIf('marketplaceSeller', decoded.marketplaceSeller);
+  setIf('eta', decoded.eta);
+  setIf('condition', decoded.condition);
+  setIf('url', decoded.url);
+  if (decoded.price != null && decoded.price > 0) offer.price = decoded.price;
+  if (decoded.coreCharge != null && decoded.coreCharge > 0) offer.coreCharge = decoded.coreCharge;
+
+  // Seller maps to a configured vendor when the decoded retailer matches one (keeps the
+  // ranking/hostname links intact); otherwise keep the raw name as a custom value.
+  if (decoded.vendor) {
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const match = (settings.customVendors || []).find(
+      (v) => v.name && v.name.toLowerCase() === decoded.vendor.toLowerCase()
+    );
+    offer.seller = match ? match.name : decoded.vendor;
+  }
+
+  workOrder.markModified('parts');
+  await workOrder.save();
+
+  await respondWithWorkOrder(res, id);
+});
 
 exports.extractReceipt = catchAsync(async (req, res, next) => {
   const aiService = require('../services/aiService');

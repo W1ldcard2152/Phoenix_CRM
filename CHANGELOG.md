@@ -2,6 +2,26 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-23
+
+### Added
+- **Paste a screenshot to fill an offer card.** On the worksheet, click an offer card's paste box and press Ctrl+V with a screenshot of a parts listing (RockAuto, eBay, FCP Euro, etc.) — AI reads it and fills in the part name, brand, part number, price, vendor, marketplace seller, core charge, condition, ETA, and product URL. On a busy results page, highlight the line you want in yellow and it focuses on that row.
+- **Vendor links on the worksheet.** Each ranked vendor has an arrow that opens its website in a window docked to the right of the worksheet; opening several cascades them so you can flip between vendor sites while sourcing.
+- **Every part opens with a blank offer card ready**, so there's no extra "Add offer card" click before you start pricing (parts added inside the worksheet get one too).
+- **Rename a part in the worksheet** — a pencil next to the part name fixes a mistyped placeholder (e.g. "struts" → "shocks") before sourcing.
+
+### Changed
+- **The worksheet opens as a tall, narrow panel docked to the left** (400px, full height) for split-screen sourcing alongside the work order; it won't shrink below 400px.
+- **The worksheet now shows one part at a time** via a "Pricing part" dropdown at the top (which also holds "+ Add part"), instead of every part's cards stacked down the page. The vendor ranking is condensed to the top 5 with a "show more" toggle.
+- **Offer cards are tidier:** the collapsed card shows Manufacturer · Part # under the seller, there's a "Save offer" button to close a card, the "Add offer card" button sits below the existing offers, and a hint by "Confirm part selection" reminds you to star an offer first.
+
+### Fixed
+- **Product URL links now open the vendor's site** instead of the CRM. A URL saved without an `https://` prefix (e.g. from the screenshot decoder) was being treated as an internal app link.
+- **Offer card fields no longer look blank after you collapse and reopen a card.** The values were saved correctly, but the card was re-reading stale data when reopened.
+
+### Removed
+- The "Duplicate card" link on offers — capture a second screenshot of the same part from another seller instead.
+
 ## 2026-06-22
 
 ### Changed

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import OfferCard from './OfferCard';
 import CompareView from './CompareView';
 import AutosaveField from './AutosaveField';
@@ -21,6 +21,30 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
   const [reason, setReason] = useState(part.selectionReason || '');
   const [qty, setQty] = useState(part.quantity || 1);
   const [approving, setApproving] = useState(false);
+  // Bumped per offer after a screenshot decode to force that card to remount — its
+  // AutosaveFields only read their value at mount, so a remount surfaces the AI fills.
+  const [decodeVersion, setDecodeVersion] = useState({});
+  const [lastDecodedOfferId, setLastDecodedOfferId] = useState(null);
+  // Inline rename of the placeholder part name (fix a mis-typed part before sourcing).
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(part.name || '');
+  const skipNameSaveRef = useRef(false); // set on Escape so the blur doesn't save
+
+  const saveName = async () => {
+    if (skipNameSaveRef.current) { skipNameSaveRef.current = false; setEditingName(false); return; }
+    setEditingName(false);
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === part.name) return;
+    await mutate(() => WorksheetService.updatePartName(workOrderId, partId, trimmed));
+  };
+
+  // Decode a pasted screenshot into an offer's fields, then remount that card so the
+  // freshly-saved values appear, and keep it expanded for the user to verify.
+  const handleDecode = async (oId, file) => {
+    await mutate(() => WorksheetService.decodeOffer(workOrderId, partId, oId, file));
+    setLastDecodedOfferId(oId);
+    setDecodeVersion((v) => ({ ...v, [oId]: (v[oId] || 0) + 1 }));
+  };
 
   const handleApprove = async (fields) => {
     setApproving(true);
@@ -35,17 +59,6 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
   // case); the writer can refine it per offer, and the selected one replaces part.name.
   const addOffer = () =>
     mutate(() => WorksheetService.addOffer(workOrderId, partId, { source: 'manual', description: part.name }));
-
-  const duplicateOffer = (o) =>
-    mutate(() =>
-      WorksheetService.addOffer(workOrderId, partId, {
-        description: o.description || part.name,
-        partNumber: o.partNumber,
-        manufacturer: o.manufacturer,
-        condition: o.condition,
-        source: 'manual',
-      })
-    );
 
   const commitQty = () => {
     const n = parseInt(qty, 10);
@@ -76,7 +89,31 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-900 truncate">{part.name}</h3>
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                  else if (e.key === 'Escape') { skipNameSaveRef.current = true; e.currentTarget.blur(); }
+                }}
+                className="font-semibold text-gray-900 border border-gray-300 rounded px-1.5 py-0.5 min-w-0 flex-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            ) : (
+              <h3 className="font-semibold text-gray-900 truncate">{part.name}</h3>
+            )}
+            {!isApproved && !editingName && (
+              <button
+                type="button"
+                onClick={() => { setNameDraft(part.name || ''); setEditingName(true); }}
+                title="Rename this part"
+                className="text-gray-400 hover:text-primary-600 text-xs shrink-0"
+              >
+                <i className="fas fa-pen" />
+              </button>
+            )}
             {isApproved ? (
               <span className="text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
                 approved
@@ -138,25 +175,19 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
               <p className="text-sm text-gray-500 italic">No offers yet — add one to start capturing.</p>
             )}
             {offers.map((o) => (
-              <div key={o._id}>
-                <OfferCard
-                  workOrderId={workOrderId}
-                  partId={partId}
-                  offer={o}
-                  vendors={vendors}
-                  isStarred={o._id === starredOfferId}
-                  onStar={setStarredOfferId}
-                  onChanged={mutate}
-                  onAddVendor={onAddVendor}
-                />
-                <button
-                  type="button"
-                  onClick={() => duplicateOffer(o)}
-                  className="mt-1 text-[11px] text-primary-600 hover:text-primary-800"
-                >
-                  <i className="fas fa-copy mr-1" /> Duplicate card (same PN, new seller)
-                </button>
-              </div>
+              <OfferCard
+                key={`${o._id}:${decodeVersion[o._id] || 0}`}
+                workOrderId={workOrderId}
+                partId={partId}
+                offer={o}
+                vendors={vendors}
+                isStarred={o._id === starredOfferId}
+                onStar={setStarredOfferId}
+                onChanged={mutate}
+                onAddVendor={onAddVendor}
+                onDecode={(file) => handleDecode(o._id, file)}
+                startExpanded={o._id === lastDecodedOfferId}
+              />
             ))}
             <button
               type="button"
@@ -209,20 +240,28 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
 
             {/* Select / change selection — available until approved. */}
             {!confirming ? (
-              <button
-                type="button"
-                disabled={!starredOfferId}
-                onClick={() => setConfirming(true)}
-                className={`text-sm px-3 py-1.5 rounded-md ${
-                  isSelected
-                    ? 'border border-gray-300 text-gray-700 hover:bg-white'
-                    : starredOfferId
-                      ? 'bg-primary-600 hover:bg-primary-700 text-white'
-                      : 'bg-gray-300 cursor-not-allowed text-white'
-                }`}
-              >
-                {isSelected ? 'Change selection' : 'Confirm part selection'}
-              </button>
+              <div className="space-y-1">
+                {!starredOfferId && (
+                  <p className="text-xs text-gray-500">
+                    <i className="far fa-star text-amber-400 mr-1" />
+                    Star an offer above to pick it, then confirm.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={!starredOfferId}
+                  onClick={() => setConfirming(true)}
+                  className={`text-sm px-3 py-1.5 rounded-md ${
+                    isSelected
+                      ? 'border border-gray-300 text-gray-700 hover:bg-white'
+                      : starredOfferId
+                        ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                        : 'bg-gray-300 cursor-not-allowed text-white'
+                  }`}
+                >
+                  {isSelected ? 'Change selection' : 'Confirm part selection'}
+                </button>
+              </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-gray-600">

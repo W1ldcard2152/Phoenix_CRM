@@ -359,7 +359,8 @@ describe('worksheet status transitions', () => {
     });
 
     it("from any OTHER status (e.g. 'Repair In Progress') → NO-OP (guards the launcher from dragging status back)", async () => {
-      const wo = makeWorkOrder({ status: 'Repair In Progress', parts: [makePart({ sourcingStatus: 'pending' })] });
+      // Part already has an offer, so open-seeding is a no-op and this isolates the status check.
+      const wo = makeWorkOrder({ status: 'Repair In Progress', parts: [makePart({ sourcingStatus: 'pending', offers: [{}] })] });
       await callStatus(controller.openWorksheet, wo);
       expect(wo.status).toBe('Repair In Progress');
       expect(wo.save).not.toHaveBeenCalled();
@@ -378,11 +379,23 @@ describe('worksheet status transitions', () => {
     it('on a QUOTE → status untouched (no-op), even with all parts sourced', async () => {
       const wo = makeWorkOrder({
         status: 'Quote',
-        parts: [makePart({ sourcingStatus: 'selected' }), makePart({ sourcingStatus: 'approved' })],
+        // Parts already have offers so open-seeding is a no-op; isolates the status check.
+        parts: [makePart({ sourcingStatus: 'selected', offers: [{}] }), makePart({ sourcingStatus: 'approved', offers: [{}] })],
       });
       await callStatus(controller.openWorksheet, wo);
       expect(wo.status).toBe('Quote');
       expect(wo.save).not.toHaveBeenCalled();
+    });
+
+    it('seeds a blank offer card for any part with none, leaving parts that already have offers alone', async () => {
+      const withOffer = makePart({ offers: [{ seller: 'RockAuto', price: 10 }] });
+      const withoutOffer = makePart({ offers: [] });
+      const wo = makeWorkOrder({ status: 'Parts Sourcing - In Progress', parts: [withOffer, withoutOffer] });
+      await callStatus(controller.openWorksheet, wo);
+      expect(withOffer.offers).toHaveLength(1);             // untouched
+      expect(withoutOffer.offers).toHaveLength(1);           // seeded
+      expect(withoutOffer.offers[0].description).toBe(withoutOffer.name);
+      expect(wo.save).toHaveBeenCalled();
     });
   });
 

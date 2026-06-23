@@ -29,6 +29,15 @@ export function detectSellerFromUrl(url, vendors = []) {
   return null;
 }
 
+// Build a clickable https URL for a vendor from its first usable hostname, or
+// null if none is set. Tolerates entries that already include a scheme or a path.
+export function vendorUrl(vendor) {
+  const host = (vendor?.hostnames || []).find((h) => h && h.trim());
+  if (!host) return null;
+  const bare = host.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  return bare ? `https://${bare}` : null;
+}
+
 // Format a hostname into a readable seller suggestion (e.g. "ebay.com" → "Ebay").
 export function formatHostnameAsName(hostname) {
   if (!hostname) return '';

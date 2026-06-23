@@ -48,6 +48,12 @@ const WorksheetService = {
     return res.data;
   },
 
+  // Rename a placeholder part (fix a mis-typed part name before sourcing/approval).
+  updatePartName: async (workOrderId, partId, name) => {
+    const res = await API.patch(`${base(workOrderId)}/parts/${partId}/name`, { name });
+    return res.data;
+  },
+
   // Add a new placeholder part to a job from the worksheet. { name, quantity, serviceId }.
   addPart: async (workOrderId, { name, quantity, serviceId }) => {
     const res = await API.post(`${base(workOrderId)}/parts`, { name, quantity, serviceId });
@@ -70,6 +76,19 @@ const WorksheetService = {
   // this is for removing a mistaken/duplicate capture.
   removeOffer: async (workOrderId, partId, offerId) => {
     const res = await API.delete(`${base(workOrderId)}/parts/${partId}/offers/${offerId}`);
+    return res.data;
+  },
+
+  // Decode a pasted screenshot of an online listing into the offer's fields (server
+  // runs it through the Gemini vision decoder, then merges the result onto the offer).
+  decodeOffer: async (workOrderId, partId, offerId, file) => {
+    const form = new FormData();
+    form.append('screenshot', file, file.name || 'screenshot.png');
+    const res = await API.post(
+      `${base(workOrderId)}/parts/${partId}/offers/${offerId}/decode`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }
+    );
     return res.data;
   },
 
