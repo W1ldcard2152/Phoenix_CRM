@@ -107,6 +107,13 @@ const WorksheetService = {
     return res.data;
   },
 
+  // Reopen an approved part for changes — reverts it to the awaiting-approval state so
+  // a new offer can be selected and sent back through approval. Service writer allowed.
+  unapprovePart: async (workOrderId, partId) => {
+    const res = await API.post(`${base(workOrderId)}/parts/${partId}/unapprove`);
+    return res.data;
+  },
+
   // Split one placeholder part into N independently-sourced lines.
   // splits: [{ name, quantity }, ...] — quantity redistributed across clones.
   splitPart: async (workOrderId, partId, splits) => {

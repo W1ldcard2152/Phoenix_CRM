@@ -1279,6 +1279,16 @@ exports.approvePart = catchAsync(async (req, res, next) => {
     return next(new AppError('Only a selected part can be approved', 400));
   }
 
+  // The manager may commit whatever offer they have STARRED, which can differ from the
+  // recorded selection (e.g. revising a quote). Repoint the selection to the committed
+  // offer so the audit trail matches the values being written onto the part.
+  const { offerId } = req.body;
+  if (offerId && String(part.selectedOfferId) !== String(offerId) && part.offers.id(offerId)) {
+    part.selectedOfferId = offerId;
+    part.selectedBy = req.user._id;
+    part.selectedByName = req.user.name;
+  }
+
   // The manager submits the final (possibly edited) field values to commit. eta /
   // inStock / condition / source stay on the offer; part.notes (human notes) is not
   // touched — the selection rationale lives in part.selectionReason.
@@ -1306,6 +1316,31 @@ exports.approvePart = catchAsync(async (req, res, next) => {
   part.sourcingStatus = 'approved';
   part.approvedBy = req.user._id;
   part.approvedByName = req.user.name;
+
+  workOrder.markModified('parts');
+  await workOrder.save();
+
+  await respondWithWorkOrder(res, id);
+});
+
+// Reopen an approved part for changes (e.g. a quote customer changes their mind). A
+// service writer can unapprove it; it drops back to the awaiting-approval state so a
+// new offer can be selected and re-approved. The committed fields (name/cost/price)
+// and the current selection are LEFT in place — re-approval overwrites them, and a
+// quote's total stays put mid-revision instead of dropping to zero.
+exports.unapprovePart = catchAsync(async (req, res, next) => {
+  const { id, partId } = req.params;
+
+  const workOrder = await validateEntityExists(WorkOrder, id, 'Work order');
+  const part = workOrder.parts.id(partId);
+  if (!part) return next(new AppError('Part not found on this work order', 404));
+  if (part.sourcingStatus !== 'approved') {
+    return next(new AppError('Only an approved part can be unapproved', 400));
+  }
+
+  part.sourcingStatus = part.selectedOfferId ? 'selected' : 'pending';
+  part.approvedBy = undefined;
+  part.approvedByName = undefined;
 
   workOrder.markModified('parts');
   await workOrder.save();

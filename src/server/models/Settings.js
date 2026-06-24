@@ -60,7 +60,11 @@ const SettingsSchema = new Schema(
         type: { type: String, trim: true, default: '' }, // e.g. dealer / marketplace / retailer
         speedTier: { type: Number, default: 0 }, // lower = faster
         costTier: { type: Number, default: 0 },  // lower = cheaper
-        sortOrder: { type: Number, default: 0 }   // manual tiebreaker for ranking
+        sortOrder: { type: Number, default: 0 },  // manual tiebreaker for ranking
+        // When true, the worksheet opens this vendor's site in a normal browser tab
+        // (full nav) rather than a docked popup — for marketplaces like eBay/Amazon
+        // whose target=_blank links escape a popup. Default: docked.
+        openInTab: { type: Boolean, default: false }
       }],
       default: defaultCustomVendors
     },

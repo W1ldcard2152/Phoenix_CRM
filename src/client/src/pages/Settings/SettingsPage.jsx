@@ -291,7 +291,7 @@ const SettingsPage = () => {
     setAddingVendorType(false);
     setNewVendorType('');
     if (index === -1) {
-      setVendorEditor({ index: -1, name: '', hostnames: '', makes: ['all'], usedFor: ['parts'], type: '', speedTier: 0, costTier: 0 });
+      setVendorEditor({ index: -1, name: '', hostnames: '', makes: ['all'], usedFor: ['parts'], type: '', speedTier: 0, costTier: 0, openInTab: false });
     } else {
       const v = vendors[index];
       setVendorEditor({
@@ -302,7 +302,8 @@ const SettingsPage = () => {
         usedFor: (v.usedFor && v.usedFor.length ? v.usedFor : ['parts']),
         type: v.type || '',
         speedTier: v.speedTier ?? 0,
-        costTier: v.costTier ?? 0
+        costTier: v.costTier ?? 0,
+        openInTab: !!v.openInTab
       });
     }
   };
@@ -342,7 +343,8 @@ const SettingsPage = () => {
       usedFor: (ed.usedFor && ed.usedFor.length) ? ed.usedFor : ['parts'],
       type: ed.type.trim(),
       speedTier: Number(ed.speedTier) || 0,
-      costTier: Number(ed.costTier) || 0
+      costTier: Number(ed.costTier) || 0,
+      openInTab: !!ed.openInTab
     };
 
     const next = ed.index === -1
@@ -1206,6 +1208,19 @@ const SettingsPage = () => {
                         placeholder="comma-separated, e.g. fcpeuro.com, ecstuning.com"
                       />
                       <p className="mt-1 text-xs text-gray-400">Used to auto-detect the seller from a pasted product URL.</p>
+                    </div>
+                    {/* Window behavior on the worksheet — docked popup vs. normal tab */}
+                    <div className="sm:col-span-2">
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={!!vendorEditor.openInTab}
+                          onChange={(e) => setVendorEditor({ ...vendorEditor, openInTab: e.target.checked })}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                        />
+                        Open in a normal browser tab (not a docked window)
+                      </label>
+                      <p className="mt-1 text-xs text-gray-400">Turn on for marketplaces like eBay / Amazon whose links open new tabs and break the worksheet's docked layout. Direct retailers can stay docked.</p>
                     </div>
                     {/* Vendor type — independent of "Used for" */}
                     <div className="sm:col-span-2">

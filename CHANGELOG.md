@@ -2,6 +2,18 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-06-24
+
+### Added
+- **Reopen an approved part for changes.** Approved/committed parts now have an **"Unapprove & reselect"** button (any service writer can use it) — it reverts the part to awaiting-approval so you can pick a different offer and send it back through manager approval. Built for quote revisions when a customer changes their mind; the committed price stays put until re-approval, so the quote total doesn't blink to zero mid-edit.
+- **Per-vendor "open in a normal browser tab" setting** (Settings → Vendors / Suppliers). Turn it on for marketplaces like eBay / Amazon — whose links open new tabs that escape the worksheet's docked vendor window — and those vendors open as a normal tab with full navigation instead. Direct retailers stay docked.
+
+### Changed
+- **The manager's "Review & commit" form now follows the starred offer.** Star a different offer and the commit fields (vendor, brand, part #, cost, retail, URL) re-fill from it instantly — no need to run the "Change selection" step first just to preview or commit it. Committing repoints the recorded selection to match.
+
+### Fixed
+- **The worksheet now docks to the left in Firefox** instead of opening centered. (Firefox ignores the window-position hints other browsers honor, so it's now positioned explicitly after opening.)
+
 ## 2026-06-23
 
 ### Added

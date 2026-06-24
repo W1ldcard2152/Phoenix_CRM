@@ -2590,11 +2590,17 @@ const DocumentDetail = () => {
                   const left = window.screen.availLeft ?? 0;
                   const top = window.screen.availTop ?? 0;
                   const h = window.screen.availHeight || 1040;
-                  window.open(
+                  const win = window.open(
                     `/worksheet/${id}`,
                     `worksheet-${id}`,
                     `width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`
                   );
+                  // Firefox ignores left/top in the features string and centers the popup.
+                  // The worksheet is same-origin, so we can force its position/size after the
+                  // fact (a harmless no-op in Chromium, which already placed it correctly).
+                  if (win) {
+                    try { win.moveTo(left, top); win.resizeTo(w, h); } catch (_) { /* ignore */ }
+                  }
                 }}
                 variant="outline"
                 size="sm"

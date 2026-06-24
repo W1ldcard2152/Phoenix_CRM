@@ -57,7 +57,14 @@ const SEAM_NUDGE = 20;
 let vendorWinCount = 0;
 const vendorWindows = new Map(); // vendor key -> WindowProxy
 
-function openVendorBrowser(url) {
+function openVendorBrowser(url, openInTab) {
+  // Marketplace vendors (eBay/Amazon) are flagged to open as a normal browser tab —
+  // full navigation, and their target=_blank links don't escape a docked popup.
+  if (openInTab) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+
   const left = window.screen.availLeft ?? 0;
   const top = window.screen.availTop ?? 0;
   const availW = window.screen.availWidth || 1920;
@@ -181,8 +188,8 @@ function VendorPanel({ vendors, priority }) {
                 {url && (
                   <a
                     href={url}
-                    onClick={(e) => { e.preventDefault(); openVendorBrowser(url); }}
-                    title={`Open ${v.name} (docks to the right)`}
+                    onClick={(e) => { e.preventDefault(); openVendorBrowser(url, v.openInTab); }}
+                    title={`Open ${v.name}${v.openInTab ? ' (new tab)' : ' (docks to the right)'}`}
                     className="ml-1.5 text-primary-600 hover:text-primary-800"
                   >
                     <i className="fas fa-external-link-alt text-[11px]" />

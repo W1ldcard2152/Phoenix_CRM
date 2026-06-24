@@ -77,6 +77,8 @@ router.post('/:id/worksheet/parts/:partId/offers/:offerId/decode', wsRoles, work
 router.post('/:id/worksheet/parts/:partId/select', wsRoles, workOrderController.selectOffer);
 // Approval commits the selected offer onto the part — manager (admin/management) only.
 router.post('/:id/worksheet/parts/:partId/approve', authController.restrictTo('admin', 'management'), workOrderController.approvePart);
+// Unapprove reopens a committed part for re-selection — a service writer may do this.
+router.post('/:id/worksheet/parts/:partId/unapprove', wsRoles, workOrderController.unapprovePart);
 router.post('/:id/worksheet/parts/:partId/split', wsRoles, workOrderController.splitPart);
 // Customer approval is recorded internally by the service writer — admin/management only.
 router.post('/:id/worksheet/customer-approval', authController.restrictTo('admin', 'management'), workOrderController.recordCustomerApproval);

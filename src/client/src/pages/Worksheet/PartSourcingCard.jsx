@@ -49,7 +49,10 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
   const handleApprove = async (fields) => {
     setApproving(true);
     try {
-      await mutate(() => WorksheetService.approvePart(workOrderId, partId, fields));
+      // Commit whatever the manager has starred (their pick), repointing the selection
+      // server-side so the audit matches the committed values.
+      const offerId = starredOfferId || selectedOffer?._id;
+      await mutate(() => WorksheetService.approvePart(workOrderId, partId, { ...fields, offerId }));
     } finally {
       setApproving(false);
     }
@@ -76,6 +79,9 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
   };
 
   const starredOffer = offers.find((o) => o._id === starredOfferId);
+  // The manager's commit form follows the STARRED offer (their pick), falling back to
+  // the recorded selection. So starring a different offer immediately re-seeds the panel.
+  const reviewOffer = starredOffer || selectedOffer;
 
   const cardBorder = isApproved
     ? 'border-emerald-300 bg-emerald-50/40'
@@ -216,9 +222,20 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
       {/* Status / approval / selection */}
       <div className="mt-3 border-t border-gray-200 pt-2 space-y-2">
         {isApproved ? (
-          <div className="text-sm text-emerald-700">
-            <i className="fas fa-check-circle mr-1" />
-            Approved &amp; committed{part.approvedByName ? ` by ${part.approvedByName}` : ''}.
+          <div className="space-y-2">
+            <div className="text-sm text-emerald-700">
+              <i className="fas fa-check-circle mr-1" />
+              Approved &amp; committed{part.approvedByName ? ` by ${part.approvedByName}` : ''}.
+            </div>
+            {/* Reopen for changes — e.g. a quote customer changes their mind. Reverts to
+                awaiting-approval so a new offer can be picked and sent back through. */}
+            <button
+              type="button"
+              onClick={() => mutate(() => WorksheetService.unapprovePart(workOrderId, partId))}
+              className="text-sm px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-white"
+            >
+              <i className="fas fa-rotate-left mr-1" />Unapprove &amp; reselect
+            </button>
           </div>
         ) : (
           <>
@@ -226,7 +243,10 @@ export default function PartSourcingCard({ workOrderId, part, vendors, compareMo
             {isSelected && (
               isManager ? (
                 <ApprovalPanel
-                  offer={selectedOffer}
+                  // Keyed on the reviewed offer so the form re-seeds the instant you star
+                  // a different offer (the panel seeds its fields once at mount).
+                  key={reviewOffer?._id || 'no-offer'}
+                  offer={reviewOffer}
                   markupPercentage={markupPercentage}
                   saving={approving}
                   onApprove={handleApprove}
