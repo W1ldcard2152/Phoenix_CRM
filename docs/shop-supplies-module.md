@@ -277,6 +277,14 @@ counting judgment ancestors only.** Phase 2 derived leaves (e.g. Abrasives →
 Discs → 80/120/220/320+, computed from a grit field) must stay legal at tier 4.
 Phase 1 creates no derived nodes, but the constraint is expressible from day one.
 
+**The check is on the subtree, not the node. [added during §3]** Validating only
+the node being saved leaves the ceiling trivially bypassable by reparenting:
+move a tier-1 branch that already has two tiers under it beneath a tier-2 node
+and the moved node is legal at tier 3 while its leaves land at tier 5.
+Reparenting is the tag manager's whole job, so `validateSubtreePlacement` walks
+every descendant of the moved node and rejects naming the deepest offender. A
+derived node in the chain does not launder depth for judgment nodes below it.
+
 ### 3.2 `src/server/models/SupplyVocab.js`
 
 ```js
@@ -803,6 +811,10 @@ precisely so it can be tested here.
   - Depth rule: a 4th `kind: 'judgment'` tier rejects; a `kind: 'derived'`
     child at tier 4 is allowed; a derived node under two judgment tiers is
     allowed.
+  - Subtree depth: a reparent that keeps the moved node legal but pushes a
+    *descendant* past the ceiling rejects, and the error names the offender.
+    A judgment node under a derived node still counts its judgment ancestors.
+    Promoting a deep branch to top-level stays legal — that's the repair path.
   - Cycle guard: a `parent` chain that loops terminates rather than hanging.
 - Pricing: `(cost / unitsPerPurchase) × (1 + markup/100)` rounded to 2dp, with
   `unitsPerPurchase` of 1 and 5, and `priceOverridden` short-circuiting.
