@@ -186,6 +186,26 @@ const SupplyService = {
     }
   },
 
+  getTaxRules: async () => {
+    try {
+      const response = await API.get('/supplies/tax-rules');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching supply tax rules:', error);
+      throw error;
+    }
+  },
+
+  setTaxRule: async (hostname, chargesTax) => {
+    try {
+      const response = await API.put('/supplies/tax-rules', { hostname, chargesTax });
+      return response.data;
+    } catch (error) {
+      console.error('Error saving supply tax rule:', error);
+      throw error;
+    }
+  },
+
   getFields: async () => {
     try {
       const response = await API.get('/supplies/fields');

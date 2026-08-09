@@ -32,6 +32,8 @@ const SupplyList = () => {
   const [fields, setFields] = useState([]);
   const [untaggedCount, setUntaggedCount] = useState(0);
   const [markup, setMarkup] = useState(30);
+  const [taxRate, setTaxRate] = useState(0);
+  const [taxRules, setTaxRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -71,16 +73,19 @@ const SupplyList = () => {
 
   const loadReference = useCallback(async () => {
     try {
-      const [tagRes, vocabRes, fieldRes, settingsRes] = await Promise.all([
+      const [tagRes, vocabRes, fieldRes, taxRuleRes, settingsRes] = await Promise.all([
         SupplyService.getTags(),
         SupplyService.getVocab(),
         SupplyService.getFields(),
+        SupplyService.getTaxRules(),
         SettingsService.getSettings()
       ]);
       setTags(tagRes.data.tags);
       setVocab(vocabRes.data.vocab);
       setFields(fieldRes.data.fields);
+      setTaxRules(taxRuleRes.data.rules);
       setMarkup(settingsRes.data.settings?.partMarkupPercentage ?? 30);
+      setTaxRate(settingsRes.data.settings?.taxRate ?? 0);
     } catch (err) {
       setError('Could not load tags and vocabulary.');
     }
@@ -587,6 +592,11 @@ const SupplyList = () => {
         tags={tags}
         fields={fields}
         markupPercentage={markup}
+        taxRate={taxRate}
+        taxRules={taxRules}
+        onTaxRuleLearned={(rule) => setTaxRules((prev) => [
+          ...prev.filter((r) => r.hostname !== rule.hostname), rule
+        ])}
         initial={editing}
         lastUsed={lastUsed}
       />
@@ -599,6 +609,11 @@ const SupplyList = () => {
         fields={fields}
         vocab={vocab}
         markupPercentage={markup}
+        taxRate={taxRate}
+        taxRules={taxRules}
+        onTaxRuleLearned={(rule) => setTaxRules((prev) => [
+          ...prev.filter((r) => r.hostname !== rule.hostname), rule
+        ])}
         lastUsed={lastUsed}
         onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
       />

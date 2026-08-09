@@ -7,6 +7,7 @@ import TagPicker from './TagPicker';
 import UrlExtractButton from '../common/UrlExtractButton';
 import SupplyService from '../../services/supplyService';
 import { composeDisplayName } from './composeName';
+import { hostnameOf } from './hostname';
 import { indexTags, tagPath, idOf } from './tagTree';
 
 /**
@@ -40,13 +41,17 @@ const EMPTY_DRAFT = {
   // the old inventory form does in InventoryList.handleSaveItem.
   packagesOnHand: 1,
   stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
-  reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
+  reorderPoint: 1,
+  // Invoice figure before vendor sales tax; grossed up into `cost` on save.
+  costEntered: 0, costIncludesTax: false,
+  price: 0, priceOverridden: false,
   attributes: {}, notes: '', url: '', sdsUrl: ''
 };
 
 const SupplyImportModal = ({
   isOpen, onClose, onImported, tags = [], fields = [], vocab = [],
-  markupPercentage = 30, onVocabAdded, lastUsed = {}
+  markupPercentage = 30, taxRate = 0, taxRules = [], onTaxRuleLearned,
+  onVocabAdded, lastUsed = {}
 }) => {
   const [queue, setQueue] = useState([]);
   const [index, setIndex] = useState(0);
@@ -179,23 +184,23 @@ const SupplyImportModal = ({
       if (n !== i) return item;
       const brandId = matchVocab('brand', data.brand);
       const vendorId = matchVocab('vendor', data.vendor);
-      const cost = parseFloat(data.cost ?? data.price) || 0;
-      const upp = Math.max(1, item.draft.unitsPerPurchase || 1);
+      // A listing price is what the vendor asks before tax, which is exactly
+      // what the cost box holds — the tax toggle stays the user's call.
+      const listed = parseFloat(data.cost ?? data.price) || 0;
+
+      const draft = {
+        ...item.draft,
+        brand: item.draft.brand || brandId,
+        vendor: item.draft.vendor || vendorId,
+        partNumber: item.draft.partNumber || data.partNumber || '',
+        costEntered: item.draft.costEntered || listed
+      };
 
       return {
         ...item,
         brandSuggestion: item.draft.brand || brandId ? item.brandSuggestion : (data.brand || ''),
         vendorSuggestion: item.draft.vendor || vendorId ? item.vendorSuggestion : (data.vendor || ''),
-        draft: {
-          ...item.draft,
-          brand: item.draft.brand || brandId,
-          vendor: item.draft.vendor || vendorId,
-          partNumber: item.draft.partNumber || data.partNumber || '',
-          cost: item.draft.cost || cost,
-          price: item.draft.cost
-            ? item.draft.price
-            : parseFloat(((cost / upp) * (1 + markupPercentage / 100)).toFixed(2))
-        }
+        draft: { ...draft, ...repriceFrom(draft, {}) }
       };
     }));
   };
@@ -224,10 +229,12 @@ const SupplyImportModal = ({
     try {
       // Convert purchase units to stock units. The user counted 3 jugs; the
       // item stocks 15 quarts.
-      const { packagesOnHand, ...rest } = current.draft;
+      const { packagesOnHand, costEntered, ...rest } = current.draft;
       const payload = {
         ...rest,
-        quantityOnHand: (parseFloat(packagesOnHand) || 0) * Math.max(1, rest.unitsPerPurchase || 1)
+        quantityOnHand: (parseFloat(packagesOnHand) || 0) * Math.max(1, rest.unitsPerPurchase || 1),
+        // Tax folded in — `cost` is always what actually left the bank.
+        cost: landedCostOf(current.draft)
       };
       const res = await SupplyService.create(payload);
       try {
@@ -269,6 +276,52 @@ const SupplyImportModal = ({
   const upp = Math.max(1, current?.draft.unitsPerPurchase || 1);
   const stockLabel = unitLabel(current?.draft.stockUnit, 'unit');
   const purchaseLabel = upp > 1 ? unitLabel(current?.draft.purchaseUnit, 'purchase') : stockLabel;
+
+  // Vendor tax is part of what the item cost, like shipping — not a separate
+  // line and not a pass-through.
+  const landedCostOf = (draft) => Math.round(
+    (parseFloat(draft.costEntered) || 0)
+    * (draft.costIncludesTax ? 1 + (taxRate || 0) / 100 : 1) * 100
+  ) / 100;
+  const landedCost = current ? landedCostOf(current.draft) : 0;
+
+  const currentHost = hostnameOf(current?.draft.url);
+  const knownRule = taxRules.find((r) => r.hostname === currentHost) || null;
+
+  /**
+   * Typing a URL applies whatever this vendor did last time. It is a default,
+   * not a lock — the checkbox stays editable, and changing it re-teaches.
+   */
+  const handleUrlChange = (i, url) => {
+    const host = hostnameOf(url);
+    const rule = host ? taxRules.find((r) => r.hostname === host) : null;
+    setQueue((prev) => prev.map((item, n) => {
+      if (n !== i) return item;
+      const changes = { url };
+      if (rule) changes.costIncludesTax = rule.chargesTax;
+      return { ...item, draft: { ...item.draft, ...changes, ...repriceFrom(item.draft, changes) } };
+    }));
+  };
+
+  /**
+   * Toggling with a URL present teaches the rule for that hostname. Fire and
+   * forget: a failed save costs the shortcut next time, not this entry.
+   */
+  const handleTaxToggle = (i, checked) => {
+    patchDraft(i, repriceFrom(queue[i].draft, { costIncludesTax: checked }));
+    const host = hostnameOf(queue[i].draft.url);
+    if (!host) return;
+    SupplyService.setTaxRule(host, checked)
+      .then(() => onTaxRuleLearned?.({ hostname: host, chargesTax: checked }))
+      .catch((err) => console.error('Could not save tax rule:', err));
+  };
+
+  const repriceFrom = (draft, changes) => {
+    const next = { ...draft, ...changes };
+    if (next.priceOverridden) return changes;
+    const perUnit = landedCostOf(next) / Math.max(1, next.unitsPerPurchase || 1);
+    return { ...changes, price: parseFloat((perUnit * (1 + markupPercentage / 100)).toFixed(2)) };
+  };
 
   const preview = current ? composeDisplayName(current.draft, tags, fields, vocab) : '';
   const remaining = queue.filter((q) => q.status !== 'saved' && q.status !== 'skipped').length;
@@ -540,7 +593,7 @@ const SupplyImportModal = ({
                       <input
                         type="url"
                         value={current.draft.url}
-                        onChange={(e) => patchDraft(index, { url: e.target.value })}
+                        onChange={(e) => handleUrlChange(index, e.target.value)}
                         className={inputCls}
                         placeholder="https://..."
                       />
@@ -603,10 +656,7 @@ const SupplyImportModal = ({
                         value={current.draft.unitsPerPurchase}
                         onChange={(e) => {
                           const upp = Math.max(1, parseInt(e.target.value, 10) || 1);
-                          patchDraft(index, {
-                            unitsPerPurchase: upp,
-                            price: parseFloat((((current.draft.cost || 0) / upp) * (1 + markupPercentage / 100)).toFixed(2))
-                          });
+                          patchDraft(index, repriceFrom(current.draft, { unitsPerPurchase: upp }));
                         }}
                         className={inputCls}
                       />
@@ -654,17 +704,33 @@ const SupplyImportModal = ({
                       </label>
                       <input
                         type="number" step="0.01" min="0"
-                        value={current.draft.cost}
-                        onChange={(e) => {
-                          const cost = parseFloat(e.target.value) || 0;
-                          patchDraft(index, {
-                            cost,
-                            price: parseFloat(((cost / upp) * (1 + markupPercentage / 100)).toFixed(2))
-                          });
-                        }}
+                        value={current.draft.costEntered}
+                        onChange={(e) => patchDraft(index, repriceFrom(current.draft, {
+                          costEntered: parseFloat(e.target.value) || 0
+                        }))}
                         className={inputCls}
                       />
-                      <p className="mt-1 text-[10px] text-gray-400">Labels don't carry prices</p>
+                      <label className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={current.draft.costIncludesTax}
+                          onChange={(e) => handleTaxToggle(index, e.target.checked)}
+                          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        Vendor charged {taxRate}% tax
+                      </label>
+                      {currentHost && (
+                        <p className="text-[10px] text-gray-400">
+                          {knownRule
+                            ? `Remembered for ${currentHost}`
+                            : `Will be remembered for ${currentHost}`}
+                        </p>
+                      )}
+                      {current.draft.costIncludesTax && landedCost > 0 && (
+                        <p className="mt-0.5 text-[11px] text-blue-600">
+                          Real cost <strong>${landedCost.toFixed(2)}</strong>
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className={labelCls}>

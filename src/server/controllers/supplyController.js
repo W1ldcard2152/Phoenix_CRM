@@ -153,6 +153,16 @@ exports.extractLabel = run(async (req, res, next) => {
   res.status(200).json({ status: 'success', data: { ...result, similar } });
 });
 
+exports.getTaxRules = run(async (req, res) => {
+  const rules = await supplyService.listTaxRules();
+  res.status(200).json({ status: 'success', results: rules.length, data: { rules } });
+});
+
+exports.setTaxRule = run(async (req, res) => {
+  const rule = await supplyService.setTaxRule(req.body.hostname, req.body.chargesTax, req.user._id);
+  res.status(200).json({ status: 'success', data: { rule } });
+});
+
 exports.getFields = run(async (req, res) => {
   const fields = await supplyService.listFields();
   res.status(200).json({ status: 'success', results: fields.length, data: { fields } });

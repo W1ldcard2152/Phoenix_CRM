@@ -108,10 +108,31 @@ const ShopSupplySchema = new Schema({
     min: 0
   },
 
+  /**
+   * LANDED cost per purchase unit — what actually leaves the bank, sales tax
+   * included where the vendor charges it.
+   *
+   * Tax is treated the way the receipt importer treats shipping: not a separate
+   * line, but part of what the thing cost. Some vendors charge it and some
+   * don't, while the shop charges tax on everything downstream regardless, so
+   * vendor tax is a cost input rather than a pass-through.
+   */
   cost: {
     type: Number,
     default: 0,
     min: 0
+  },
+
+  /**
+   * Whether `cost` above has vendor tax folded into it.
+   *
+   * Recorded so the form can show the pre-tax figure from the invoice and let
+   * the toggle be turned off again — without it, re-editing an item would
+   * either double-tax the cost or silently drop the tax.
+   */
+  costIncludesTax: {
+    type: Boolean,
+    default: false
   },
   price: {
     type: Number,

@@ -382,6 +382,31 @@ markup = Settings.partMarkupPercentage        // a PERCENTAGE, e.g. 30
 price  = (cost / unitsPerPurchase) × (1 + markup / 100)
 ```
 
+**`cost` is the LANDED cost per purchase unit [added 2026-08-09]** — what
+actually leaves the bank, with vendor sales tax folded in. Some vendors charge
+the shop tax and some don't, while the shop charges tax downstream regardless,
+so vendor tax is a cost input rather than a pass-through — the same treatment
+shipping already gets in the receipt importer. `costIncludesTax` records that it
+was folded in, purely so the entry form can show the pre-tax invoice figure and
+let the toggle be turned off without double-applying. The server stores what the
+client computed; the flag is a record, not a trigger.
+
+**The toggle is learned per vendor, keyed by hostname** (`SupplyTaxRule`). Tax
+status belongs to the vendor, not the item — the shop is exempt with some
+suppliers and not others, and that doesn't change bottle to bottle. Tick the box
+once with a `walmart.com` URL in the product field and every later walmart.com
+item defaults the same way; changing it re-teaches the rule. Keyed by hostname
+rather than by vendor vocab entry because the URL is known before a vendor has
+been picked — often it's what identifies the vendor — and one vendor can have
+several storefront domains. A rule is always a default, never a lock.
+
+**Quantities are counted in the STOCK unit, entered in the PURCHASE unit.** You
+buy jugs and you use quarts. `quantityOnHand`, `reorderPoint` and `price` are
+all per stock unit; `cost` is per purchase unit; `unitsPerPurchase` bridges them.
+Both entry forms take a count of purchase units and multiply on save, echoing
+"3 jugs = 15 quart" live — the same conversion the old inventory form does in
+`InventoryList.handleSaveItem`.
+
 `markup` is a **global shop setting**, not a per-item field. `price` is
 **written at create/edit time and stored — never recomputed on read.** Changing
 the shop markup therefore does **not** retroactively move existing prices; a

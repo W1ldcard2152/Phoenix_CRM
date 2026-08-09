@@ -24,6 +24,10 @@ router.delete('/tags/:id', admin, supplyController.deleteTag);
 
 router.get('/fields', supplyController.getFields);
 
+// Learned per-vendor sales-tax defaults, keyed by hostname.
+router.get('/tax-rules', supplyController.getTaxRules);
+router.put('/tax-rules', officeStaff, supplyController.setTaxRule);
+
 // Label extraction — reuses the photo upload middleware (same shape: one image).
 router.post('/extract-label', officeStaff, supplyController.photoUpload, supplyController.extractLabel);
 

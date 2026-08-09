@@ -3,6 +3,7 @@ const ShopSupply = require('../models/ShopSupply');
 const SupplyTag = require('../models/SupplyTag');
 const SupplyVocab = require('../models/SupplyVocab');
 const SupplyField = require('../models/SupplyField');
+const SupplyTaxRule = require('../models/SupplyTaxRule');
 const SupplyMovement = require('../models/SupplyMovement');
 const Settings = require('../models/Settings');
 const supplyTagService = require('./supplyTagService');
@@ -38,7 +39,7 @@ const SUPPLY_FIELDS = [
   'tags', 'primaryTag',
   'form', 'location',
   'stockUnit', 'purchaseUnit', 'unitsPerPurchase',
-  'reorderPoint', 'cost', 'price', 'priceOverridden',
+  'reorderPoint', 'cost', 'costIncludesTax', 'price', 'priceOverridden',
   'sdsUrl', 'url', 'notes', 'isActive',
   'attributes'
 ];
@@ -524,6 +525,29 @@ const getShoppingList = async () => {
 
 const countUntagged = async () => ShopSupply.countDocuments({ isActive: true, tags: { $size: 0 } });
 
+// ────────────────────────────── Tax rules ───────────────────────────────────
+
+/**
+ * Learned per-vendor tax defaults, keyed by hostname. A handful of rows, served
+ * whole and matched client-side as the URL is typed.
+ */
+const listTaxRules = async () => SupplyTaxRule.find({}, 'hostname chargesTax').lean();
+
+/**
+ * Teach (or re-teach) a hostname's tax status. Upsert rather than create so
+ * changing your mind on one item simply corrects the rule for the next.
+ */
+const setTaxRule = async (hostname, chargesTax, userId) => {
+  const host = String(hostname || '').trim().toLowerCase().replace(/^www\./, '');
+  if (!host) throw new SupplyError('A hostname is required.', 400);
+
+  return SupplyTaxRule.findOneAndUpdate(
+    { hostname: host },
+    { $set: { chargesTax: !!chargesTax, updatedBy: userId } },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  ).lean();
+};
+
 // ─────────────────────────── Label extraction ───────────────────────────────
 
 /** Human-readable path for a tag, for the prompt's category list. */
@@ -884,6 +908,8 @@ module.exports = {
   getShoppingList,
   countUntagged,
   listFields,
+  listTaxRules,
+  setTaxRule,
   extractFromLabel,
   findSimilar,
   listTags,

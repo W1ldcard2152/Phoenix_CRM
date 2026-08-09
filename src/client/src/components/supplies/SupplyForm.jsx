@@ -6,6 +6,7 @@ import TagPicker from './TagPicker';
 import SupplyPhoto from './SupplyPhoto';
 import SupplyAttributes from './SupplyAttributes';
 import { composeDisplayName } from './composeName';
+import { hostnameOf } from './hostname';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -28,7 +29,11 @@ const EMPTY = {
   tags: [], primaryTag: null,
   form: null, location: null,
   quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
-  reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
+  reorderPoint: 1,
+  // What the invoice says, before any vendor sales tax. The stored `cost` is
+  // this grossed up when costIncludesTax is on — see landedCost below.
+  costEntered: 0, costIncludesTax: false,
+  price: 0, priceOverridden: false,
   sdsUrl: '', url: '', notes: '', attributes: {},
   // Entered in PURCHASE units and multiplied into quantityOnHand on save —
   // you count jugs on the shelf, not quarts.
@@ -39,7 +44,8 @@ const round2 = (n) => parseFloat(Number(n).toFixed(2));
 
 const SupplyForm = ({
   isOpen, onClose, onSaved, onRefresh, vocab = [], tags = [], fields = [],
-  markupPercentage = 30, initial = null, lastUsed = {}, onVocabAdded
+  markupPercentage = 30, taxRate = 0, taxRules = [], onTaxRuleLearned,
+  initial = null, lastUsed = {}, onVocabAdded
 }) => {
   const [data, setData] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -81,6 +87,12 @@ const SupplyForm = ({
         // stored name — that would freeze a composed name as a custom one.
         name: initial.name || '',
         qualifier: initial.qualifier || '',
+        // Stored cost is tax-inclusive; back it out so the box shows the
+        // invoice figure and toggling the checkbox can't double-apply.
+        costIncludesTax: !!initial.costIncludesTax,
+        costEntered: initial.costIncludesTax
+          ? round2((initial.cost || 0) / (1 + (taxRate || 0) / 100))
+          : (initial.cost || 0),
         // Serialized from a Mongoose Map, so it arrives as a plain object.
         attributes: initial.attributes || {}
       });
@@ -107,6 +119,13 @@ const SupplyForm = ({
   const multiplier = 1 + markupPercentage / 100;
   const upp = Math.max(1, parseInt(data.unitsPerPurchase, 10) || 1);
 
+  // Vendor sales tax is a cost input, not a pass-through: the shop charges tax
+  // downstream regardless of whether this vendor charged it, so tax paid is
+  // simply part of what the item cost — the same treatment shipping gets in the
+  // receipt importer.
+  const taxMultiplier = data.costIncludesTax ? 1 + (taxRate || 0) / 100 : 1;
+  const landedCost = round2((parseFloat(data.costEntered) || 0) * taxMultiplier);
+
   const unitLabel = (id, fallback) => {
     const entry = vocab.find((v) => String(v._id) === idOf(id));
     return entry ? (entry.label || entry.value) : fallback;
@@ -114,19 +133,69 @@ const SupplyForm = ({
   const stockLabel = unitLabel(data.stockUnit, 'unit');
   const purchaseLabel = upp > 1 ? unitLabel(data.purchaseUnit, 'purchase') : stockLabel;
 
-  const handleCost = (cost) => setData((prev) => (prev.priceOverridden
-    ? { ...prev, cost }
-    : { ...prev, cost, price: round2((cost / upp) * multiplier) }));
+  // Price always derives from the LANDED cost, so turning the tax toggle on
+  // raises the price the same way a higher invoice would.
+  const priceFrom = (entered, includesTax, unitsPer) => round2(
+    ((round2((parseFloat(entered) || 0) * (includesTax ? 1 + (taxRate || 0) / 100 : 1))) / unitsPer)
+    * multiplier
+  );
 
+  const handleCost = (costEntered) => setData((prev) => (prev.priceOverridden
+    ? { ...prev, costEntered }
+    : { ...prev, costEntered, price: priceFrom(costEntered, prev.costIncludesTax, upp) }));
+
+  /**
+   * Toggling with a URL present teaches the rule for that hostname, so the next
+   * item from the same vendor defaults correctly. Fire and forget — a failed
+   * save costs the shortcut next time, not this entry.
+   */
+  const handleTaxToggle = (costIncludesTax) => {
+    setData((prev) => (prev.priceOverridden
+      ? { ...prev, costIncludesTax }
+      : { ...prev, costIncludesTax, price: priceFrom(prev.costEntered, costIncludesTax, upp) }));
+
+    const host = hostnameOf(data.url);
+    if (!host) return;
+    SupplyService.setTaxRule(host, costIncludesTax)
+      .then(() => onTaxRuleLearned?.({ hostname: host, chargesTax: costIncludesTax }))
+      .catch((err) => console.error('Could not save tax rule:', err));
+  };
+
+  /** Typing a URL applies whatever this vendor did last time. */
+  const handleUrlChange = (url) => {
+    const host = hostnameOf(url);
+    const rule = host ? taxRules.find((r) => r.hostname === host) : null;
+    setData((prev) => {
+      if (!rule || prev.costIncludesTax === rule.chargesTax) return { ...prev, url };
+      return {
+        ...prev,
+        url,
+        costIncludesTax: rule.chargesTax,
+        price: prev.priceOverridden
+          ? prev.price
+          : priceFrom(prev.costEntered, rule.chargesTax, upp)
+      };
+    });
+  };
+
+  const currentHost = hostnameOf(data.url);
+  const knownRule = taxRules.find((r) => r.hostname === currentHost) || null;
+
+  // Working back from a retail price lands on the pre-tax invoice figure, so
+  // the number in the cost box stays the one you'd read off the invoice.
   const handlePrice = (price) => setData((prev) => (prev.priceOverridden
     ? { ...prev, price }
-    : { ...prev, price, cost: round2((price * upp) / multiplier) }));
+    : {
+      ...prev,
+      price,
+      costEntered: round2((price * upp) / multiplier / (prev.costIncludesTax ? 1 + (taxRate || 0) / 100 : 1))
+    }));
 
   const handleUpp = (value) => {
     const next = Math.max(1, parseInt(value, 10) || 1);
     setData((prev) => (prev.priceOverridden
       ? { ...prev, unitsPerPurchase: next }
-      : { ...prev, unitsPerPurchase: next, price: round2(((parseFloat(prev.cost) || 0) / next) * multiplier) }));
+      : { ...prev, unitsPerPurchase: next, price: priceFrom(prev.costEntered, prev.costIncludesTax, next) }));
   };
 
   // Creating a vocab value inline, from the dropdown the user is already in.
@@ -152,12 +221,14 @@ const SupplyForm = ({
     setSaving(true);
     setError(null);
     try {
-      const { packagesOnHand, ...rest } = data;
+      const { packagesOnHand, costEntered, ...rest } = data;
       const payload = {
         ...rest,
         name: (data.name || '').trim(),
         // Purchase units in, stock units stored: 3 jugs becomes 15 quarts.
-        quantityOnHand: (parseFloat(packagesOnHand) || 0) * upp
+        quantityOnHand: (parseFloat(packagesOnHand) || 0) * upp,
+        // Tax folded in — `cost` is always what actually left the bank.
+        cost: landedCost
       };
       delete payload.displayName; // server-derived; never sent back
       let photoFailed = false;
@@ -496,10 +567,29 @@ const SupplyForm = ({
                 type="number"
                 step="0.01"
                 min="0"
-                value={data.cost}
+                value={data.costEntered}
                 onChange={(e) => handleCost(parseFloat(e.target.value) || 0)}
                 className={field}
               />
+              <label className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={data.costIncludesTax}
+                  onChange={(e) => handleTaxToggle(e.target.checked)}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                Vendor charged {taxRate}% tax
+              </label>
+              {currentHost && (
+                <p className="text-[10px] text-gray-400">
+                  {knownRule ? `Remembered for ${currentHost}` : `Will be remembered for ${currentHost}`}
+                </p>
+              )}
+              {data.costIncludesTax && landedCost > 0 && (
+                <p className="mt-0.5 text-[11px] text-blue-600">
+                  Real cost <strong>${landedCost.toFixed(2)}</strong> per {purchaseLabel}
+                </p>
+              )}
             </div>
             <div>
               <label className={label}>Price <span className="text-gray-400">per {stockLabel}</span></label>
@@ -527,7 +617,12 @@ const SupplyForm = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>Product URL</label>
-              <input type="url" value={data.url} onChange={(e) => set('url', e.target.value)} className={field} />
+              <input
+                type="url"
+                value={data.url}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                className={field}
+              />
             </div>
             <div>
               <label className={label}>SDS URL</label>
