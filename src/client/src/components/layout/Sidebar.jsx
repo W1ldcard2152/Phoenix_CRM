@@ -96,6 +96,7 @@ const Sidebar = () => {
     { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
     { name: 'Calendar & Tasks', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Shop Inventory', path: '/inventory', icon: 'fas fa-boxes-stacked', roles: null },
+    { name: 'Shop Supplies', path: '/supplies', icon: 'fas fa-spray-can-sparkles', roles: null },
     { name: 'Service Packages', path: '/service-packages', icon: 'fas fa-box-open', roles: ['admin', 'management'] },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];

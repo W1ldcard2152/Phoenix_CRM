@@ -13,6 +13,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
  *   className:    extra wrapper classes
  *   disabled:     disables interaction
  *   size:         "sm" | "md" — controls padding/text size (default "sm")
+ *   allowCreate:  when true, a typed term with no exact match offers a
+ *                 "Create ..." row. Requires onCreate.
+ *   onCreate:     async (typedValue) => newValue — persist it and return the
+ *                 value to select. Return null/undefined to abort.
+ *
+ * allowCreate is strictly additive: with it unset the component behaves exactly
+ * as it did before the prop existed (select-only). It is shared with
+ * VehicleForm, ReceiptImportModal and InventoryReceiptImportModal.
  *
  * The option panel is rendered with position:fixed so it escapes any ancestor
  * with `overflow:hidden|auto` (e.g. modal scroll containers). Position is
@@ -31,10 +39,13 @@ const SearchableDropdown = ({
   className = '',
   disabled = false,
   size = 'sm',
+  allowCreate = false,
+  onCreate,
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [panelStyle, setPanelStyle] = useState({});
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
@@ -118,14 +129,39 @@ const SearchableDropdown = ({
     }
   }, [open]);
 
+  // Offer creation only for a term that isn't already an option — otherwise the
+  // user is one keystroke away from a duplicate vocabulary entry.
+  const trimmedQuery = query.trim();
+  const showCreate = allowCreate
+    && !!onCreate
+    && trimmedQuery.length > 0
+    && !options.some(o => String(o.label || '').trim().toLowerCase() === trimmedQuery.toLowerCase());
+
   const choose = (opt) => {
     onChange?.(opt ? opt.value : null);
     setOpen(false);
     setQuery('');
   };
 
+  const handleCreate = async () => {
+    if (!showCreate || creating) return;
+    setCreating(true);
+    try {
+      const newValue = await onCreate(trimmedQuery);
+      if (newValue !== null && newValue !== undefined) onChange?.(newValue);
+      setOpen(false);
+      setQuery('');
+    } catch (err) {
+      console.error('Error creating option:', err);
+      // Leave the panel open with the term intact so the user can retry or
+      // pick an existing option instead of retyping.
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleKeyDown = (e) => {
-    const total = filtered.length + (allowClear ? 1 : 0);
+    const total = filtered.length + (allowClear ? 1 : 0) + (showCreate ? 1 : 0);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlight(h => Math.min(total - 1, h + 1));
@@ -138,7 +174,11 @@ const SearchableDropdown = ({
         choose(null);
       } else {
         const idx = allowClear ? highlight - 1 : highlight;
-        if (filtered[idx]) choose(filtered[idx]);
+        if (filtered[idx]) {
+          choose(filtered[idx]);
+        } else if (showCreate && idx === filtered.length) {
+          handleCreate();
+        }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -198,7 +238,7 @@ const SearchableDropdown = ({
                 {clearLabel}
               </li>
             )}
-            {filtered.length === 0 && (
+            {filtered.length === 0 && !showCreate && (
               <li className="px-3 py-2 text-xs text-gray-400 text-center">No matches</li>
             )}
             {filtered.map((opt, idx) => {
@@ -219,6 +259,19 @@ const SearchableDropdown = ({
                 </li>
               );
             })}
+            {showCreate && (() => {
+              const createIdx = filtered.length + (allowClear ? 1 : 0);
+              return (
+                <li
+                  onMouseEnter={() => setHighlight(createIdx)}
+                  onClick={handleCreate}
+                  className={`px-3 py-1.5 text-xs cursor-pointer border-t border-gray-100 text-primary-700 ${highlight === createIdx ? 'bg-primary-50' : 'hover:bg-gray-50'} ${creating ? 'opacity-50 cursor-wait' : ''}`}
+                >
+                  <i className={`fas ${creating ? 'fa-spinner fa-spin' : 'fa-plus'} mr-1.5 text-[10px]`}></i>
+                  Create "{trimmedQuery}"
+                </li>
+              );
+            })()}
           </ul>
         </div>
       )}

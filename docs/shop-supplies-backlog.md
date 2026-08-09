@@ -61,6 +61,37 @@ checklist.
 change that affects the whole repo, not just this module. Worth doing; not worth
 doing inside a feature build.
 
+### 2b. `[open]` Collection validator can't be installed — Atlas user lacks dbAdmin
+
+`db.command({ collMod: 'shopsupplies', validator })` fails with
+`AtlasError 8000: user is not allowed to do action [collMod]`. The seed script
+degrades gracefully (warns, continues), so the tree seeds fine and the app-level
+invariant is fully enforced and verified. The missing layer is only the schema
+guard against raw-driver writes from future `scripts/`.
+
+Fix when convenient: grant the app's database user `dbAdmin` on this database in
+Atlas, then re-run `node scripts/seed-supply-tags.js --execute` — it's
+idempotent and will pick the validator up.
+
+Worth deciding deliberately rather than by default: granting dbAdmin to the
+runtime application user widens what a compromised app credential can do. The
+alternative is a separate migration credential used only by `scripts/`, which is
+the better shape but more setup than this phase warrants.
+
+### 2c. `[open]` errorHandler drops error details, and hangs if NODE_ENV is unset
+
+Two things noticed while wiring the supplies controller, both pre-existing:
+
+- `sendErrorProd` forwards only `status` and `message`, so a structured payload
+  (which items a bulk edit would orphan) can't reach the client through the
+  global handler. Worked around locally: `supplyController` answers its own
+  known-shape errors directly rather than widening shared middleware.
+- `errorHandler` branches on `NODE_ENV === 'development'` and
+  `NODE_ENV === 'production'` with **no else**. If `NODE_ENV` is unset, an error
+  produces no response at all and the request hangs until timeout.
+
+The second is worth fixing on its own merits, outside this module.
+
 ### 3. `[open]` `escapeRegex` + 100-char cap is copy-pasted per controller
 
 The ReDoS guard at `inventoryController.js:36` is a hand-rolled two-liner that

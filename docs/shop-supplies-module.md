@@ -687,6 +687,21 @@ Implementation:
 - **Application helper (strict):** additionally rejects non-empty `tags` with a
   null `primaryTag` — such an item is invisible to every rollup.
 
+**Status: the collection validator is NOT installed. [found during build]**
+Applying it needs the `dbAdmin` role, and the Atlas application user this
+deployment connects with does not have it — `collMod` returns
+`AtlasError 8000: user is not allowed to do action [collMod]`. The seed script
+treats this as non-fatal: it warns, records `SKIPPED — insufficient privileges`
+in its log, and seeds the tree anyway.
+
+What that costs is precisely the raw-driver case and nothing else. Every write
+that goes through the app calls `validateTagAssignment` in the service layer,
+and that is verified end-to-end. What is missing is the backstop against a
+future ad-hoc script in `scripts/` writing around the app — which, given this
+repo's existing pattern of raw `bulkWrite` in exactly that directory, is a real
+if narrow gap. To close it: grant the database user `dbAdmin` and re-run the
+seed, which is idempotent.
+
 ---
 
 ## 7. Frontend

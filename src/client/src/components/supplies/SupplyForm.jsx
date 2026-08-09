@@ -1,0 +1,444 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Modal from '../common/Modal';
+import Button from '../common/Button';
+import SearchableDropdown from '../common/SearchableDropdown';
+import TagPicker from './TagPicker';
+import SupplyService from '../../services/supplyService';
+import { indexTags, tagPath, idOf } from './tagTree';
+
+/**
+ * Create / edit a shop supply.
+ *
+ * The cost<->price behaviour is carried over from InventoryItemForm: editing
+ * either side recomputes the other from the shop markup, and the override
+ * checkbox detaches the item from the calc entirely. That behaviour works and
+ * is liked; the only change is that the override now persists as
+ * `priceOverridden` instead of being local UI state that forgets itself.
+ *
+ * Entry ergonomics matter more than usual here (§7.1): ~200 items get triaged
+ * through this form, much of it in one sitting. Hence Save & Next, which keeps
+ * the modal open and carries location and primary tag forward — those are the
+ * two fields that repeat run-to-run.
+ */
+const EMPTY = {
+  name: '', brand: null, vendor: null, partNumber: '',
+  tags: [], primaryTag: null,
+  form: null, location: null,
+  quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
+  reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
+  sdsUrl: '', url: '', notes: ''
+};
+
+const round2 = (n) => parseFloat(Number(n).toFixed(2));
+
+const SupplyForm = ({
+  isOpen, onClose, onSaved, vocab = [], tags = [],
+  markupPercentage = 30, initial = null, lastUsed = {}, onVocabAdded
+}) => {
+  const [data, setData] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const nameRef = useRef(null);
+
+  const byId = useMemo(() => indexTags(tags), [tags]);
+  const isEditing = !!(initial && initial._id);
+
+  const optionsFor = (fieldKey) => vocab
+    .filter((v) => v.fieldKey === fieldKey && v.isActive !== false)
+    .map((v) => ({ value: String(v._id), label: v.label || v.value }));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
+    if (initial) {
+      setData({
+        ...EMPTY,
+        ...initial,
+        brand: idOf(initial.brand),
+        vendor: idOf(initial.vendor),
+        form: idOf(initial.form),
+        location: idOf(initial.location),
+        stockUnit: idOf(initial.stockUnit),
+        purchaseUnit: idOf(initial.purchaseUnit),
+        primaryTag: idOf(initial.primaryTag),
+        tags: (initial.tags || []).map(idOf)
+      });
+    } else {
+      setData({
+        ...EMPTY,
+        location: lastUsed.location || null,
+        stockUnit: lastUsed.stockUnit || null,
+        tags: lastUsed.primaryTag ? [lastUsed.primaryTag] : [],
+        primaryTag: lastUsed.primaryTag || null
+      });
+    }
+    setTimeout(() => nameRef.current?.focus(), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initial]);
+
+  const set = (field, value) => setData((prev) => ({ ...prev, [field]: value }));
+
+  const multiplier = 1 + markupPercentage / 100;
+  const upp = Math.max(1, parseInt(data.unitsPerPurchase, 10) || 1);
+
+  const handleCost = (cost) => setData((prev) => (prev.priceOverridden
+    ? { ...prev, cost }
+    : { ...prev, cost, price: round2((cost / upp) * multiplier) }));
+
+  const handlePrice = (price) => setData((prev) => (prev.priceOverridden
+    ? { ...prev, price }
+    : { ...prev, price, cost: round2((price * upp) / multiplier) }));
+
+  const handleUpp = (value) => {
+    const next = Math.max(1, parseInt(value, 10) || 1);
+    setData((prev) => (prev.priceOverridden
+      ? { ...prev, unitsPerPurchase: next }
+      : { ...prev, unitsPerPurchase: next, price: round2(((parseFloat(prev.cost) || 0) / next) * multiplier) }));
+  };
+
+  // Creating a vocab value inline, from the dropdown the user is already in.
+  const createVocab = (fieldKey) => async (typed) => {
+    const res = await SupplyService.createVocab(fieldKey, typed, typed);
+    const entry = res.data.entry;
+    onVocabAdded?.(entry);
+    return String(entry._id);
+  };
+
+  const tagsInvalid = data.tags.length > 0 && !data.primaryTag;
+
+  const save = async (addAnother) => {
+    if (!data.name.trim()) {
+      setError('A name is required.');
+      return;
+    }
+    if (tagsInvalid) {
+      setError('Star one tag as the primary, or clear the tags.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = { ...data, name: data.name.trim() };
+      if (isEditing) {
+        delete payload.quantityOnHand; // moves only through /adjust
+        await SupplyService.update(initial._id, payload);
+      } else {
+        await SupplyService.create(payload);
+      }
+
+      onSaved?.({
+        location: data.location,
+        stockUnit: data.stockUnit,
+        primaryTag: data.primaryTag
+      });
+
+      if (addAnother) {
+        // Keep location / unit / primary tag; clear what's item-specific.
+        setData((prev) => ({
+          ...EMPTY,
+          location: prev.location,
+          stockUnit: prev.stockUnit,
+          vendor: prev.vendor,
+          tags: prev.primaryTag ? [prev.primaryTag] : [],
+          primaryTag: prev.primaryTag
+        }));
+        nameRef.current?.focus();
+      } else {
+        onClose();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save this supply.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    // Ctrl/Cmd+Enter is save-and-next — the whole point of a triage pass is not
+    // reaching for the mouse between items.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      save(!isEditing);
+    }
+  };
+
+  const field = 'w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500';
+  const label = 'block text-xs font-medium text-gray-600 mb-1';
+
+  return (
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={isEditing ? 'Edit Supply' : 'Add Supply'}
+        size="lg"
+      >
+        <div className="space-y-4" onKeyDown={onKeyDown}>
+          {error && (
+            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className={label}>Name *</label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={data.name}
+              onChange={(e) => set('name', e.target.value)}
+              className={field}
+              placeholder="e.g. Brake &amp; Parts Cleaner"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={label}>Brand</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('brand')}
+                value={data.brand}
+                onChange={(v) => set('brand', v)}
+                placeholder="Select or type..."
+                allowClear
+                allowCreate
+                onCreate={createVocab('brand')}
+              />
+            </div>
+            <div>
+              <label className={label}>Vendor</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('vendor')}
+                value={data.vendor}
+                onChange={(v) => set('vendor', v)}
+                placeholder="Select or type..."
+                allowClear
+                allowCreate
+                onCreate={createVocab('vendor')}
+              />
+            </div>
+            <div>
+              <label className={label}>Part Number</label>
+              <input
+                type="text"
+                value={data.partNumber}
+                onChange={(e) => set('partNumber', e.target.value)}
+                className={field}
+                placeholder="Manufacturer number only"
+              />
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className={label}>Tags</label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {data.tags.map((id) => (
+                <span
+                  key={id}
+                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border ${
+                    data.primaryTag === id
+                      ? 'border-yellow-400 bg-yellow-50 text-yellow-800'
+                      : 'border-gray-300 bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  {data.primaryTag === id && <i className="fas fa-star text-[9px]"></i>}
+                  {tagPath(id, byId)}
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={() => setTagPickerOpen(true)}
+                className="px-2 py-1 text-xs rounded-md border border-dashed border-gray-400 text-gray-600 hover:bg-gray-50"
+              >
+                <i className="fas fa-plus text-[10px] mr-1"></i>
+                {data.tags.length ? 'Edit tags' : 'Add tags'}
+              </button>
+            </div>
+            {tagsInvalid && (
+              <p className="mt-1 text-xs text-red-600">Star one tag as the primary.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className={label}>Form</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('form')}
+                value={data.form}
+                onChange={(v) => set('form', v)}
+                placeholder="—"
+                allowClear
+              />
+            </div>
+            <div>
+              <label className={label}>Location</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('location')}
+                value={data.location}
+                onChange={(v) => set('location', v)}
+                placeholder="Shelf code"
+                allowClear
+                allowCreate
+                onCreate={createVocab('location')}
+              />
+            </div>
+            {!isEditing && (
+              <div>
+                <label className={label}>Starting Qty</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={data.quantityOnHand}
+                  onChange={(e) => set('quantityOnHand', parseFloat(e.target.value) || 0)}
+                  className={field}
+                />
+              </div>
+            )}
+            <div>
+              <label className={label}>Reorder At</label>
+              <input
+                type="number"
+                min="0"
+                value={data.reorderPoint}
+                onChange={(e) => set('reorderPoint', parseFloat(e.target.value) || 0)}
+                className={field}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div>
+              <label className={label}>Stock Unit</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('unit')}
+                value={data.stockUnit}
+                onChange={(v) => set('stockUnit', v)}
+                placeholder="each"
+                allowClear
+                allowCreate
+                onCreate={createVocab('unit')}
+              />
+            </div>
+            <div>
+              <label className={label}>Purchase Unit</label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('unit')}
+                value={data.purchaseUnit}
+                onChange={(v) => set('purchaseUnit', v)}
+                placeholder="—"
+                allowClear
+                allowCreate
+                onCreate={createVocab('unit')}
+              />
+            </div>
+            <div>
+              <label className={label}>Units per Purchase</label>
+              <input
+                type="number"
+                min="1"
+                value={data.unitsPerPurchase}
+                onChange={(e) => handleUpp(e.target.value)}
+                className={field}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <label className={label}>Cost <span className="text-gray-400">(per purchase unit)</span></label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={data.cost}
+                onChange={(e) => handleCost(parseFloat(e.target.value) || 0)}
+                className={field}
+              />
+            </div>
+            <div>
+              <label className={label}>Price <span className="text-gray-400">(per stock unit)</span></label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={data.price}
+                onChange={(e) => handlePrice(parseFloat(e.target.value) || 0)}
+                className={field}
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={data.priceOverridden}
+              onChange={(e) => set('priceOverridden', e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Set price manually — detach this item from the {markupPercentage}% shop markup
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Product URL</label>
+              <input type="url" value={data.url} onChange={(e) => set('url', e.target.value)} className={field} />
+            </div>
+            <div>
+              <label className={label}>SDS URL</label>
+              <input type="url" value={data.sdsUrl} onChange={(e) => set('sdsUrl', e.target.value)} className={field} />
+            </div>
+          </div>
+
+          <div>
+            <label className={label}>Notes</label>
+            <textarea
+              rows="2"
+              value={data.notes}
+              onChange={(e) => set('notes', e.target.value)}
+              className={field}
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-between items-center">
+          <span className="text-[11px] text-gray-400 hidden sm:block">
+            Ctrl+Enter to {isEditing ? 'save' : 'save and add another'}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="light" onClick={onClose} disabled={saving}>Cancel</Button>
+            {!isEditing && (
+              <Button variant="outline" onClick={() => save(true)} disabled={saving}>
+                Save &amp; Next
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => save(false)} disabled={saving}>
+              {saving ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <TagPicker
+        isOpen={tagPickerOpen}
+        onClose={() => setTagPickerOpen(false)}
+        tags={tags}
+        selectedTags={data.tags}
+        primaryTag={data.primaryTag}
+        onSave={({ tags: nextTags, primaryTag }) => {
+          setData((prev) => ({ ...prev, tags: nextTags, primaryTag }));
+        }}
+      />
+    </>
+  );
+};
+
+export default SupplyForm;
