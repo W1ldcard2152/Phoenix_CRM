@@ -29,10 +29,31 @@ const vocabRef = (extra = {}) => ({
  * typed a price directly and this item is detached from the calc entirely.
  */
 const ShopSupplySchema = new Schema({
+  /**
+   * OPTIONAL name override.
+   *
+   * Most supplies don't need one: "Mobil 1 5W-30 Engine Oil" is composed from
+   * brand + measurement + tag, all of which are stored anyway, so typing it
+   * would store those facts twice and let the typed copy go stale. Set this
+   * only for things that genuinely have a name rather than a description.
+   *
+   * Every item imported from the old inventory arrives with one, which is what
+   * keeps them readable before anyone has triaged them.
+   */
   name: {
     type: String,
-    required: [true, 'Supply name is required'],
-    trim: true
+    trim: true,
+    default: ''
+  },
+
+  /**
+   * The part of the name that ISN'T derivable — "full synthetic, dexos-d",
+   * "pre-filled with oil". Rendered parenthetically after the composed name.
+   */
+  qualifier: {
+    type: String,
+    trim: true,
+    default: ''
   },
 
   // Who makes it. Kept properly separate from partNumber — the old inventory

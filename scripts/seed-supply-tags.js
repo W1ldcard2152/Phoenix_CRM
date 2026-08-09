@@ -61,8 +61,8 @@ const TREE = [
       {
         name: 'Cleaning & Detailing',
         children: [
-          { name: 'Glass' },
-          { name: 'Wheel & Tire' },
+          { name: 'Glass', noun: 'Glass Cleaner' },
+          { name: 'Wheel & Tire', noun: 'Wheel Cleaner' },
           { name: 'Interior — Carpet & Upholstery' },
           { name: 'Exterior Wash' },
           { name: 'Degreasers & All-Purpose' }
@@ -75,7 +75,7 @@ const TREE = [
           { name: 'Transmission & Gear Oil', fields: ['viscosity'] },
           { name: 'Brake Fluid', fields: ['dotrating'] },
           { name: 'Coolant & Antifreeze', fields: ['coolantspec'] },
-          { name: 'Power Steering' },
+          { name: 'Power Steering', noun: 'Power Steering Fluid' },
           { name: 'Washer Fluid' },
           { name: 'Refrigerant', fields: ['refrigerant'] }
         ]
@@ -123,10 +123,10 @@ const TREE = [
       {
         name: 'Abrasives',
         children: [
-          { name: 'Discs', slug: 'abrasive-discs', fields: ['grit', 'diameter'] },
-          { name: 'Sheets & Rolls', fields: ['grit'] },
-          { name: 'Pads & Scuff', fields: ['grit'] },
-          { name: 'Compounds & Polishes' }
+          { name: 'Discs', slug: 'abrasive-discs', noun: 'Sanding Disc', fields: ['grit', 'diameter'] },
+          { name: 'Sheets & Rolls', noun: 'Sandpaper', fields: ['grit'] },
+          { name: 'Pads & Scuff', noun: 'Scuff Pad', fields: ['grit'] },
+          { name: 'Compounds & Polishes', noun: 'Polish' }
         ]
       },
       {
@@ -135,17 +135,17 @@ const TREE = [
           { name: 'Primer' },
           { name: 'Basecoat' },
           { name: 'Clearcoat' },
-          { name: 'Single Stage' },
+          { name: 'Single Stage', noun: 'Single Stage Paint' },
           { name: 'Reducers, Hardeners & Additives', fields: ['temprange'] }
         ]
       },
       {
         name: 'Masking',
         children: [
-          { name: 'Tape', slug: 'masking-tape', fields: ['width'] },
-          { name: 'Paper', slug: 'masking-paper', fields: ['width'] },
-          { name: 'Film & Plastic' },
-          { name: 'Foam & Jamb' }
+          { name: 'Tape', slug: 'masking-tape', noun: 'Masking Tape', fields: ['width'] },
+          { name: 'Paper', slug: 'masking-paper', noun: 'Masking Paper', fields: ['width'] },
+          { name: 'Film & Plastic', noun: 'Masking Film' },
+          { name: 'Foam & Jamb', noun: 'Jamb Foam' }
         ]
       }
     ]
@@ -237,14 +237,14 @@ const TREE = [
       {
         name: 'Filters',
         children: [
-          { name: 'Oil', slug: 'filter-oil' },
-          { name: 'Air', slug: 'filter-air' },
-          { name: 'Cabin', slug: 'filter-cabin' },
-          { name: 'Fuel', slug: 'filter-fuel' }
+          { name: 'Oil', slug: 'filter-oil', noun: 'Oil Filter' },
+          { name: 'Air', slug: 'filter-air', noun: 'Air Filter' },
+          { name: 'Cabin', slug: 'filter-cabin', noun: 'Cabin Filter' },
+          { name: 'Fuel', slug: 'filter-fuel', noun: 'Fuel Filter' }
         ]
       },
-      { name: 'Wipers', fields: ['length'] },
-      { name: 'Bulbs', fields: ['bulbnumber'] }
+      { name: 'Wipers', noun: 'Wiper Blade', fields: ['length'] },
+      { name: 'Bulbs', noun: 'Bulb', fields: ['bulbnumber'] }
     ]
   }
 ];
@@ -327,6 +327,9 @@ const flattenTree = (nodes, parentSlug = null, out = []) => {
       parentSlug,
       sortOrder: index,
       kind: 'judgment',
+      // Standalone phrase for composed item names. "Oil" is right in the tree
+      // and wrong in "Bosch 3330 Oil"; blank means the tree name stands alone.
+      noun: node.noun || '',
       fieldKeys: node.fields || [],
       // Derived from `fields` rather than stored alongside it, so the hint under
       // a node name can never disagree with the inputs the form actually shows.
@@ -424,7 +427,10 @@ const seedFields = async (report) => {
 };
 
 const seedTags = async (flat, report, fieldIdByKey) => {
-  const existing = await SupplyTag.find({}, '_id slug name parent sortOrder notes').lean();
+  // Project every property the change check below compares. Omitting one makes
+  // the run report "unchanged" while silently writing the change — a report
+  // that says nothing happened is worse than no report.
+  const existing = await SupplyTag.find({}, '_id slug name parent sortOrder noun fields notes').lean();
   const existingBySlug = new Map(existing.map((t) => [t.slug, t]));
   const idBySlug = new Map(existing.map((t) => [t.slug, t._id]));
 
@@ -435,9 +441,13 @@ const seedTags = async (flat, report, fieldIdByKey) => {
     if (!prior) {
       report.tagsCreated.push(node.slug);
     } else {
+      const priorFields = (prior.fields || []).map(String).join(',');
+      const nextFields = node.fieldKeys.map((k) => String(fieldIdByKey.get(k) || '')).join(',');
       const changed = prior.name !== node.name
         || String(prior.parent || '') !== String(parentId || '')
         || prior.sortOrder !== node.sortOrder
+        || (prior.noun || '') !== node.noun
+        || priorFields !== nextFields
         || (prior.notes || '') !== node.notes;
       if (changed) report.tagsUpdated.push(node.slug);
       else report.tagsUnchanged.push(node.slug);
@@ -458,6 +468,7 @@ const seedTags = async (flat, report, fieldIdByKey) => {
           parent: parentId,
           sortOrder: node.sortOrder,
           kind: node.kind,
+          noun: node.noun,
           notes: node.notes,
           fields: node.fieldKeys.map((k) => fieldIdByKey.get(k)).filter(Boolean)
         }

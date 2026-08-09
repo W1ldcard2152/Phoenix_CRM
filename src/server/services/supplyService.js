@@ -7,8 +7,8 @@ const SupplyMovement = require('../models/SupplyMovement');
 const Settings = require('../models/Settings');
 const supplyTagService = require('./supplyTagService');
 const s3Service = require('./s3Service');
-const escapeRegex = require('../utils/escapeRegex');
 const { resolvePrice } = require('../utils/supplyPricing');
+const { composeDisplayName, canComposeName } = require('../utils/supplyNaming');
 const {
   idOf,
   validateTagAssignment,
@@ -33,7 +33,7 @@ const {
  * watching it get silently dropped on one path. Not repeating that.
  */
 const SUPPLY_FIELDS = [
-  'name', 'brand', 'vendor', 'partNumber',
+  'name', 'qualifier', 'brand', 'vendor', 'partNumber',
   'tags', 'primaryTag',
   'form', 'location',
   'stockUnit', 'purchaseUnit', 'unitsPerPurchase',
@@ -117,6 +117,82 @@ const sanitizeAttributes = async (attributes) => {
 
 const listFields = async () => SupplyField.find({}).sort({ sortOrder: 1, label: 1 }).lean();
 
+/**
+ * Everything needed to compose display names, fetched once per request.
+ * Tags come from the in-memory cache; vocab and fields are a few hundred rows.
+ */
+const namingContext = async () => {
+  const [tags, vocab, fields] = await Promise.all([
+    supplyTagService.getFlat(),
+    SupplyVocab.find({}, '_id label value').lean(),
+    SupplyField.find({}).lean()
+  ]);
+
+  const tagById = new Map(tags.map((t) => [String(t._id), t]));
+  const vocabById = new Map(vocab.map((v) => [String(v._id), v.label || v.value]));
+  const fieldById = new Map(fields.map((f) => [String(f._id), f]));
+
+  return { tagById, vocabById, fieldById };
+};
+
+/**
+ * Attach `displayName` to a supply. Derived on every read rather than stored:
+ * a stored copy would need a cascade whenever a brand label or tag noun
+ * changed, which is precisely the machinery the vocab-as-references design
+ * exists to avoid.
+ */
+/**
+ * Refuse a save that would leave an item with nothing to call it.
+ *
+ * With `name` optional, an item carrying no name, no brand, no part number and
+ * no primary tag has no way to render — it would appear as "Untitled supply"
+ * and be effectively unfindable. Catching it at the boundary beats discovering
+ * it in the list.
+ */
+const assertNameable = async (data, ctx) => {
+  const primaryTag = data.primaryTag ? ctx.tagById.get(String(data.primaryTag)) : null;
+  const brandLabel = data.brand ? ctx.vocabById.get(String(data.brand)) : '';
+
+  if (!canComposeName(data, { brandLabel, primaryTag })) {
+    throw new SupplyError(
+      'This needs something to be called: a name, or enough of a brand, part number and tag to build one from.',
+      400,
+      { code: 'NOT_NAMEABLE' }
+    );
+  }
+};
+
+const decorate = (supply, ctx) => {
+  if (!supply) return supply;
+
+  const primaryTag = supply.primaryTag ? ctx.tagById.get(String(supply.primaryTag)) : null;
+
+  // Only the fields the primary tag actually contributes belong in the name —
+  // a secondary tag's measurements describe the item's other door, not its
+  // identity.
+  const fieldIds = [];
+  let node = primaryTag;
+  const seen = new Set();
+  while (node) {
+    (node.fields || []).forEach((f) => fieldIds.push(String(f)));
+    const parentId = node.parent ? String(node.parent) : null;
+    if (!parentId || seen.has(parentId)) break;
+    seen.add(parentId);
+    node = ctx.tagById.get(parentId);
+  }
+
+  const fields = fieldIds.map((id) => ctx.fieldById.get(id)).filter(Boolean);
+
+  return {
+    ...supply,
+    displayName: composeDisplayName(supply, {
+      brandLabel: supply.brand ? ctx.vocabById.get(String(supply.brand)) : '',
+      primaryTag,
+      fields
+    })
+  };
+};
+
 // ───────────────────────────────── Supplies ─────────────────────────────────
 
 /**
@@ -154,17 +230,39 @@ const listSupplies = async (query = {}) => {
   if (form) filter.form = form;
   if (location) filter.location = location;
 
+  const rows = await ShopSupply.find(filter).lean();
+
+  const ctx = await namingContext();
+  let decorated = rows.map((r) => decorate(r, ctx));
+
+  // Search runs against the COMPOSED name, in memory.
+  //
+  // It has to: the name a user sees and would search for ("mobil 5w-30") exists
+  // in no single column — brand is a ref, viscosity is a Map entry, the noun
+  // lives on the tag. A Mongo regex can only see the fragments. Phase 1 has no
+  // server-side pagination, so the full filtered set is already in hand; if that
+  // ever changes, this needs a denormalized search key and the cascade that
+  // implies.
   if (search) {
-    // Only the string fields can be regexed. brand and vendor are refs now, so
-    // they're reached by their dropdown filters instead of by free text.
-    const rx = new RegExp(escapeRegex(String(search).slice(0, 100)), 'i');
-    filter.$or = [{ name: rx }, { partNumber: rx }, { notes: rx }];
+    const needle = String(search).slice(0, 100).toLowerCase().trim();
+    decorated = decorated.filter((s) => {
+      const hay = [
+        s.displayName, s.name, s.qualifier, s.partNumber, s.notes
+      ].filter(Boolean).join(' ').toLowerCase();
+      // Every whitespace-separated term must appear, so "mobil 5w-30" narrows
+      // rather than returning everything matching either word.
+      return needle.split(/\s+/).every((term) => hay.includes(term));
+    });
   }
 
-  return ShopSupply.find(filter).sort({ name: 1 }).lean();
+  return decorated.sort((a, b) => a.displayName.localeCompare(b.displayName));
 };
 
-const getSupply = async (id) => ShopSupply.findById(id).lean();
+const getSupply = async (id) => {
+  const supply = await ShopSupply.findById(id).lean();
+  if (!supply) return null;
+  return decorate(supply, await namingContext());
+};
 
 const createSupply = async (body, userId) => {
   const data = normalizeRefs({
@@ -178,6 +276,9 @@ const createSupply = async (body, userId) => {
   if (data.attributes !== undefined) {
     data.attributes = await sanitizeAttributes(data.attributes);
   }
+
+  const ctx = await namingContext();
+  await assertNameable(data, ctx);
 
   data.price = resolvePrice(data, await getMarkupPercentage());
 
@@ -195,7 +296,7 @@ const createSupply = async (body, userId) => {
     });
   }
 
-  return supply.toObject();
+  return decorate(supply.toObject(), ctx);
 };
 
 /**
@@ -231,7 +332,16 @@ const updateSupply = async (id, body) => {
     data.price = resolvePrice({ ...current, ...data }, await getMarkupPercentage());
   }
 
-  return ShopSupply.findByIdAndUpdate(id, { $set: data }, { new: true, runValidators: true }).lean();
+  // Validate against the RESULTING item — clearing the name is fine if a brand
+  // and tag remain, and not fine if they don't.
+  const ctx = await namingContext();
+  await assertNameable({ ...current, ...data }, ctx);
+
+  const updated = await ShopSupply.findByIdAndUpdate(
+    id, { $set: data }, { new: true, runValidators: true }
+  ).lean();
+
+  return decorate(updated, ctx);
 };
 
 const deleteSupply = async (id) => ShopSupply.findByIdAndUpdate(
@@ -252,9 +362,12 @@ const adjustQuantity = async (id, { quantity, type = 'adjust', unit, note }, use
 
   const resultingQoh = Math.max(0, (supply.quantityOnHand || 0) + delta);
 
-  const updated = await ShopSupply.findByIdAndUpdate(
-    id, { $set: { quantityOnHand: resultingQoh } }, { new: true }
-  ).lean();
+  const updated = decorate(
+    await ShopSupply.findByIdAndUpdate(
+      id, { $set: { quantityOnHand: resultingQoh } }, { new: true }
+    ).lean(),
+    await namingContext()
+  );
 
   await SupplyMovement.create({
     supply: supply._id,
@@ -343,7 +456,15 @@ const bulkUpdate = async ({ ids, set = {} }) => {
     throw new SupplyError('No items selected.', 400);
   }
 
-  const items = await ShopSupply.find({ _id: { $in: ids } }, '_id name tags primaryTag').lean();
+  // Full documents, then decorated: a violation message has to name the
+  // offending items, and with `name` optional most items have no single column
+  // that identifies them.
+  const ctx = await namingContext();
+  const items = (await ShopSupply.find({ _id: { $in: ids } }).lean())
+    .map((r) => {
+      const d = decorate(r, ctx);
+      return { ...d, name: d.displayName };
+    });
 
   const touchesTags = ['addTags', 'removeTags', 'primaryTag']
     .some((k) => Object.prototype.hasOwnProperty.call(set, k));
@@ -388,10 +509,17 @@ const bulkUpdate = async ({ ids, set = {} }) => {
   return { matched: result.matchedCount, modified: result.modifiedCount };
 };
 
-const getShoppingList = async () => ShopSupply.find({
-  isActive: true,
-  $expr: { $lte: ['$quantityOnHand', '$reorderPoint'] }
-}).sort({ name: 1 }).lean();
+const getShoppingList = async () => {
+  const rows = await ShopSupply.find({
+    isActive: true,
+    $expr: { $lte: ['$quantityOnHand', '$reorderPoint'] }
+  }).lean();
+
+  const ctx = await namingContext();
+  return rows
+    .map((r) => decorate(r, ctx))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+};
 
 const countUntagged = async () => ShopSupply.countDocuments({ isActive: true, tags: { $size: 0 } });
 

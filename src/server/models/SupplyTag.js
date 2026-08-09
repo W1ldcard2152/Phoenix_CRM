@@ -37,6 +37,20 @@ const SupplyTagSchema = new Schema({
     type: Number,
     default: 0
   },
+
+  /**
+   * Standalone phrase for this node when it appears in a composed item name.
+   *
+   * Leaf names are written to read IN CONTEXT — the node under
+   * Service Parts > Filters is just "Oil", which is right in the tree and wrong
+   * in "Bosch 3330 Oil". `noun` carries "Oil Filter" for those cases. Falls
+   * back to `name` when the leaf already stands alone (Grease, Clearcoat).
+   */
+  noun: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   // 'derived' is reserved for Phase 2 field-computed leaves. It exists now so
   // the depth rule below needs no schema change later: derived nodes are
   // allowed to sit below the judgment ceiling.

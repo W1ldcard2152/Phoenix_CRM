@@ -38,7 +38,7 @@ const getFlat = async () => {
   const cached = cacheService.get(CACHE_KEY);
   if (cached) return cached;
 
-  const tags = await SupplyTag.find({}, '_id name slug parent sortOrder kind fields notes')
+  const tags = await SupplyTag.find({}, '_id name slug parent sortOrder kind noun fields notes')
     .sort({ sortOrder: 1, name: 1 })
     .lean();
 

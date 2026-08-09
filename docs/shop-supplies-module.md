@@ -307,7 +307,8 @@ document rename.
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | String | required |
+| `name` | String | **optional override.** Blank = derive; see below |
+| `qualifier` | String | the part of the name that isn't derivable |
 | `brand` | ObjectId → SupplyVocab | nullable; properly separate from any part number |
 | `vendor` | ObjectId → SupplyVocab | nullable; who we stock it from. Distinct from `brand` — who makes it. |
 | `partNumber` | String | manufacturer number only, **no brand prefix** |
@@ -331,6 +332,34 @@ Indexes: `{ isActive: 1, tags: 1 }`, `{ isActive: 1, location: 1 }`,
 default sort key was unindexed
 (confirmed: `InventoryItem` sorts `{ name: 1 }` at `inventoryController.js:48`
 but indexes only `category` and `quantityOnHand`).
+
+**Names are derived, not typed. [added 2026-08-09]** "Mobil 1 5W-30 Engine Oil"
+is not a name — it is a brand, a measurement and a tag concatenated by hand.
+Typing it stores those facts twice, and the typed copy is the one that goes
+stale. So `displayName` is composed on read:
+
+```
+Brand  PartNumber  Measurements  Noun  (Qualifier)
+Mobil 1            5W-30         Engine Oil  (full synthetic, dexos-d)
+Bosch  3330                      Oil Filter  (pre-filled with oil)
+```
+
+Only measurements from the **primary tag** are used — a secondary tag describes
+the item's other door, not its identity. `SupplyTag.noun` carries the standalone
+phrase where a leaf name only reads correctly in context (the node under
+Filters is called "Oil"; its noun is "Oil Filter").
+
+**Never stored.** A stored copy would need a cascade whenever a brand label or
+tag noun changed — exactly the machinery the vocab-as-references design exists
+to avoid. The consequences: **search and sort both run in memory** over the
+composed name, because the string the user searches for exists in no single
+column. That is affordable only because §8 excludes server-side pagination; if
+that changes, this needs a denormalized search key and the cascade it implies.
+
+`name` survives as an override for things that genuinely have a name rather than
+a description (Shop Towels), and it is what keeps every imported item readable
+before anyone has triaged it. A save is refused when an item would have nothing
+to call it at all.
 
 **Vocab as references, not strings.** This is the one place worth diverging from
 the old design. Renaming a vocab document propagates instantly to every item, so

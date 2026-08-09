@@ -5,6 +5,7 @@ import SearchableDropdown from '../common/SearchableDropdown';
 import TagPicker from './TagPicker';
 import SupplyPhoto from './SupplyPhoto';
 import SupplyAttributes from './SupplyAttributes';
+import { composeDisplayName } from './composeName';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -23,7 +24,7 @@ import { indexTags, tagPath, idOf } from './tagTree';
  * two fields that repeat run-to-run.
  */
 const EMPTY = {
-  name: '', brand: null, vendor: null, partNumber: '',
+  name: '', qualifier: '', brand: null, vendor: null, partNumber: '',
   tags: [], primaryTag: null,
   form: null, location: null,
   quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
@@ -73,6 +74,10 @@ const SupplyForm = ({
         purchaseUnit: idOf(initial.purchaseUnit),
         primaryTag: idOf(initial.primaryTag),
         tags: (initial.tags || []).map(idOf),
+        // displayName is derived server-side and must not round-trip into the
+        // stored name — that would freeze a composed name as a custom one.
+        name: initial.name || '',
+        qualifier: initial.qualifier || '',
         // Serialized from a Mongoose Map, so it arrives as a plain object.
         attributes: initial.attributes || {}
       });
@@ -90,6 +95,11 @@ const SupplyForm = ({
   }, [isOpen, initial]);
 
   const set = (field, value) => setData((prev) => ({ ...prev, [field]: value }));
+
+  const preview = useMemo(
+    () => composeDisplayName(data, tags, fields, vocab),
+    [data, tags, fields, vocab]
+  );
 
   const multiplier = 1 + markupPercentage / 100;
   const upp = Math.max(1, parseInt(data.unitsPerPurchase, 10) || 1);
@@ -120,8 +130,8 @@ const SupplyForm = ({
   const tagsInvalid = data.tags.length > 0 && !data.primaryTag;
 
   const save = async (addAnother) => {
-    if (!data.name.trim()) {
-      setError('A name is required.');
+    if (!preview) {
+      setError('This needs something to be called — add a brand and a tag, or type a custom name.');
       return;
     }
     if (tagsInvalid) {
@@ -132,7 +142,8 @@ const SupplyForm = ({
     setSaving(true);
     setError(null);
     try {
-      const payload = { ...data, name: data.name.trim() };
+      const payload = { ...data, name: (data.name || '').trim() };
+      delete payload.displayName; // server-derived; never sent back
       let photoFailed = false;
 
       if (isEditing) {
@@ -215,19 +226,48 @@ const SupplyForm = ({
           )}
 
           <div className="flex gap-4">
-            <div className="flex-1 min-w-0">
-              <label className={label}>Name *</label>
-              <input
-                ref={nameRef}
-                type="text"
-                value={data.name}
-                onChange={(e) => set('name', e.target.value)}
-                className={field}
-                placeholder="e.g. Brake &amp; Parts Cleaner"
-              />
-              <p className="mt-1 text-[11px] text-gray-400">
-                A photo of the label is usually faster to recognise on the shelf than the name.
-              </p>
+            <div className="flex-1 min-w-0 space-y-3">
+              {/* The name is composed from brand + measurements + tag, so what
+                  gets typed here is only the part that isn't derivable. */}
+              <div>
+                <label className={label}>
+                  Qualifier <span className="font-normal text-gray-400">— the part that isn't derivable</span>
+                </label>
+                <input
+                  ref={nameRef}
+                  type="text"
+                  value={data.qualifier}
+                  onChange={(e) => set('qualifier', e.target.value)}
+                  className={field}
+                  placeholder="e.g. full synthetic, dexos-d"
+                />
+              </div>
+
+              <div className="px-3 py-2 rounded bg-gray-50 border border-gray-200">
+                <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">
+                  Will be listed as
+                </div>
+                <div className={`text-sm ${preview ? 'text-gray-900 font-medium' : 'text-gray-400 italic'}`}>
+                  {preview || 'Add a brand and a tag, or type a name below'}
+                </div>
+              </div>
+
+              <details open={!!data.name}>
+                <summary className="text-xs text-primary-600 cursor-pointer hover:underline">
+                  {data.name ? 'Using a custom name' : 'Use a custom name instead'}
+                </summary>
+                <input
+                  type="text"
+                  value={data.name}
+                  onChange={(e) => set('name', e.target.value)}
+                  className={`${field} mt-2`}
+                  placeholder="e.g. Shop Towels"
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Overrides the composed name entirely. For things that have a name
+                  rather than a description.
+                </p>
+              </details>
             </div>
             <div>
               <label className={label}>Photo</label>
