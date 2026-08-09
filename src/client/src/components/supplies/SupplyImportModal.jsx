@@ -36,6 +36,9 @@ const STATUS = {
 const EMPTY_DRAFT = {
   brand: null, vendor: null, partNumber: '', qualifier: '', name: '',
   tags: [], primaryTag: null, form: null, location: null,
+  // Whether `vendor` came from URL detection rather than a deliberate pick.
+  // Local to the form; not sent to the server.
+  vendorAutoFilled: false,
   // Entered in PURCHASE units — you count jugs on the shelf, not quarts.
   // Multiplied by unitsPerPurchase into quantityOnHand on save, matching what
   // the old inventory form does in InventoryList.handleSaveItem.
@@ -229,7 +232,7 @@ const SupplyImportModal = ({
     try {
       // Convert purchase units to stock units. The user counted 3 jugs; the
       // item stocks 15 quarts.
-      const { packagesOnHand, costEntered, ...rest } = current.draft;
+      const { packagesOnHand, costEntered, vendorAutoFilled, ...rest } = current.draft;
       const payload = {
         ...rest,
         quantityOnHand: (parseFloat(packagesOnHand) || 0) * Math.max(1, rest.unitsPerPurchase || 1),
@@ -301,17 +304,26 @@ const SupplyImportModal = ({
       if (n !== i) return item;
       const changes = { url };
       if (rule) changes.costIncludesTax = rule.chargesTax;
-      // Only fill a vendor that isn't already chosen — never clobber a manual
-      // pick, matching how the worksheet handles seller detection.
-      if (detected?.id && !item.draft.vendor) changes.vendor = detected.id;
+
+      // A vendor this field filled in is ours to correct; one the user picked
+      // is not. Without that distinction, fixing a typo in the URL would leave
+      // the wrong vendor sitting there looking deliberate.
+      const mayFill = !item.draft.vendor || item.draft.vendorAutoFilled;
+      if (detected?.id && mayFill) {
+        changes.vendor = detected.id;
+        changes.vendorAutoFilled = true;
+      } else if (mayFill && !detected && item.draft.vendorAutoFilled) {
+        // URL edited away from a known vendor: withdraw what we filled rather
+        // than leaving a vendor the URL no longer supports.
+        changes.vendor = null;
+        changes.vendorAutoFilled = false;
+      }
 
       return {
         ...item,
         // Directory knows the vendor but supplies has no vocab entry yet:
         // offer it rather than creating one behind their back.
-        vendorSuggestion: detected && !detected.id && !item.draft.vendor
-          ? detected.name
-          : item.vendorSuggestion,
+        vendorSuggestion: detected && !detected.id && mayFill ? detected.name : '',
         draft: { ...item.draft, ...changes, ...repriceFrom(item.draft, changes) }
       };
     }));
@@ -554,7 +566,8 @@ const SupplyImportModal = ({
                         size="md"
                         options={optionsFor('vendor')}
                         value={current.draft.vendor}
-                        onChange={(v) => patchDraft(index, { vendor: v })}
+                        // A deliberate pick — from here on the URL leaves it alone.
+                        onChange={(v) => patchDraft(index, { vendor: v, vendorAutoFilled: false })}
                         placeholder="—"
                         allowClear
                         allowCreate
@@ -736,7 +749,7 @@ const SupplyImportModal = ({
                       {currentHost && (
                         <p className="text-[10px] text-gray-400">
                           {knownRule
-                            ? `Remembered for ${currentHost}`
+                            ? `Remembered for ${currentHost} — changing this updates every ${currentHost} item you add next`
                             : `Will be remembered for ${currentHost}`}
                         </p>
                       )}

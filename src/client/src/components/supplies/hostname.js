@@ -1,4 +1,4 @@
-import { detectSellerFromUrl } from '../../utils/vendorRanking';
+import { detectSellerFromUrl, extractHostname } from '../../utils/vendorRanking';
 
 /**
  * Reduce a product URL to the hostname used as a tax-rule key.
@@ -6,34 +6,12 @@ import { detectSellerFromUrl } from '../../utils/vendorRanking';
  *   https://www.walmart.com/ip/12345  ->  walmart.com
  *   walmart.com/whatever              ->  walmart.com
  *
- * Tolerates a missing scheme because that is how people paste URLs, and drops
- * "www." so the same storefront doesn't produce two rules. Deliberately keeps
- * the full remaining host — shop.example.com and example.com may genuinely be
- * different sellers, and merging them would be a guess.
+ * A thin alias over the shared helper so supplies and the parts worksheet agree
+ * on what "the same vendor" means — two hostname functions would eventually
+ * disagree about a trailing dot or a subdomain and produce two rules for one
+ * storefront. Returns '' rather than null because it is used as an object key.
  */
-export const hostnameOf = (url) => {
-  const raw = String(url || '').trim();
-  if (!raw) return '';
-  try {
-    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-    const host = new URL(withScheme).hostname.toLowerCase();
-    return host.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-};
-
-/**
- * The vendor directory's URL matcher expects a parseable absolute URL, and
- * `new URL()` throws on the scheme-less form people actually paste. Reduce to a
- * canonical `https://host` first so the shared matcher — which owns the
- * hostname→vendor mapping in Settings — stays the single source of truth
- * instead of this module growing a second one.
- */
-export const canonicalUrl = (url) => {
-  const host = hostnameOf(url);
-  return host ? `https://${host}` : '';
-};
+export const hostnameOf = (url) => extractHostname(url) || '';
 
 /**
  * Resolve a product URL to a supply vendor.
@@ -50,10 +28,7 @@ export const canonicalUrl = (url) => {
  * @returns {{ id: string|null, name: string }|null}
  */
 export const detectVendor = (url, directoryVendors = [], vocab = []) => {
-  const canonical = canonicalUrl(url);
-  if (!canonical) return null;
-
-  const name = detectSellerFromUrl(canonical, directoryVendors);
+  const name = detectSellerFromUrl(url, directoryVendors);
   if (!name) return null;
 
   const entry = vocab.find((v) => v.fieldKey === 'vendor'

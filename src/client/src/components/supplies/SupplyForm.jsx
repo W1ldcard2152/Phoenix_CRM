@@ -26,6 +26,9 @@ import { indexTags, tagPath, idOf } from './tagTree';
  */
 const EMPTY = {
   name: '', qualifier: '', brand: null, vendor: null, partNumber: '',
+  // Whether `vendor` came from URL detection rather than a deliberate pick.
+  // Local to the form; stripped before saving.
+  vendorAutoFilled: false,
   tags: [], primaryTag: null,
   form: null, location: null,
   quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
@@ -173,11 +176,22 @@ const SupplyForm = ({
     const rule = host ? taxRules.find((r) => r.hostname === host) : null;
     const detected = detectVendor(url, directoryVendors, vocab);
 
-    setVendorSuggestion(detected && !detected.id && !data.vendor ? detected.name : '');
-
     setData((prev) => {
       const next = { ...prev, url };
-      if (detected?.id && !prev.vendor) next.vendor = detected.id;
+
+      // A vendor this field filled in is ours to correct; one the user picked
+      // is not. Otherwise fixing a typo in the URL leaves the wrong vendor
+      // sitting there looking deliberate.
+      const mayFill = !prev.vendor || prev.vendorAutoFilled;
+      if (detected?.id && mayFill) {
+        next.vendor = detected.id;
+        next.vendorAutoFilled = true;
+      } else if (mayFill && !detected && prev.vendorAutoFilled) {
+        next.vendor = null;
+        next.vendorAutoFilled = false;
+      }
+      setVendorSuggestion(detected && !detected.id && mayFill ? detected.name : '');
+
       if (rule && prev.costIncludesTax !== rule.chargesTax) {
         next.costIncludesTax = rule.chargesTax;
         if (!prev.priceOverridden) {
@@ -231,7 +245,7 @@ const SupplyForm = ({
     setSaving(true);
     setError(null);
     try {
-      const { packagesOnHand, costEntered, ...rest } = data;
+      const { packagesOnHand, costEntered, vendorAutoFilled, ...rest } = data;
       const payload = {
         ...rest,
         name: (data.name || '').trim(),
@@ -399,7 +413,11 @@ const SupplyForm = ({
                 size="md"
                 options={optionsFor('vendor')}
                 value={data.vendor}
-                onChange={(v) => { set('vendor', v); if (v) setVendorSuggestion(''); }}
+                // A deliberate pick — from here on the URL leaves it alone.
+                onChange={(v) => {
+                  setData((prev) => ({ ...prev, vendor: v, vendorAutoFilled: false }));
+                  if (v) setVendorSuggestion('');
+                }}
                 placeholder="Select or type..."
                 allowClear
                 allowCreate
@@ -605,7 +623,9 @@ const SupplyForm = ({
               </label>
               {currentHost && (
                 <p className="text-[10px] text-gray-400">
-                  {knownRule ? `Remembered for ${currentHost}` : `Will be remembered for ${currentHost}`}
+                  {knownRule
+                    ? `Remembered for ${currentHost} — changing this updates every ${currentHost} item you add next`
+                    : `Will be remembered for ${currentHost}`}
                 </p>
               )}
               {data.costIncludesTax && landedCost > 0 && (

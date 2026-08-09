@@ -141,6 +141,17 @@ conclusive. The validation layer around the model is fully testable regardless
 by stubbing `parseSupplyLabel`, and that is where the risk actually lives —
 everything the model returns is untrusted until it matches real vocabulary.
 
+### 2h. `[open]` A third `extractHostname` lives in DocumentDetail
+
+`DocumentDetail.jsx:302` defines its own local `extractHostname` rather than
+importing the shared one from `utils/vendorRanking`. It therefore did not get
+the scheme-less fix, so URL→vendor behaviour there still differs from the
+worksheet and from supplies.
+
+Not touched: it's work-order code, outside this module, and changing detection
+behaviour on a screen mid-use is not worth the surprise. Worth folding into the
+shared helper next time that file is open.
+
 ### 3. `[open]` `escapeRegex` + 100-char cap is copy-pasted per controller
 
 The ReDoS guard at `inventoryController.js:36` is a hand-rolled two-liner that

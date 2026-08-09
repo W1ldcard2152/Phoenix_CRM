@@ -2,10 +2,20 @@
 // detection. Kept side-effect-free so they're easy to reason about and test.
 
 // Normalize a URL to its bare hostname (lowercased, no leading "www.").
+//
+// Tolerates a missing scheme, because "rockauto.com/parts" is how people paste
+// URLs and `new URL()` throws on it — which silently defeated seller detection
+// for any paste that skipped the https://. A dot is required in the result so
+// that arbitrary text ("not a url") still yields null rather than being taken
+// for a hostname.
 export function extractHostname(url) {
   if (!url) return null;
+  const raw = String(url).trim();
+  if (!raw) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    const host = new URL(withScheme).hostname.toLowerCase().replace(/^www\./, '');
+    return host.includes('.') ? host : null;
   } catch {
     return null;
   }
