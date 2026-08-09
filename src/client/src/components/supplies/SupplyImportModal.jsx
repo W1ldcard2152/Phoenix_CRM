@@ -4,6 +4,7 @@ import Button from '../common/Button';
 import SearchableDropdown from '../common/SearchableDropdown';
 import SupplyAttributes from './SupplyAttributes';
 import TagPicker from './TagPicker';
+import UrlExtractButton from '../common/UrlExtractButton';
 import SupplyService from '../../services/supplyService';
 import { composeDisplayName } from './composeName';
 import { indexTags, tagPath, idOf } from './tagTree';
@@ -79,6 +80,7 @@ const SupplyImportModal = ({
         similar: [],
         rejected: [],
         brandSuggestion: '',
+        vendorSuggestion: '',
         error: null
       };
     });
@@ -148,6 +150,49 @@ const SupplyImportModal = ({
       tags: [item.suggestedTag._id],
       primaryTag: item.suggestedTag._id
     });
+  };
+
+  /** Resolve a plain string from an AI extraction onto an existing vocab entry. */
+  const matchVocab = (fieldKey, label) => {
+    if (!label) return null;
+    const entry = vocab.find((v) => v.fieldKey === fieldKey
+      && ((v.label || v.value || '').toLowerCase() === String(label).toLowerCase()));
+    return entry ? String(entry._id) : null;
+  };
+
+  /**
+   * Fold a URL extraction into the draft.
+   *
+   * Same rule as the label reader: never overwrite what the user already typed,
+   * and never invent vocabulary — an unmatched brand or vendor becomes a
+   * one-click suggestion rather than a new entry created behind their back.
+   * `name` from a listing is the full marketing title, so it is dropped
+   * outright; the item's name is composed, not copied.
+   */
+  const applyUrlExtract = (i, data) => {
+    setQueue((prev) => prev.map((item, n) => {
+      if (n !== i) return item;
+      const brandId = matchVocab('brand', data.brand);
+      const vendorId = matchVocab('vendor', data.vendor);
+      const cost = parseFloat(data.cost ?? data.price) || 0;
+      const upp = Math.max(1, item.draft.unitsPerPurchase || 1);
+
+      return {
+        ...item,
+        brandSuggestion: item.draft.brand || brandId ? item.brandSuggestion : (data.brand || ''),
+        vendorSuggestion: item.draft.vendor || vendorId ? item.vendorSuggestion : (data.vendor || ''),
+        draft: {
+          ...item.draft,
+          brand: item.draft.brand || brandId,
+          vendor: item.draft.vendor || vendorId,
+          partNumber: item.draft.partNumber || data.partNumber || '',
+          cost: item.draft.cost || cost,
+          price: item.draft.cost
+            ? item.draft.price
+            : parseFloat(((cost / upp) * (1 + markupPercentage / 100)).toFixed(2))
+        }
+      };
+    }));
   };
 
   const createBrand = async (i, label) => {
@@ -373,7 +418,7 @@ const SupplyImportModal = ({
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label className={labelCls}>Brand</label>
                       <SearchableDropdown
@@ -409,6 +454,38 @@ const SupplyImportModal = ({
                       />
                     </div>
                     <div>
+                      <label className={labelCls}>Vendor</label>
+                      <SearchableDropdown
+                        size="md"
+                        options={optionsFor('vendor')}
+                        value={current.draft.vendor}
+                        onChange={(v) => patchDraft(index, { vendor: v })}
+                        placeholder="—"
+                        allowClear
+                        allowCreate
+                        onCreate={async (typed) => {
+                          const res = await SupplyService.createVocab('vendor', typed, typed);
+                          onVocabAdded?.(res.data.entry);
+                          return String(res.data.entry._id);
+                        }}
+                      />
+                      {current.vendorSuggestion && (
+                        <button
+                          onClick={async () => {
+                            const res = await SupplyService.createVocab(
+                              'vendor', current.vendorSuggestion, current.vendorSuggestion
+                            );
+                            onVocabAdded?.(res.data.entry);
+                            patch(index, { vendorSuggestion: '' });
+                            patchDraft(index, { vendor: String(res.data.entry._id) });
+                          }}
+                          className="mt-1 text-[11px] text-primary-600 hover:underline"
+                        >
+                          + Add "{current.vendorSuggestion}"
+                        </button>
+                      )}
+                    </div>
+                    <div>
                       <label className={labelCls}>Location</label>
                       <SearchableDropdown
                         size="md"
@@ -423,6 +500,25 @@ const SupplyImportModal = ({
                           onVocabAdded?.(res.data.entry);
                           return String(res.data.entry._id);
                         }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Product URL. A listing page often reads cleaner than a
+                      label photo, so the same AI extraction is offered here. */}
+                  <div>
+                    <label className={labelCls}>Product URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={current.draft.url}
+                        onChange={(e) => patchDraft(index, { url: e.target.value })}
+                        className={inputCls}
+                        placeholder="https://..."
+                      />
+                      <UrlExtractButton
+                        url={current.draft.url}
+                        onExtracted={(data) => applyUrlExtract(index, data)}
                       />
                     </div>
                   </div>
