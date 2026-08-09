@@ -167,6 +167,25 @@ const SupplyService = {
     }
   },
 
+  /**
+   * Read a product label into a draft. Saves nothing — the caller reviews the
+   * result and creates the item normally.
+   */
+  extractLabel: async (fileOrBlob) => {
+    try {
+      const form = new FormData();
+      form.append('photo', fileOrBlob, fileOrBlob.name || `label-${Date.now()}.png`);
+      const response = await API.post('/supplies/extract-label', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error extracting label:', error);
+      throw error;
+    }
+  },
+
   getFields: async () => {
     try {
       const response = await API.get('/supplies/fields');

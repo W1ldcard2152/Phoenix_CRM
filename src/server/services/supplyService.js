@@ -12,7 +12,8 @@ const { composeDisplayName, canComposeName } = require('../utils/supplyNaming');
 const {
   idOf,
   validateTagAssignment,
-  previewBulkTagChanges
+  previewBulkTagChanges,
+  resolveFieldsForItem
 } = require('../utils/supplyRules');
 
 /**
@@ -523,6 +524,185 @@ const getShoppingList = async () => {
 
 const countUntagged = async () => ShopSupply.countDocuments({ isActive: true, tags: { $size: 0 } });
 
+// ─────────────────────────── Label extraction ───────────────────────────────
+
+/** Human-readable path for a tag, for the prompt's category list. */
+const tagPathOf = (tag, tagById) => {
+  const names = [tag.name];
+  const seen = new Set([String(tag._id)]);
+  let node = tag;
+  while (node && node.parent) {
+    const pid = String(node.parent);
+    if (seen.has(pid)) break;
+    seen.add(pid);
+    node = tagById.get(pid);
+    if (!node) break;
+    names.unshift(node.name);
+  }
+  return names.join(' > ');
+};
+
+/**
+ * Read a product label into a draft supply.
+ *
+ * Everything the model returns is treated as a SUGGESTION and validated against
+ * the real vocabulary before it reaches the client. Language models invent
+ * plausible identifiers — a slug that looks right but matches nothing, a
+ * measurement key that doesn't exist — and an invented value that silently
+ * became real data would be exactly the "looks finished from every angle"
+ * failure the tagging rule warns about.
+ *
+ * The suggested tag is returned SEPARATELY from the draft, never merged into
+ * it. The client renders it as unconfirmed; if the user saves without accepting
+ * it, the item lands untagged and shows up in Untagged (N) — the same safe
+ * default as if the AI had never run.
+ */
+const extractFromLabel = async (file) => {
+  const aiService = require('./aiService');
+
+  const [tags, fields, vocab] = await Promise.all([
+    supplyTagService.getFlat(),
+    listFields(),
+    SupplyVocab.find({}).lean()
+  ]);
+
+  const tagById = new Map(tags.map((t) => [String(t._id), t]));
+  const childCount = new Map();
+  tags.forEach((t) => {
+    if (!t.parent) return;
+    const k = String(t.parent);
+    childCount.set(k, (childCount.get(k) || 0) + 1);
+  });
+
+  // Offer only leaf nodes as categories. Tagging at the deepest confident node
+  // is the house rule, and offering interior nodes invites the model to take
+  // the safe-looking shallow option every time.
+  const leafTags = tags
+    .filter((t) => !childCount.get(String(t._id)))
+    .map((t) => ({ slug: t.slug, path: tagPathOf(t, tagById) }));
+
+  const raw = await aiService.parseSupplyLabel(file.buffer, file.mimetype, {
+    tags: leafTags,
+    fields: fields.map((f) => ({
+      key: f.key, label: f.label, type: f.type, options: f.options, unit: f.unit
+    }))
+  });
+
+  // ── Validate the tag suggestion ──
+  const tagBySlug = new Map(tags.map((t) => [t.slug, t]));
+  const suggestedTag = raw.tagSlug ? tagBySlug.get(raw.tagSlug) || null : null;
+  const rejected = [];
+  if (raw.tagSlug && !suggestedTag) rejected.push(`category "${raw.tagSlug}"`);
+
+  // ── Validate attributes: known key, applicable to the tag, allowed value ──
+  const fieldByKey = new Map(fields.map((f) => [f.key, f]));
+  const applicable = suggestedTag
+    ? new Set(resolveFieldsForItem(
+      { tags: [suggestedTag._id], primaryTag: suggestedTag._id }, tagById
+    ).all)
+    : new Set();
+
+  const attributes = {};
+  Object.entries(raw.attributes || {}).forEach(([key, value]) => {
+    const k = String(key).toLowerCase();
+    const field = fieldByKey.get(k);
+    if (!field) { rejected.push(`measurement "${key}"`); return; }
+    if (suggestedTag && !applicable.has(String(field._id))) {
+      rejected.push(`${field.label} (doesn't apply to that category)`);
+      return;
+    }
+    const v = String(value === null || value === undefined ? '' : value).trim();
+    if (!v) return;
+
+    if (field.type === 'select') {
+      // Snap to the canonical option so "5w-30" becomes "5W-30" — otherwise the
+      // dropdown can't display it and the value can't be filtered on.
+      const match = (field.options || []).find((o) => o.toLowerCase() === v.toLowerCase());
+      if (!match) { rejected.push(`${field.label} "${v}"`); return; }
+      attributes[k] = match;
+    } else {
+      attributes[k] = v;
+    }
+  });
+
+  // ── Map form and package unit onto existing vocab; never invent entries ──
+  const vocabMatch = (fieldKey, value) => {
+    if (!value) return null;
+    const entry = vocab.find((e) => e.fieldKey === fieldKey
+      && ((e.value || '').toLowerCase() === value.toLowerCase()
+        || (e.label || '').toLowerCase() === value.toLowerCase()));
+    return entry ? String(entry._id) : null;
+  };
+
+  const brandMatch = vocabMatch('brand', raw.brand);
+  const draft = {
+    brand: brandMatch,
+    // Carried through so the client can offer to create the vocab entry rather
+    // than silently dropping a brand the shop hasn't stocked before.
+    brandSuggestion: brandMatch ? null : (raw.brand || ''),
+    partNumber: raw.partNumber,
+    qualifier: raw.qualifier,
+    attributes,
+    form: vocabMatch('form', raw.form),
+    purchaseUnit: vocabMatch('unit', raw.packageUnit),
+    unitsPerPurchase: raw.packageQuantity && raw.packageQuantity > 0 ? raw.packageQuantity : 1
+  };
+
+  return {
+    draft,
+    productType: raw.productType,
+    suggestedTag: suggestedTag
+      ? {
+        _id: String(suggestedTag._id),
+        slug: suggestedTag.slug,
+        name: suggestedTag.name,
+        path: tagPathOf(suggestedTag, tagById),
+        confidence: raw.confidence
+      }
+      : null,
+    rejected
+  };
+};
+
+/**
+ * Existing supplies that might already be this product.
+ *
+ * Done locally rather than with a second AI call: it runs once per photo in a
+ * bulk import, and brand + part number is a decisive comparison that doesn't
+ * need a language model. Composes [brand, partNumber] at compare time rather
+ * than assuming a joined string — the old inventory stored the brand INSIDE
+ * partNumber, and matching against supplies must not inherit that.
+ */
+const findSimilar = async (draft, productType) => {
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const partKey = norm(draft.partNumber);
+  if (!partKey && !productType) return [];
+
+  const ctx = await namingContext();
+  const rows = await ShopSupply.find({ isActive: true }).lean();
+
+  return rows
+    .map((r) => {
+      const decorated = decorate(r, ctx);
+      let score = 0;
+      let reason = '';
+
+      if (partKey && norm(r.partNumber) === partKey) {
+        score = draft.brand && String(r.brand) === String(draft.brand) ? 100 : 80;
+        reason = 'same part number';
+      } else if (productType && decorated.displayName.toLowerCase().includes(productType.toLowerCase())
+        && draft.brand && String(r.brand) === String(draft.brand)) {
+        score = 50;
+        reason = 'same brand and product type';
+      }
+
+      return score > 0 ? { ...decorated, matchScore: score, matchReason: reason } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 3);
+};
+
 // ─────────────────────────────────── Tags ───────────────────────────────────
 
 const listTags = async () => supplyTagService.getFlat();
@@ -695,6 +875,8 @@ module.exports = {
   getShoppingList,
   countUntagged,
   listFields,
+  extractFromLabel,
+  findSimilar,
   listTags,
   createTag,
   updateTag,

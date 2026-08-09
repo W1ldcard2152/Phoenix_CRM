@@ -24,6 +24,9 @@ router.delete('/tags/:id', admin, supplyController.deleteTag);
 
 router.get('/fields', supplyController.getFields);
 
+// Label extraction — reuses the photo upload middleware (same shape: one image).
+router.post('/extract-label', officeStaff, supplyController.photoUpload, supplyController.extractLabel);
+
 router.get('/vocab', supplyController.getVocab);
 router.post('/vocab', officeStaff, supplyController.createVocab);
 router.patch('/vocab/:id', admin, supplyController.updateVocab);

@@ -137,6 +137,22 @@ exports.getShoppingList = run(async (req, res) => {
 
 // ─────────────────────────────────── Tags ───────────────────────────────────
 
+/**
+ * Read a product label into a draft. Returns the draft, a SEPARATE unconfirmed
+ * tag suggestion, and any existing supplies that look like the same product.
+ *
+ * Nothing here is saved. The client reviews, the user confirms the tag (or
+ * doesn't), and only then does a normal POST /api/supplies create the item.
+ */
+exports.extractLabel = run(async (req, res, next) => {
+  if (!req.file) return next(new AppError('Please provide a photo of the label', 400));
+
+  const result = await supplyService.extractFromLabel(req.file);
+  const similar = await supplyService.findSimilar(result.draft, result.productType);
+
+  res.status(200).json({ status: 'success', data: { ...result, similar } });
+});
+
 exports.getFields = run(async (req, res) => {
   const fields = await supplyService.listFields();
   res.status(200).json({ status: 'success', results: fields.length, data: { fields } });

@@ -564,6 +564,117 @@ Return a single JSON object with exactly these keys: name, brand, partNumber, pr
 };
 
 /**
+ * Read a photo of a shop-supply product LABEL into a structured draft.
+ *
+ * Distinct from parseReceipt on purpose. A receipt answers "what did I buy?" —
+ * line items, quantities, prices. A label answers "what IS this?" — brand, part
+ * number, and above all the MEASUREMENTS printed on it (5W-30, 220 grit, DOT 4).
+ * Those measurements are the fields the supply registry exists for, and a
+ * receipt line almost never carries them reliably.
+ *
+ * The tag tree and field registry are passed IN and rendered into the prompt,
+ * so the model chooses from the shop's actual vocabulary rather than inventing
+ * its own. Nothing it returns is trusted: the caller validates every slug and
+ * key against the real thing and drops what doesn't match.
+ *
+ * @param {Buffer} imageBuffer
+ * @param {String} mimeType
+ * @param {Object} vocabulary - { tags: [{slug, path}], fields: [{key,label,type,options}] }
+ * @returns {Promise<Object>} raw draft, still untrusted
+ */
+exports.parseSupplyLabel = async (imageBuffer, mimeType = 'image/png', vocabulary = {}) => {
+  try {
+    const model = getModel(EXTRACT_MODEL);
+
+    const tagLines = (vocabulary.tags || [])
+      .map((t) => `  ${t.slug} = ${t.path}`)
+      .join('\n');
+
+    const fieldLines = (vocabulary.fields || [])
+      .map((f) => {
+        const opts = f.options && f.options.length
+          ? ` — one of: ${f.options.join(' | ')}`
+          : (f.unit ? ` — number, in ${f.unit}` : ' — free text');
+        return `  ${f.key} (${f.label})${opts}`;
+      })
+      .join('\n');
+
+    const prompt = `You are reading a photograph of a product in an auto repair shop — a bottle, can, box, or bag — and recording what it IS so it can be stocked. Read the LABEL. Extract details for ONE product.
+
+If several products are visible, describe the single most prominent one.
+
+Extract these fields:
+1. brand - The manufacturer ONLY, exactly as printed ("Mobil 1", "Valvoline", "Bosch", "3M"). NEVER include the part number or product type. Empty string if not visible.
+2. partNumber - The manufacturer part number / SKU / model ONLY ("3330", "OX387D"). NEVER include the brand. Empty string if not printed.
+3. productType - A short generic noun for what this is ("engine oil", "oil filter", "masking tape"). No brand, no marketing words.
+4. qualifier - Distinguishing descriptors printed on the label that are NOT captured by the fields below: "full synthetic", "dexos-d", "high mileage", "with friction modifier", "pre-filled with oil". Keep it short and lowercase. Empty string if there is nothing meaningful.
+5. tagSlug - Where this belongs, chosen from the CATEGORIES list below. Use the slug EXACTLY as written there. Choose the most specific category you are confident in. If you are not reasonably sure, return an empty string — a wrong category is much worse than none.
+6. confidence - "high", "medium" or "low": how sure you are about tagSlug.
+7. attributes - An object of measurements printed on the label. Use ONLY the keys from the MEASUREMENTS list below, and only ones that apply to this product. For a key that lists allowed values, return one of those values EXACTLY as written. Omit any measurement not printed on the label. Return {} if none apply.
+8. form - One of exactly: "aerosol", "liquid", "solid", "paste", "gel", "powder". Empty string if unclear.
+9. packageQuantity - The container size as a NUMBER if printed ("5" for a 5 quart jug, "12" for a 12 pack). null if not shown.
+10. packageUnit - The unit that number is in, singular and lowercase ("quart", "gallon", "each", "roll", "ft", "lb", "sheet"). Empty string if not shown.
+
+CATEGORIES (use the slug on the left, exactly):
+${tagLines}
+
+MEASUREMENTS (use the key on the left, exactly):
+${fieldLines}
+
+Rules:
+- Brand and part number are ALWAYS separate — never merge them.
+- Read values EXACTLY as printed. Do not convert, round, normalise or infer.
+- Do NOT guess anything that is not visible on the label. Empty string, null, or omit the key.
+- Prefer returning nothing over returning something plausible-but-unverified. An empty field is easy to fill in; a wrong one looks correct and never gets checked.
+
+Return a single JSON object with exactly these keys: brand, partNumber, productType, qualifier, tagSlug, confidence, attributes, form, packageQuantity, packageUnit.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [
+        { text: prompt },
+        { inlineData: { mimeType, data: imageBuffer.toString('base64') } }
+      ] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 }
+    });
+
+    const responseText = (result.response.text() || '').trim();
+    let parsed;
+    try {
+      if (!responseText) throw new Error('empty response');
+      parsed = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Gemini label response:', JSON.stringify(responseText));
+      throw new Error('AI returned no readable data for this photo — try a clearer, closer shot of the label.');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid response format: expected a product object');
+    }
+
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const overridesMap = {};
+    (settings.brandOverrides || []).forEach(b => { overridesMap[b.toLowerCase()] = b; });
+
+    return {
+      brand: formatBrandName(parsed.brand || '', overridesMap),
+      partNumber: String(parsed.partNumber || '').trim(),
+      productType: String(parsed.productType || '').trim(),
+      qualifier: String(parsed.qualifier || '').trim(),
+      tagSlug: String(parsed.tagSlug || '').trim().toLowerCase(),
+      confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
+      attributes: (parsed.attributes && typeof parsed.attributes === 'object' && !Array.isArray(parsed.attributes))
+        ? parsed.attributes : {},
+      form: String(parsed.form || '').trim().toLowerCase(),
+      packageQuantity: parsed.packageQuantity == null ? null : (parseFloat(parsed.packageQuantity) || null),
+      packageUnit: String(parsed.packageUnit || '').trim().toLowerCase()
+    };
+  } catch (error) {
+    console.error('Error reading supply label with Gemini:', error);
+    throw new AppError(`Label read failed: ${error.message}`, 502);
+  }
+};
+
+/**
  * Find duplicate matches between parsed receipt items and existing inventory/parts items.
  * Uses AI to recognize same physical products despite name variations.
  *

@@ -114,6 +114,31 @@ fix, not a real one.
 Proper fixes, if it becomes annoying: an authenticated cache-flush endpoint the
 script can call, or dropping the TTL for this key. Not worth either yet.
 
+### 2f. `[open]` Label import: receipts not yet wired, prices not captured
+
+The label importer reads identity and measurements — brand, part number,
+viscosity, grit. Labels carry no prices, so imported items land at cost 0.
+
+Receipt import for supplies (cost, quantity, vendor, shipping amortisation) is
+the other half and reuses `aiService.parseReceipt` almost as-is. Deferred
+deliberately when we chose labels-first, since labels are the only path that
+populates measurements.
+
+Also unbuilt: importing a photo against an EXISTING supply to top up quantity.
+Today a duplicate is flagged with "possibly already stocked" and the user is
+told to skip and adjust manually.
+
+### 2g. `[open]` Live Gemini calls unverifiable from the dev sandbox
+
+Outbound HTTPS to `generativelanguage.googleapis.com` is blocked in Claude's
+sandbox — the pre-existing `aiService.testConnection()` fails there identically,
+so it is environmental rather than a code fault. The consequence: prompt changes
+can only be verified against the real model by running the app.
+
+The validation layer around the model IS fully testable (and tested) by stubbing
+`parseSupplyLabel`, which is where the risk actually lives — everything the
+model returns is untrusted until it matches the real vocabulary.
+
 ### 3. `[open]` `escapeRegex` + 100-char cap is copy-pasted per controller
 
 The ReDoS guard at `inventoryController.js:36` is a hand-rolled two-liner that

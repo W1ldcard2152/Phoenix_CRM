@@ -5,6 +5,7 @@ import Modal from '../../components/common/Modal';
 import SearchableDropdown from '../../components/common/SearchableDropdown';
 import ResponsiveTable, { MobileCard, MobileContainer } from '../../components/common/ResponsiveTable';
 import SupplyForm from '../../components/supplies/SupplyForm';
+import SupplyImportModal from '../../components/supplies/SupplyImportModal';
 import TagPicker from '../../components/supplies/TagPicker';
 import SupplyService from '../../services/supplyService';
 import SettingsService from '../../services/settingsService';
@@ -48,6 +49,7 @@ const SupplyList = () => {
   // Selection + modals
   const [selectedIds, setSelectedIds] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkLocationOpen, setBulkLocationOpen] = useState(false);
@@ -276,9 +278,14 @@ const SupplyList = () => {
           </p>
         </div>
         {isOfficeStaff && (
-          <Button variant="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
-            <i className="fas fa-plus mr-2"></i>Add Supply
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <i className="fas fa-camera mr-2"></i>Import from photos
+            </Button>
+            <Button variant="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <i className="fas fa-plus mr-2"></i>Add Supply
+            </Button>
+          </div>
         )}
       </div>
 
@@ -582,6 +589,18 @@ const SupplyList = () => {
         markupPercentage={markup}
         initial={editing}
         lastUsed={lastUsed}
+      />
+
+      <SupplyImportModal
+        isOpen={importOpen}
+        onClose={() => { setImportOpen(false); loadSupplies(); }}
+        onImported={loadSupplies}
+        tags={tags}
+        fields={fields}
+        vocab={vocab}
+        markupPercentage={markup}
+        lastUsed={lastUsed}
+        onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
       />
 
       {/* Bulk tag edit — adds tags to every selected item. */}
