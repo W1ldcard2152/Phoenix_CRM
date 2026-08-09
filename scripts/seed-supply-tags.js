@@ -252,7 +252,13 @@ const TREE = [
 // Static vocabularies. Locations are deliberately NOT seeded — see seedVocab().
 const STATIC_VOCAB = {
   form: ['aerosol', 'liquid', 'solid', 'paste', 'gel', 'powder'],
-  unit: ['each', 'can', 'quart', 'gallon', 'box', 'roll', 'sheet', 'ft', 'lb']
+  // Both stock units (what the shop uses: quart, ft, each) and purchase units
+  // (what you order: jug, case, box) live in one `unit` vocabulary — the same
+  // word is often both, depending on the product.
+  unit: [
+    'each', 'quart', 'gallon', 'ounce', 'ft', 'sheet', 'lb',
+    'jug', 'bottle', 'can', 'box', 'case', 'roll', 'tube', 'bag', 'pair', 'kit'
+  ]
 };
 
 // ───────────────────────────────────────────────────────────────────────────

@@ -644,8 +644,17 @@ const extractFromLabel = async (file) => {
     qualifier: raw.qualifier,
     attributes,
     form: vocabMatch('form', raw.form),
-    purchaseUnit: vocabMatch('unit', raw.packageUnit),
-    unitsPerPurchase: raw.packageQuantity && raw.packageQuantity > 0 ? raw.packageQuantity : 1
+    // The unit the shop USES the product in — quarts, not jugs. Quantity on
+    // hand is counted in this.
+    stockUnit: vocabMatch('unit', raw.contentUnit),
+    // The thing you order one of. Distinct from stockUnit, and the pair only
+    // makes sense together: a 5 quart jug is 5 stock units per purchase unit.
+    purchaseUnit: vocabMatch('unit', raw.containerType),
+    unitsPerPurchase: raw.contentQuantity && raw.contentQuantity > 0 ? raw.contentQuantity : 1,
+    // Surfaced so the client can offer to add a container type the shop hasn't
+    // used before, rather than dropping it silently.
+    stockUnitSuggestion: vocabMatch('unit', raw.contentUnit) ? '' : (raw.contentUnit || ''),
+    purchaseUnitSuggestion: vocabMatch('unit', raw.containerType) ? '' : (raw.containerType || '')
   };
 
   return {

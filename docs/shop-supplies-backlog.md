@@ -128,16 +128,18 @@ Also unbuilt: importing a photo against an EXISTING supply to top up quantity.
 Today a duplicate is flagged with "possibly already stocked" and the user is
 told to skip and adjust manually.
 
-### 2g. `[open]` Live Gemini calls unverifiable from the dev sandbox
+### 2g. `[resolved-ish]` Live Gemini calls intermittently unreachable from the sandbox
 
-Outbound HTTPS to `generativelanguage.googleapis.com` is blocked in Claude's
-sandbox — the pre-existing `aiService.testConnection()` fails there identically,
-so it is environmental rather than a code fault. The consequence: prompt changes
-can only be verified against the real model by running the app.
+Outbound HTTPS to `generativelanguage.googleapis.com` failed from Claude's
+sandbox on 2026-08-09 (`fetch failed`, and the pre-existing
+`aiService.testConnection()` failed identically, so it was environmental rather
+than a code fault). It succeeded on a later run the same day with no change to
+the code — so treat it as intermittent rather than blocked.
 
-The validation layer around the model IS fully testable (and tested) by stubbing
-`parseSupplyLabel`, which is where the risk actually lives — everything the
-model returns is untrusted until it matches the real vocabulary.
+Practical upshot: a green live check is meaningful, a red one is not
+conclusive. The validation layer around the model is fully testable regardless
+by stubbing `parseSupplyLabel`, and that is where the risk actually lives —
+everything the model returns is untrusted until it matches real vocabulary.
 
 ### 3. `[open]` `escapeRegex` + 100-char cap is copy-pasted per controller
 

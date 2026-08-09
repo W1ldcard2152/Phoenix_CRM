@@ -29,7 +29,10 @@ const EMPTY = {
   form: null, location: null,
   quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
   reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
-  sdsUrl: '', url: '', notes: '', attributes: {}
+  sdsUrl: '', url: '', notes: '', attributes: {},
+  // Entered in PURCHASE units and multiplied into quantityOnHand on save —
+  // you count jugs on the shelf, not quarts.
+  packagesOnHand: 0
 };
 
 const round2 = (n) => parseFloat(Number(n).toFixed(2));
@@ -104,6 +107,13 @@ const SupplyForm = ({
   const multiplier = 1 + markupPercentage / 100;
   const upp = Math.max(1, parseInt(data.unitsPerPurchase, 10) || 1);
 
+  const unitLabel = (id, fallback) => {
+    const entry = vocab.find((v) => String(v._id) === idOf(id));
+    return entry ? (entry.label || entry.value) : fallback;
+  };
+  const stockLabel = unitLabel(data.stockUnit, 'unit');
+  const purchaseLabel = upp > 1 ? unitLabel(data.purchaseUnit, 'purchase') : stockLabel;
+
   const handleCost = (cost) => setData((prev) => (prev.priceOverridden
     ? { ...prev, cost }
     : { ...prev, cost, price: round2((cost / upp) * multiplier) }));
@@ -142,7 +152,13 @@ const SupplyForm = ({
     setSaving(true);
     setError(null);
     try {
-      const payload = { ...data, name: (data.name || '').trim() };
+      const { packagesOnHand, ...rest } = data;
+      const payload = {
+        ...rest,
+        name: (data.name || '').trim(),
+        // Purchase units in, stock units stored: 3 jugs becomes 15 quarts.
+        quantityOnHand: (parseFloat(packagesOnHand) || 0) * upp
+      };
       delete payload.displayName; // server-derived; never sent back
       let photoFailed = false;
 
@@ -393,18 +409,29 @@ const SupplyForm = ({
             </div>
             {!isEditing && (
               <div>
-                <label className={label}>Starting Qty</label>
+                <label className={label}>
+                  Starting Qty <span className="font-normal text-gray-400">
+                    in {upp > 1 ? `${purchaseLabel}s` : `${stockLabel}s`}
+                  </span>
+                </label>
                 <input
                   type="number"
                   min="0"
-                  value={data.quantityOnHand}
-                  onChange={(e) => set('quantityOnHand', parseFloat(e.target.value) || 0)}
+                  value={data.packagesOnHand}
+                  onChange={(e) => set('packagesOnHand', parseFloat(e.target.value) || 0)}
                   className={field}
                 />
+                {upp > 1 && data.packagesOnHand > 0 && (
+                  <p className="mt-1 text-[11px] text-blue-600">
+                    = <strong>{data.packagesOnHand * upp} {stockLabel}</strong> in stock
+                  </p>
+                )}
               </div>
             )}
             <div>
-              <label className={label}>Reorder At</label>
+              <label className={label}>
+                Reorder At <span className="font-normal text-gray-400">in {stockLabel}s</span>
+              </label>
               <input
                 type="number"
                 min="0"
@@ -415,35 +442,27 @@ const SupplyForm = ({
             </div>
           </div>
 
+          {/* You BUY jugs and you USE quarts. Quantity on hand, reorder point
+              and price are all counted in the stock unit; cost is per purchase
+              unit. Conflating the two is the classic inventory bug. */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div>
-              <label className={label}>Stock Unit</label>
+              <label className={label}>
+                Stock Unit <span className="font-normal text-gray-400">— what you use</span>
+              </label>
               <SearchableDropdown
                 size="md"
                 options={optionsFor('unit')}
                 value={data.stockUnit}
                 onChange={(v) => set('stockUnit', v)}
-                placeholder="each"
+                placeholder="quart, each..."
                 allowClear
                 allowCreate
                 onCreate={createVocab('unit')}
               />
             </div>
             <div>
-              <label className={label}>Purchase Unit</label>
-              <SearchableDropdown
-                size="md"
-                options={optionsFor('unit')}
-                value={data.purchaseUnit}
-                onChange={(v) => set('purchaseUnit', v)}
-                placeholder="—"
-                allowClear
-                allowCreate
-                onCreate={createVocab('unit')}
-              />
-            </div>
-            <div>
-              <label className={label}>Units per Purchase</label>
+              <label className={label}>{stockLabel}s per {purchaseLabel}</label>
               <input
                 type="number"
                 min="1"
@@ -451,12 +470,28 @@ const SupplyForm = ({
                 onChange={(e) => handleUpp(e.target.value)}
                 className={field}
               />
+              <p className="mt-1 text-[10px] text-gray-400">5 for a 5qt jug</p>
+            </div>
+            <div>
+              <label className={label}>
+                Purchase Unit <span className="font-normal text-gray-400">— what you order</span>
+              </label>
+              <SearchableDropdown
+                size="md"
+                options={optionsFor('unit')}
+                value={data.purchaseUnit}
+                onChange={(v) => set('purchaseUnit', v)}
+                placeholder={upp > 1 ? 'jug, case...' : '—'}
+                allowClear
+                allowCreate
+                onCreate={createVocab('unit')}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 items-end">
             <div>
-              <label className={label}>Cost <span className="text-gray-400">(per purchase unit)</span></label>
+              <label className={label}>Cost <span className="text-gray-400">per {purchaseLabel}</span></label>
               <input
                 type="number"
                 step="0.01"
@@ -467,7 +502,7 @@ const SupplyForm = ({
               />
             </div>
             <div>
-              <label className={label}>Price <span className="text-gray-400">(per stock unit)</span></label>
+              <label className={label}>Price <span className="text-gray-400">per {stockLabel}</span></label>
               <input
                 type="number"
                 step="0.01"

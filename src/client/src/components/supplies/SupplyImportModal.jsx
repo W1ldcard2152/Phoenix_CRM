@@ -35,7 +35,11 @@ const STATUS = {
 const EMPTY_DRAFT = {
   brand: null, vendor: null, partNumber: '', qualifier: '', name: '',
   tags: [], primaryTag: null, form: null, location: null,
-  quantityOnHand: 1, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
+  // Entered in PURCHASE units — you count jugs on the shelf, not quarts.
+  // Multiplied by unitsPerPurchase into quantityOnHand on save, matching what
+  // the old inventory form does in InventoryList.handleSaveItem.
+  packagesOnHand: 1,
+  stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
   reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
   attributes: {}, notes: '', url: '', sdsUrl: ''
 };
@@ -122,6 +126,7 @@ const SupplyImportModal = ({
           qualifier: item.draft.qualifier || draft.qualifier || '',
           attributes: { ...(draft.attributes || {}), ...(item.draft.attributes || {}) },
           form: item.draft.form || draft.form || null,
+          stockUnit: item.draft.stockUnit || draft.stockUnit || null,
           purchaseUnit: item.draft.purchaseUnit || draft.purchaseUnit || null,
           unitsPerPurchase: item.draft.unitsPerPurchase > 1
             ? item.draft.unitsPerPurchase
@@ -217,7 +222,14 @@ const SupplyImportModal = ({
 
     setSaving(true);
     try {
-      const res = await SupplyService.create(current.draft);
+      // Convert purchase units to stock units. The user counted 3 jugs; the
+      // item stocks 15 quarts.
+      const { packagesOnHand, ...rest } = current.draft;
+      const payload = {
+        ...rest,
+        quantityOnHand: (parseFloat(packagesOnHand) || 0) * Math.max(1, rest.unitsPerPurchase || 1)
+      };
+      const res = await SupplyService.create(payload);
       try {
         await SupplyService.uploadPhoto(res.data.supply._id, current.file);
       } catch (photoErr) {
@@ -241,6 +253,22 @@ const SupplyImportModal = ({
   const optionsFor = (fieldKey) => vocab
     .filter((v) => v.fieldKey === fieldKey && v.isActive !== false)
     .map((v) => ({ value: String(v._id), label: v.label || v.value }));
+
+  const createUnit = async (typed) => {
+    const res = await SupplyService.createVocab('unit', typed, typed);
+    onVocabAdded?.(res.data.entry);
+    return String(res.data.entry._id);
+  };
+
+  // Unit names for the labels and the conversion echo. Falling back to generic
+  // words keeps every label grammatical before the units are chosen.
+  const unitLabel = (id, fallback) => {
+    const entry = vocab.find((v) => String(v._id) === idOf(id));
+    return entry ? (entry.label || entry.value) : fallback;
+  };
+  const upp = Math.max(1, current?.draft.unitsPerPurchase || 1);
+  const stockLabel = unitLabel(current?.draft.stockUnit, 'unit');
+  const purchaseLabel = upp > 1 ? unitLabel(current?.draft.purchaseUnit, 'purchase') : stockLabel;
 
   const preview = current ? composeDisplayName(current.draft, tags, fields, vocab) : '';
   const remaining = queue.filter((q) => q.status !== 'saved' && q.status !== 'skipped').length;
@@ -546,24 +574,89 @@ const SupplyImportModal = ({
                     />
                   </div>
 
+                  {/* Units. Two different units are in play and conflating them
+                      is the classic inventory bug: you BUY jugs and you USE
+                      quarts. Everything downstream — quantity on hand, reorder
+                      point, price — is counted in the stock unit. */}
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className={labelCls}>Qty on hand</label>
-                      <input
-                        type="number" min="0"
-                        value={current.draft.quantityOnHand}
-                        onChange={(e) => patchDraft(index, { quantityOnHand: parseFloat(e.target.value) || 0 })}
-                        className={inputCls}
+                      <label className={labelCls}>
+                        Stock unit <span className="font-normal text-gray-400">— what you use</span>
+                      </label>
+                      <SearchableDropdown
+                        size="md"
+                        options={optionsFor('unit')}
+                        value={current.draft.stockUnit}
+                        onChange={(v) => patchDraft(index, { stockUnit: v })}
+                        placeholder="quart, each..."
+                        allowClear
+                        allowCreate
+                        onCreate={createUnit}
                       />
                     </div>
                     <div>
-                      <label className={labelCls}>Cost</label>
+                      <label className={labelCls}>
+                        {stockLabel}s per {purchaseLabel}
+                      </label>
+                      <input
+                        type="number" min="1"
+                        value={current.draft.unitsPerPurchase}
+                        onChange={(e) => {
+                          const upp = Math.max(1, parseInt(e.target.value, 10) || 1);
+                          patchDraft(index, {
+                            unitsPerPurchase: upp,
+                            price: parseFloat((((current.draft.cost || 0) / upp) * (1 + markupPercentage / 100)).toFixed(2))
+                          });
+                        }}
+                        className={inputCls}
+                      />
+                      <p className="mt-1 text-[10px] text-gray-400">5 for a 5qt jug</p>
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Purchase unit <span className="font-normal text-gray-400">— what you order</span>
+                      </label>
+                      <SearchableDropdown
+                        size="md"
+                        options={optionsFor('unit')}
+                        value={current.draft.purchaseUnit}
+                        onChange={(v) => patchDraft(index, { purchaseUnit: v })}
+                        placeholder={upp > 1 ? 'jug, case...' : '—'}
+                        allowClear
+                        allowCreate
+                        onCreate={createUnit}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className={labelCls}>
+                        How many {upp > 1 ? `${purchaseLabel}s` : `${stockLabel}s`} on hand
+                      </label>
+                      <input
+                        type="number" min="0"
+                        value={current.draft.packagesOnHand}
+                        onChange={(e) => patchDraft(index, { packagesOnHand: parseFloat(e.target.value) || 0 })}
+                        className={inputCls}
+                      />
+                      {upp > 1 && current.draft.packagesOnHand > 0 && (
+                        <p className="mt-1 text-[11px] text-blue-600">
+                          {current.draft.packagesOnHand} {purchaseLabel}
+                          {current.draft.packagesOnHand === 1 ? '' : 's'} ={' '}
+                          <strong>{current.draft.packagesOnHand * upp} {stockLabel}</strong> in stock
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Cost <span className="font-normal text-gray-400">per {purchaseLabel}</span>
+                      </label>
                       <input
                         type="number" step="0.01" min="0"
                         value={current.draft.cost}
                         onChange={(e) => {
                           const cost = parseFloat(e.target.value) || 0;
-                          const upp = Math.max(1, current.draft.unitsPerPurchase || 1);
                           patchDraft(index, {
                             cost,
                             price: parseFloat(((cost / upp) * (1 + markupPercentage / 100)).toFixed(2))
@@ -574,13 +667,20 @@ const SupplyImportModal = ({
                       <p className="mt-1 text-[10px] text-gray-400">Labels don't carry prices</p>
                     </div>
                     <div>
-                      <label className={labelCls}>Units / purchase</label>
+                      <label className={labelCls}>
+                        Price <span className="font-normal text-gray-400">per {stockLabel}</span>
+                      </label>
                       <input
-                        type="number" min="1"
-                        value={current.draft.unitsPerPurchase}
-                        onChange={(e) => patchDraft(index, { unitsPerPurchase: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                        type="number" step="0.01" min="0"
+                        value={current.draft.price}
+                        onChange={(e) => patchDraft(index, {
+                          price: parseFloat(e.target.value) || 0, priceOverridden: true
+                        })}
                         className={inputCls}
                       />
+                      <p className="mt-1 text-[10px] text-gray-400">
+                        {current.draft.priceOverridden ? 'Set manually' : `${markupPercentage}% markup`}
+                      </p>
                     </div>
                   </div>
 

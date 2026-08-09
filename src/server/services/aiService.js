@@ -622,8 +622,11 @@ Extract these fields:
 6. confidence - "high", "medium" or "low": how sure you are about tagSlug.
 7. attributes - An object of measurements printed on the label. Use ONLY the keys from the MEASUREMENTS list below, and only ones that apply to this product. For a key that lists allowed values, return one of those values EXACTLY as written. Omit any measurement not printed on the label. Return {} if none apply.
 8. form - One of exactly: "aerosol", "liquid", "solid", "paste", "gel", "powder". Empty string if unclear.
-9. packageQuantity - The container size as a NUMBER if printed ("5" for a 5 quart jug, "12" for a 12 pack). null if not shown.
-10. packageUnit - The unit that number is in, singular and lowercase ("quart", "gallon", "each", "roll", "ft", "lb", "sheet"). Empty string if not shown.
+9. contentQuantity - How many usage units are INSIDE this package, as a number. A 5 quart jug is 5. A 1 quart bottle is 1. A 12 pack of shop towels is 12. A single aerosol can is 1. null if not printed.
+10. contentUnit - What those contents are measured in, singular and lowercase: "quart", "gallon", "ounce", "ft", "sheet", "lb", or "each" for countable items. This is the unit the shop USES the product in, not the container. A 5 quart jug has contentUnit "quart".
+11. containerType - What the package itself is, singular and lowercase: "jug", "bottle", "can", "box", "case", "roll", "tube", "bag", "pair", "kit". This is what you would order one of. A 5 quart jug has containerType "jug". Empty string if the product is sold loose or the container is unclear.
+
+    Worked examples for 9-11: a 5-quart jug of oil is contentQuantity 5, contentUnit "quart", containerType "jug". A 1-quart bottle is 1, "quart", "bottle". A single can of brake cleaner is 1, "each", "can". A box of 100 gloves is 100, "each", "box".
 
 CATEGORIES (use the slug on the left, exactly):
 ${tagLines}
@@ -637,7 +640,7 @@ Rules:
 - Do NOT guess anything that is not visible on the label. Empty string, null, or omit the key.
 - Prefer returning nothing over returning something plausible-but-unverified. An empty field is easy to fill in; a wrong one looks correct and never gets checked.
 
-Return a single JSON object with exactly these keys: brand, partNumber, productType, qualifier, tagSlug, confidence, attributes, form, packageQuantity, packageUnit.`;
+Return a single JSON object with exactly these keys: brand, partNumber, productType, qualifier, tagSlug, confidence, attributes, form, contentQuantity, contentUnit, containerType.`;
 
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [
@@ -684,8 +687,9 @@ Return a single JSON object with exactly these keys: brand, partNumber, productT
       attributes: (parsed.attributes && typeof parsed.attributes === 'object' && !Array.isArray(parsed.attributes))
         ? parsed.attributes : {},
       form: String(parsed.form || '').trim().toLowerCase(),
-      packageQuantity: parsed.packageQuantity == null ? null : (parseFloat(parsed.packageQuantity) || null),
-      packageUnit: String(parsed.packageUnit || '').trim().toLowerCase()
+      contentQuantity: parsed.contentQuantity == null ? null : (parseFloat(parsed.contentQuantity) || null),
+      contentUnit: String(parsed.contentUnit || '').trim().toLowerCase(),
+      containerType: String(parsed.containerType || '').trim().toLowerCase()
     };
   } catch (error) {
     console.error('Error reading supply label with Gemini:', error);
