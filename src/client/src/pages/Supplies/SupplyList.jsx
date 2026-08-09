@@ -34,6 +34,7 @@ const SupplyList = () => {
   const [markup, setMarkup] = useState(30);
   const [taxRate, setTaxRate] = useState(0);
   const [taxRules, setTaxRules] = useState([]);
+  const [directoryVendors, setDirectoryVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -86,6 +87,8 @@ const SupplyList = () => {
       setTaxRules(taxRuleRes.data.rules);
       setMarkup(settingsRes.data.settings?.partMarkupPercentage ?? 30);
       setTaxRate(settingsRes.data.settings?.taxRate ?? 0);
+      // The vendor directory, for URL→vendor detection on entry.
+      setDirectoryVendors(settingsRes.data.settings?.customVendors || []);
     } catch (err) {
       setError('Could not load tags and vocabulary.');
     }
@@ -594,6 +597,7 @@ const SupplyList = () => {
         markupPercentage={markup}
         taxRate={taxRate}
         taxRules={taxRules}
+        directoryVendors={directoryVendors}
         onTaxRuleLearned={(rule) => setTaxRules((prev) => [
           ...prev.filter((r) => r.hostname !== rule.hostname), rule
         ])}
@@ -611,6 +615,7 @@ const SupplyList = () => {
         markupPercentage={markup}
         taxRate={taxRate}
         taxRules={taxRules}
+        directoryVendors={directoryVendors}
         onTaxRuleLearned={(rule) => setTaxRules((prev) => [
           ...prev.filter((r) => r.hostname !== rule.hostname), rule
         ])}

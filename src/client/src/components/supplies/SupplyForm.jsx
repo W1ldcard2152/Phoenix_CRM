@@ -6,7 +6,7 @@ import TagPicker from './TagPicker';
 import SupplyPhoto from './SupplyPhoto';
 import SupplyAttributes from './SupplyAttributes';
 import { composeDisplayName } from './composeName';
-import { hostnameOf } from './hostname';
+import { hostnameOf, detectVendor } from './hostname';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -45,7 +45,7 @@ const round2 = (n) => parseFloat(Number(n).toFixed(2));
 const SupplyForm = ({
   isOpen, onClose, onSaved, onRefresh, vocab = [], tags = [], fields = [],
   markupPercentage = 30, taxRate = 0, taxRules = [], onTaxRuleLearned,
-  initial = null, lastUsed = {}, onVocabAdded
+  directoryVendors = [], initial = null, lastUsed = {}, onVocabAdded
 }) => {
   const [data, setData] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -56,6 +56,9 @@ const SupplyForm = ({
   const [pendingPhoto, setPendingPhoto] = useState(null);
   const [savedSupply, setSavedSupply] = useState(null);
   const [photoNonce, setPhotoNonce] = useState(0);
+  // A vendor the directory recognised from the URL that supplies has no vocab
+  // entry for yet — offered, never created silently.
+  const [vendorSuggestion, setVendorSuggestion] = useState('');
   const nameRef = useRef(null);
 
   const byId = useMemo(() => indexTags(tags), [tags]);
@@ -161,20 +164,27 @@ const SupplyForm = ({
       .catch((err) => console.error('Could not save tax rule:', err));
   };
 
-  /** Typing a URL applies whatever this vendor did last time. */
+  /**
+   * Typing a URL fills in what the hostname already implies: which vendor this
+   * is, and whether they charge tax. Neither overwrites an existing choice.
+   */
   const handleUrlChange = (url) => {
     const host = hostnameOf(url);
     const rule = host ? taxRules.find((r) => r.hostname === host) : null;
+    const detected = detectVendor(url, directoryVendors, vocab);
+
+    setVendorSuggestion(detected && !detected.id && !data.vendor ? detected.name : '');
+
     setData((prev) => {
-      if (!rule || prev.costIncludesTax === rule.chargesTax) return { ...prev, url };
-      return {
-        ...prev,
-        url,
-        costIncludesTax: rule.chargesTax,
-        price: prev.priceOverridden
-          ? prev.price
-          : priceFrom(prev.costEntered, rule.chargesTax, upp)
-      };
+      const next = { ...prev, url };
+      if (detected?.id && !prev.vendor) next.vendor = detected.id;
+      if (rule && prev.costIncludesTax !== rule.chargesTax) {
+        next.costIncludesTax = rule.chargesTax;
+        if (!prev.priceOverridden) {
+          next.price = priceFrom(prev.costEntered, rule.chargesTax, upp);
+        }
+      }
+      return next;
     });
   };
 
@@ -389,12 +399,25 @@ const SupplyForm = ({
                 size="md"
                 options={optionsFor('vendor')}
                 value={data.vendor}
-                onChange={(v) => set('vendor', v)}
+                onChange={(v) => { set('vendor', v); if (v) setVendorSuggestion(''); }}
                 placeholder="Select or type..."
                 allowClear
                 allowCreate
                 onCreate={createVocab('vendor')}
               />
+              {vendorSuggestion && !data.vendor && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const id = await createVocab('vendor')(vendorSuggestion);
+                    set('vendor', id);
+                    setVendorSuggestion('');
+                  }}
+                  className="mt-1 text-[11px] text-primary-600 hover:underline"
+                >
+                  + Add "{vendorSuggestion}" from the URL
+                </button>
+              )}
             </div>
             <div>
               <label className={label}>Part Number</label>

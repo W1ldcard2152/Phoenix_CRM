@@ -7,7 +7,7 @@ import TagPicker from './TagPicker';
 import UrlExtractButton from '../common/UrlExtractButton';
 import SupplyService from '../../services/supplyService';
 import { composeDisplayName } from './composeName';
-import { hostnameOf } from './hostname';
+import { hostnameOf, detectVendor } from './hostname';
 import { indexTags, tagPath, idOf } from './tagTree';
 
 /**
@@ -51,7 +51,7 @@ const EMPTY_DRAFT = {
 const SupplyImportModal = ({
   isOpen, onClose, onImported, tags = [], fields = [], vocab = [],
   markupPercentage = 30, taxRate = 0, taxRules = [], onTaxRuleLearned,
-  onVocabAdded, lastUsed = {}
+  directoryVendors = [], onVocabAdded, lastUsed = {}
 }) => {
   const [queue, setQueue] = useState([]);
   const [index, setIndex] = useState(0);
@@ -295,11 +295,25 @@ const SupplyImportModal = ({
   const handleUrlChange = (i, url) => {
     const host = hostnameOf(url);
     const rule = host ? taxRules.find((r) => r.hostname === host) : null;
+    const detected = detectVendor(url, directoryVendors, vocab);
+
     setQueue((prev) => prev.map((item, n) => {
       if (n !== i) return item;
       const changes = { url };
       if (rule) changes.costIncludesTax = rule.chargesTax;
-      return { ...item, draft: { ...item.draft, ...changes, ...repriceFrom(item.draft, changes) } };
+      // Only fill a vendor that isn't already chosen — never clobber a manual
+      // pick, matching how the worksheet handles seller detection.
+      if (detected?.id && !item.draft.vendor) changes.vendor = detected.id;
+
+      return {
+        ...item,
+        // Directory knows the vendor but supplies has no vocab entry yet:
+        // offer it rather than creating one behind their back.
+        vendorSuggestion: detected && !detected.id && !item.draft.vendor
+          ? detected.name
+          : item.vendorSuggestion,
+        draft: { ...item.draft, ...changes, ...repriceFrom(item.draft, changes) }
+      };
     }));
   };
 
