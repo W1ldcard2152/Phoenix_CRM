@@ -16,7 +16,8 @@ const {
   validateSubtreePlacement,
   collectDescendantIds,
   validateTagAssignment,
-  previewBulkTagChanges
+  previewBulkTagChanges,
+  resolveFieldsForItem
 } = require('../../utils/supplyRules');
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -406,6 +407,106 @@ describe('previewBulkTagChanges', () => {
   it('leaves untagged items alone when only a location is being set', () => {
     const untagged = [{ _id: oid(), name: 'Fresh Import', tags: [], primaryTag: null }];
     expect(previewBulkTagChanges(untagged, {}).violations).toHaveLength(0);
+  });
+});
+
+describe('resolveFieldsForItem', () => {
+  // Chemicals & Fluids
+  //   └── Service Fluids            [fields: spec]
+  //        ├── Engine Oil           [fields: viscosity]
+  //        └── Brake Fluid          [fields: dotRating]
+  // Refinish & Body
+  //   └── Abrasives
+  //        └── Discs                [fields: grit]
+  const viscosity = oid();
+  const dotRating = oid();
+  const spec = oid();
+  const grit = oid();
+
+  const phase = { _id: oid(), parent: null, fields: [] };
+  const serviceFluids = { _id: oid(), parent: phase._id, fields: [spec] };
+  const engineOil = { _id: oid(), parent: serviceFluids._id, fields: [viscosity] };
+  const brakeFluid = { _id: oid(), parent: serviceFluids._id, fields: [dotRating] };
+  const refinish = { _id: oid(), parent: null, fields: [] };
+  const abrasives = { _id: oid(), parent: refinish._id, fields: [] };
+  const discs = { _id: oid(), parent: abrasives._id, fields: [grit] };
+
+  const byId = indexById([phase, serviceFluids, engineOil, brakeFluid, refinish, abrasives, discs]);
+
+  it('returns the primary tag\'s own fields as required', () => {
+    const { required } = resolveFieldsForItem(
+      { tags: [engineOil._id], primaryTag: engineOil._id }, byId
+    );
+    expect(required).toContain(String(viscosity));
+  });
+
+  it('inherits fields from ancestors of the primary tag', () => {
+    // spec lives on Service Fluids, one tier up from Engine Oil.
+    const { required } = resolveFieldsForItem(
+      { tags: [engineOil._id], primaryTag: engineOil._id }, byId
+    );
+    expect(required).toEqual(expect.arrayContaining([String(viscosity), String(spec)]));
+  });
+
+  it('does not pick up sibling fields', () => {
+    const { all } = resolveFieldsForItem(
+      { tags: [engineOil._id], primaryTag: engineOil._id }, byId
+    );
+    expect(all).not.toContain(String(dotRating));
+  });
+
+  it('treats secondary tags\' fields as optional, not required', () => {
+    // The brake-cleaner shape: primary in one branch, secondary in another.
+    // Tagging an item into a second door must not tax it with new obligations.
+    const { required, optional } = resolveFieldsForItem(
+      { tags: [engineOil._id, discs._id], primaryTag: engineOil._id }, byId
+    );
+
+    expect(required).toEqual(expect.arrayContaining([String(viscosity), String(spec)]));
+    expect(required).not.toContain(String(grit));
+    expect(optional).toEqual([String(grit)]);
+  });
+
+  it('collapses a field shared by primary and secondary into required only', () => {
+    const { required, optional } = resolveFieldsForItem(
+      { tags: [engineOil._id, brakeFluid._id], primaryTag: engineOil._id }, byId
+    );
+
+    // `spec` is inherited by both; it must not appear twice or land in optional.
+    expect(required.filter((f) => f === String(spec))).toHaveLength(1);
+    expect(optional).not.toContain(String(spec));
+    expect(optional).toEqual([String(dotRating)]);
+  });
+
+  it('returns nothing for an untagged item', () => {
+    const { required, optional, all } = resolveFieldsForItem({ tags: [], primaryTag: null }, byId);
+    expect(required).toEqual([]);
+    expect(optional).toEqual([]);
+    expect(all).toEqual([]);
+  });
+
+  it('returns no required fields when tags exist but no primary is set', () => {
+    // Shouldn't happen (the invariant forbids it), but the resolver must not
+    // invent obligations from a state it can be handed.
+    const { required } = resolveFieldsForItem({ tags: [engineOil._id], primaryTag: null }, byId);
+    expect(required).toEqual([]);
+  });
+
+  it('is unaffected by an unknown tag id', () => {
+    const { required } = resolveFieldsForItem(
+      { tags: [oid()], primaryTag: engineOil._id }, byId
+    );
+    expect(required).toEqual(expect.arrayContaining([String(viscosity), String(spec)]));
+  });
+
+  it('does not hang on a cyclic parent chain', () => {
+    const a = { _id: oid(), fields: [] };
+    const b = { _id: oid(), parent: a._id, fields: [grit] };
+    a.parent = b._id;
+    const cyclic = indexById([a, b]);
+
+    const { required } = resolveFieldsForItem({ tags: [b._id], primaryTag: b._id }, cyclic);
+    expect(required).toContain(String(grit));
   });
 });
 

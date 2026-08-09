@@ -167,6 +167,16 @@ const SupplyService = {
     }
   },
 
+  getFields: async () => {
+    try {
+      const response = await API.get('/supplies/fields');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching supply fields:', error);
+      throw error;
+    }
+  },
+
   // ── Vocabulary ──
   getVocab: async () => {
     try {

@@ -45,8 +45,21 @@ const SupplyTagSchema = new Schema({
     enum: ['judgment', 'derived'],
     default: 'judgment'
   },
-  // Free-text reminder of which fields this node will contribute in Phase 2
-  // (e.g. "viscosity" on Engine Oil). Documentation, not behaviour.
+  // Measurements items under this node carry (e.g. viscosity on Engine Oil).
+  // Fields are global definitions referenced here, not owned here, so grit on
+  // Discs and grit on Sheets & Rolls are the same field and filter together.
+  //
+  // Inherited DOWN the tree: a field on Service Fluids applies to Engine Oil
+  // too. Ancestors are walked, never stored on the item, so re-parenting a node
+  // changes which fields apply without any migration — the same property that
+  // makes the tag descendant walk safe.
+  fields: [{
+    type: Schema.Types.ObjectId,
+    ref: 'SupplyField'
+  }],
+
+  // Human-readable hint shown under the node name. Generated from `fields` by
+  // the seed script so the two cannot drift.
   notes: {
     type: String,
     trim: true

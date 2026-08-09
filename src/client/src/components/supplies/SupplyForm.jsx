@@ -4,6 +4,7 @@ import Button from '../common/Button';
 import SearchableDropdown from '../common/SearchableDropdown';
 import TagPicker from './TagPicker';
 import SupplyPhoto from './SupplyPhoto';
+import SupplyAttributes from './SupplyAttributes';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -27,13 +28,13 @@ const EMPTY = {
   form: null, location: null,
   quantityOnHand: 0, stockUnit: null, purchaseUnit: null, unitsPerPurchase: 1,
   reorderPoint: 1, cost: 0, price: 0, priceOverridden: false,
-  sdsUrl: '', url: '', notes: ''
+  sdsUrl: '', url: '', notes: '', attributes: {}
 };
 
 const round2 = (n) => parseFloat(Number(n).toFixed(2));
 
 const SupplyForm = ({
-  isOpen, onClose, onSaved, onRefresh, vocab = [], tags = [],
+  isOpen, onClose, onSaved, onRefresh, vocab = [], tags = [], fields = [],
   markupPercentage = 30, initial = null, lastUsed = {}, onVocabAdded
 }) => {
   const [data, setData] = useState(EMPTY);
@@ -71,7 +72,9 @@ const SupplyForm = ({
         stockUnit: idOf(initial.stockUnit),
         purchaseUnit: idOf(initial.purchaseUnit),
         primaryTag: idOf(initial.primaryTag),
-        tags: (initial.tags || []).map(idOf)
+        tags: (initial.tags || []).map(idOf),
+        // Serialized from a Mongoose Map, so it arrives as a plain object.
+        attributes: initial.attributes || {}
       });
     } else {
       setData({
@@ -307,6 +310,20 @@ const SupplyForm = ({
             {tagsInvalid && (
               <p className="mt-1 text-xs text-red-600">Star one tag as the primary.</p>
             )}
+          </div>
+
+          {/* Measurements. Which inputs appear comes from the tags above — the
+              judgment decides which measurements are even meaningful. */}
+          <div className="pt-1 border-t border-gray-100">
+            <label className={`${label} pt-3`}>Measurements</label>
+            <SupplyAttributes
+              tags={data.tags}
+              primaryTag={data.primaryTag}
+              tagList={tags}
+              fieldList={fields}
+              values={data.attributes}
+              onChange={(attributes) => set('attributes', attributes)}
+            />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -92,6 +92,28 @@ Two things noticed while wiring the supplies controller, both pre-existing:
 
 The second is worth fixing on its own merits, outside this module.
 
+### 2d. `[open]` No admin UI for measurement fields
+
+The field registry is built and working, but adding a field or binding one to a
+tag node means editing `FIELDS` in `scripts/seed-supply-tags.js` and re-running.
+Fine while the set is the 19 derived during design; wanted as soon as the triage
+pass turns up a measurement nobody anticipated (which W4 exists to catch).
+
+Pairs with the missing `ManageTagsModal` / `ManageVocabModal` — three admin
+surfaces over the same shaped data, probably one screen with three tabs rather
+than three modals.
+
+### 2e. `[open]` Seed script can't invalidate the running server's tag cache
+
+`supplyTagService` caches the flat tree in memory for 10 minutes and invalidates
+on its own writes. A seed run is a different process, so the server serves a
+stale tree until TTL or restart — and a stale tree reads exactly like the seed
+having failed. The script now prints a restart reminder, which is a documentation
+fix, not a real one.
+
+Proper fixes, if it becomes annoying: an authenticated cache-flush endpoint the
+script can call, or dropping the TTL for this key. Not worth either yet.
+
 ### 3. `[open]` `escapeRegex` + 100-char cap is copy-pasted per controller
 
 The ReDoS guard at `inventoryController.js:36` is a hand-rolled two-liner that
@@ -146,6 +168,27 @@ items is maintainable; eighty fields where forty are used twice is abandonware.
 **Note wants, don't add columns.**
 
 _Observations:_
+
+- **2026-08-08 — viscosity, on the very first item entered (motor oil).** Asked
+  before any triage had happened, which suggests the field registry is wanted
+  sooner rather than later. Confirms the annotation already on the Engine Oil
+  node (`notes: "viscosity"`).
+- The 18 nodes carrying `notes` in the seeded tree are the current best guess at
+  the field set, derived during design rather than speculatively:
+  viscosity (Engine Oil, Transmission & Gear Oil), DOT rating (Brake Fluid),
+  spec/color (Coolant), refrigerant type, NLGI grade (Grease), grit
+  (Discs, Sheets & Rolls, Pads & Scuff), diameter (Discs), temp range
+  (Reducers/Hardeners), width (Masking Tape, Masking Paper), thread + length
+  (Threaded Fasteners), gauge (Terminals, Wire & Loom), amperage (Fuses),
+  strength (Threadlocker), size + material (Gloves), size (Protective Clothing),
+  volume (Mix Cups), mesh (Strainers), length (Wipers), bulb number (Bulbs).
+  That is ~15 distinct fields — squarely in the maintainable range, and a
+  natural scope boundary if the registry gets built.
+- **Timing note:** every item entered before the registry exists will carry its
+  measurements in the name ("Motor Oil 5W-30"), and extracting them later is
+  manual rework per item. Cheap at 1 item, meaningful at 200. This argues for
+  deciding on the registry *before* the triage pass, not after — the one place
+  where the "wait and learn" instinct actively costs something.
 
 ### W5. Service Parts vs. a future parts module
 

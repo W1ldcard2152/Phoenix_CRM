@@ -773,10 +773,29 @@ subtree browse — hence the descendant-walking filter above.
   all continue to use `InventoryItem`. Connecting them is the follow-on phase,
   informed by §2.
 - Deleting or modifying `InventoryItem`, its page, its routes, or `Settings`.
-- **Field registry** — tag nodes defining which fields their items inherit.
-  Fields will be global definitions that tags reference, so shared fields
-  collapse by id rather than by name; primary tag's fields required, secondary
-  tags' optional. Phase 2.
+- ~~**Field registry**~~ — **BUILT 2026-08-08**, ahead of schedule. Pulled
+  forward because deferring it had a concrete, one-directional cost: every item
+  entered before it existed would carry its measurements in the name
+  ("Motor Oil 5W-30"), and extracting them later is manual per item. Cheap at
+  one item, meaningful at two hundred — so the decision had to be made *before*
+  the triage pass, not after.
+
+  As built: `SupplyField` holds global definitions; `SupplyTag.fields`
+  references them, so grit on Discs and grit on Sheets & Rolls is one field and
+  filters as one. `ShopSupply.attributes` is a Map keyed by field key, with keys
+  whitelisted against the registry on every write and every filter. Fields
+  inherit **down** the tree (a field on Service Fluids applies to Engine Oil),
+  walked at read time and never stored on the item, so re-parenting needs no
+  migration. Primary tag's fields are required; secondary tags' are optional —
+  tagging an item through a second door must not tax it with new obligations.
+
+  Scope was bounded to the **19 fields already annotated on tag nodes during
+  design**, not opened up generally. The seed script fails if a field is defined
+  but unused by any tag, which is the mechanical guard against the
+  eighty-fields-forty-used-twice failure mode.
+
+  Still Phase 2: an admin UI for adding fields and binding them to nodes. Today
+  that is a `FIELDS` edit in `scripts/seed-supply-tags.js` plus a re-run.
 - **Derived nodes** — field-computed leaves. When built: evaluated at read time,
   never written to the junction, always terminal, always placed *below* the
   judgment node they subdivide. Phase 2.

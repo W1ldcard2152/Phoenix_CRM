@@ -247,6 +247,53 @@ const validateTagAssignment = (tags, primaryTag, options = {}) => {
 };
 
 /**
+ * Which measurement fields apply to an item, and which are required.
+ *
+ * Fields come from the item's tags AND those tags' ancestors — a field on
+ * Service Fluids applies to Engine Oil beneath it. Ancestors are walked here
+ * rather than stored on the item, so re-parenting a node changes which fields
+ * apply with no migration, the same property that makes the tag descendant walk
+ * safe.
+ *
+ * REQUIRED vs OPTIONAL follows the primary tag. The primary tag is the item's
+ * canonical home, so what it says the item measures is what the item must
+ * state; a secondary tag is a second door onto the item, and demanding its
+ * fields too would mean tagging an item into extra obligations. Brake cleaner
+ * filed under Shop Chemicals with a Surface Prep secondary shouldn't suddenly
+ * require Surface Prep's measurements.
+ *
+ * @param {object} item - { tags, primaryTag }
+ * @param {Map<string, object>} tagById - the whole tree, { _id, parent, fields }
+ * @returns {{ required: string[], optional: string[], all: string[] }} field ids
+ */
+const resolveFieldsForItem = (item, tagById) => {
+  const fieldsForTag = (tagId) => {
+    const out = [];
+    const node = tagById.get(idOf(tagId));
+    if (!node) return out;
+    const { chain } = ancestorChain(idOf(tagId), tagById);
+    [node, ...chain].forEach((n) => {
+      (n.fields || []).forEach((f) => out.push(idOf(f)));
+    });
+    return out;
+  };
+
+  const primaryId = idOf(item && item.primaryTag);
+  const required = primaryId ? Array.from(new Set(fieldsForTag(primaryId))) : [];
+  const requiredSet = new Set(required);
+
+  const optional = [];
+  (item && item.tags ? item.tags : []).forEach((tagId) => {
+    if (idOf(tagId) === primaryId) return;
+    fieldsForTag(tagId).forEach((fieldId) => {
+      if (!requiredSet.has(fieldId) && !optional.includes(fieldId)) optional.push(fieldId);
+    });
+  });
+
+  return { required, optional, all: [...required, ...optional] };
+};
+
+/**
  * Compute what a bulk tag change would do to each item, and which items it
  * would break.
  *
@@ -314,5 +361,6 @@ module.exports = {
   validateSubtreePlacement,
   collectDescendantIds,
   validateTagAssignment,
-  previewBulkTagChanges
+  previewBulkTagChanges,
+  resolveFieldsForItem
 };

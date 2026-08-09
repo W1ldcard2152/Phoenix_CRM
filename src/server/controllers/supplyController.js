@@ -137,6 +137,11 @@ exports.getShoppingList = run(async (req, res) => {
 
 // ─────────────────────────────────── Tags ───────────────────────────────────
 
+exports.getFields = run(async (req, res) => {
+  const fields = await supplyService.listFields();
+  res.status(200).json({ status: 'success', results: fields.length, data: { fields } });
+});
+
 exports.getTags = run(async (req, res) => {
   const [tags, usage] = await Promise.all([
     supplyService.listTags(),

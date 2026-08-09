@@ -102,6 +102,24 @@ const ShopSupplySchema = new Schema({
     default: false
   },
 
+  /**
+   * Measurements, keyed by SupplyField.key — { viscosity: '5W-30', grit: '220' }.
+   *
+   * Which keys are meaningful comes from the item's tags (see SupplyTag.fields),
+   * so this is deliberately not a fixed set of columns. Values are stored as
+   * strings even for numeric fields: they are labels for filtering, not
+   * quantities to compute with, and keeping one type avoids a class of
+   * "220" !== 220 filter misses.
+   *
+   * Writes are key-whitelisted against the registry in supplyService — an
+   * unchecked key here would let a client write arbitrary dotted paths.
+   */
+  attributes: {
+    type: Map,
+    of: String,
+    default: () => new Map()
+  },
+
   sdsUrl: { type: String, trim: true },
   url: { type: String, trim: true },
   notes: { type: String, trim: true },

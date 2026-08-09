@@ -26,6 +26,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 
 const SupplyTag = require('../src/server/models/SupplyTag');
 const SupplyVocab = require('../src/server/models/SupplyVocab');
+const SupplyField = require('../src/server/models/SupplyField');
 const { indexById, validateSubtreePlacement } = require('../src/server/utils/supplyRules');
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -70,19 +71,19 @@ const TREE = [
       {
         name: 'Service Fluids',
         children: [
-          { name: 'Engine Oil', notes: 'viscosity' },
-          { name: 'Transmission & Gear Oil', notes: 'viscosity' },
-          { name: 'Brake Fluid', notes: 'DOT rating' },
-          { name: 'Coolant & Antifreeze', notes: 'spec/color' },
+          { name: 'Engine Oil', fields: ['viscosity'] },
+          { name: 'Transmission & Gear Oil', fields: ['viscosity'] },
+          { name: 'Brake Fluid', fields: ['dotrating'] },
+          { name: 'Coolant & Antifreeze', fields: ['coolantspec'] },
           { name: 'Power Steering' },
           { name: 'Washer Fluid' },
-          { name: 'Refrigerant', notes: 'refrigerant type' }
+          { name: 'Refrigerant', fields: ['refrigerant'] }
         ]
       },
       {
         name: 'Lubricants & Penetrants',
         children: [
-          { name: 'Grease', notes: 'NLGI grade' },
+          { name: 'Grease', fields: ['nlgigrade'] },
           { name: 'Penetrating Oil' },
           { name: 'Dry & Specialty Lubricants' },
           { name: 'Assembly Lube' }
@@ -122,9 +123,9 @@ const TREE = [
       {
         name: 'Abrasives',
         children: [
-          { name: 'Discs', slug: 'abrasive-discs', notes: 'grit, diameter' },
-          { name: 'Sheets & Rolls', notes: 'grit' },
-          { name: 'Pads & Scuff', notes: 'grit' },
+          { name: 'Discs', slug: 'abrasive-discs', fields: ['grit', 'diameter'] },
+          { name: 'Sheets & Rolls', fields: ['grit'] },
+          { name: 'Pads & Scuff', fields: ['grit'] },
           { name: 'Compounds & Polishes' }
         ]
       },
@@ -135,14 +136,14 @@ const TREE = [
           { name: 'Basecoat' },
           { name: 'Clearcoat' },
           { name: 'Single Stage' },
-          { name: 'Reducers, Hardeners & Additives', notes: 'temp range' }
+          { name: 'Reducers, Hardeners & Additives', fields: ['temprange'] }
         ]
       },
       {
         name: 'Masking',
         children: [
-          { name: 'Tape', slug: 'masking-tape', notes: 'width' },
-          { name: 'Paper', slug: 'masking-paper', notes: 'width' },
+          { name: 'Tape', slug: 'masking-tape', fields: ['width'] },
+          { name: 'Paper', slug: 'masking-paper', fields: ['width'] },
           { name: 'Film & Plastic' },
           { name: 'Foam & Jamb' }
         ]
@@ -156,17 +157,17 @@ const TREE = [
         name: 'Fasteners & Clips',
         children: [
           { name: 'Trim & Body Clips' },
-          { name: 'Threaded Fasteners', notes: 'thread, length' },
+          { name: 'Threaded Fasteners', fields: ['thread', 'length'] },
           { name: 'Rivets' }
         ]
       },
       {
         name: 'Electrical Consumables',
         children: [
-          { name: 'Terminals & Connectors', notes: 'gauge' },
-          { name: 'Wire & Loom', notes: 'gauge' },
+          { name: 'Terminals & Connectors', fields: ['gauge'] },
+          { name: 'Wire & Loom', fields: ['gauge'] },
           { name: 'Heat Shrink & Electrical Tape' },
-          { name: 'Fuses & Relays', notes: 'amperage' }
+          { name: 'Fuses & Relays', fields: ['amperage'] }
         ]
       },
       {
@@ -174,7 +175,7 @@ const TREE = [
         children: [
           { name: 'Urethane & Glass' },
           { name: 'Seam Sealer' },
-          { name: 'Threadlocker', notes: 'strength' },
+          { name: 'Threadlocker', fields: ['strength'] },
           { name: 'RTV & Gasket Maker' },
           { name: 'Structural & Panel Bond' }
         ]
@@ -187,10 +188,10 @@ const TREE = [
       {
         name: 'PPE',
         children: [
-          { name: 'Gloves', notes: 'size, material' },
+          { name: 'Gloves', fields: ['size', 'material'] },
           { name: 'Respiratory' },
           { name: 'Eye & Face' },
-          { name: 'Protective Clothing', notes: 'size' }
+          { name: 'Protective Clothing', fields: ['size'] }
         ]
       },
       {
@@ -213,8 +214,8 @@ const TREE = [
       {
         name: 'Mixing & Application',
         children: [
-          { name: 'Mix Cups & Sticks', notes: 'volume' },
-          { name: 'Strainers & Filters', notes: 'mesh' },
+          { name: 'Mix Cups & Sticks', fields: ['volume'] },
+          { name: 'Strainers & Filters', fields: ['mesh'] },
           { name: 'Spray Gun Consumables' },
           { name: 'Brushes & Applicators' }
         ]
@@ -242,8 +243,8 @@ const TREE = [
           { name: 'Fuel', slug: 'filter-fuel' }
         ]
       },
-      { name: 'Wipers', notes: 'length' },
-      { name: 'Bulbs', notes: 'bulb number' }
+      { name: 'Wipers', fields: ['length'] },
+      { name: 'Bulbs', fields: ['bulbnumber'] }
     ]
   }
 ];
@@ -253,6 +254,60 @@ const STATIC_VOCAB = {
   form: ['aerosol', 'liquid', 'solid', 'paste', 'gel', 'powder'],
   unit: ['each', 'can', 'quart', 'gallon', 'box', 'roll', 'sheet', 'ft', 'lb']
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// Measurement fields (docs/shop-supplies-module.md §8, Phase 2).
+//
+// `select` wherever the set of answers is genuinely closed — that fixed list is
+// what stops 5W-30 / 5w30 / 5W30 becoming three values, and it is the reason
+// these are fields rather than free text in the name. `text` only where the
+// answers aren't enumerable (thread pitch, bulb number, temp range).
+//
+// Keep this list SHORT. Fifteen well-chosen fields covering 90% of items is
+// maintainable; eighty fields where forty are used twice is abandonware. Every
+// entry here is one already annotated on a tag node during design, not a
+// speculative addition.
+// ───────────────────────────────────────────────────────────────────────────
+const FIELDS = [
+  { key: 'viscosity', label: 'Viscosity', type: 'select', sortOrder: 10,
+    options: ['0W-16', '0W-20', '5W-20', '5W-30', '5W-40', '10W-30', '10W-40',
+      '15W-40', '20W-50', '75W-90', '80W-90', '85W-140', 'ATF', 'CVT'] },
+  { key: 'dotrating', label: 'DOT Rating', type: 'select', sortOrder: 20,
+    options: ['DOT 3', 'DOT 4', 'DOT 5', 'DOT 5.1'] },
+  { key: 'coolantspec', label: 'Spec / Color', type: 'text', sortOrder: 30,
+    placeholder: 'e.g. G12 Evo, HOAT pink' },
+  { key: 'refrigerant', label: 'Refrigerant Type', type: 'select', sortOrder: 40,
+    options: ['R-134a', 'R-1234yf', 'R-12'] },
+  { key: 'nlgigrade', label: 'NLGI Grade', type: 'select', sortOrder: 50,
+    options: ['NLGI 000', 'NLGI 00', 'NLGI 0', 'NLGI 1', 'NLGI 2', 'NLGI 3'] },
+  { key: 'grit', label: 'Grit', type: 'number', sortOrder: 60,
+    placeholder: 'e.g. 220' },
+  { key: 'diameter', label: 'Diameter', type: 'text', unit: 'in', sortOrder: 70,
+    placeholder: 'e.g. 6' },
+  { key: 'temprange', label: 'Temp Range', type: 'text', sortOrder: 80,
+    placeholder: 'e.g. 65-75F' },
+  { key: 'width', label: 'Width', type: 'text', sortOrder: 90,
+    placeholder: 'e.g. 3/4in, 18mm' },
+  { key: 'thread', label: 'Thread', type: 'text', sortOrder: 100,
+    placeholder: 'e.g. M8x1.25' },
+  { key: 'length', label: 'Length', type: 'text', sortOrder: 110,
+    placeholder: 'e.g. 30mm, 18in' },
+  { key: 'gauge', label: 'Gauge', type: 'text', sortOrder: 120,
+    placeholder: 'e.g. 16 AWG' },
+  { key: 'amperage', label: 'Amperage', type: 'number', unit: 'A', sortOrder: 130 },
+  { key: 'strength', label: 'Strength', type: 'select', sortOrder: 140,
+    options: ['Low (purple)', 'Medium (blue)', 'High (red)', 'Wicking (green)'] },
+  { key: 'size', label: 'Size', type: 'select', sortOrder: 150,
+    options: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'] },
+  { key: 'material', label: 'Material', type: 'select', sortOrder: 160,
+    options: ['Nitrile', 'Latex', 'Vinyl', 'Leather', 'Cotton'] },
+  { key: 'volume', label: 'Volume', type: 'text', sortOrder: 170,
+    placeholder: 'e.g. 32oz' },
+  { key: 'mesh', label: 'Mesh', type: 'text', sortOrder: 180,
+    placeholder: 'e.g. 190 micron' },
+  { key: 'bulbnumber', label: 'Bulb Number', type: 'text', sortOrder: 190,
+    placeholder: 'e.g. H7, 194' }
+];
 
 const slugify = (name) => name
   .toLowerCase()
@@ -272,7 +327,12 @@ const flattenTree = (nodes, parentSlug = null, out = []) => {
       parentSlug,
       sortOrder: index,
       kind: 'judgment',
-      notes: node.notes || ''
+      fieldKeys: node.fields || [],
+      // Derived from `fields` rather than stored alongside it, so the hint under
+      // a node name can never disagree with the inputs the form actually shows.
+      notes: node.fields
+        ? node.fields.map((k) => (FIELDS.find((f) => f.key === k)?.label || k).toLowerCase()).join(', ')
+        : (node.notes || '')
     });
     if (node.children) flattenTree(node.children, slug, out);
   });
@@ -289,6 +349,7 @@ const validateTreeLiteral = (flat) => {
   const errors = [];
 
   const bySlug = new Map(flat.map((n) => [n.slug, n]));
+  const knownFields = new Set(FIELDS.map((f) => f.key));
   const seen = new Set();
   flat.forEach((n) => {
     if (seen.has(n.slug)) errors.push(`Duplicate slug "${n.slug}" (${n.name})`);
@@ -296,6 +357,16 @@ const validateTreeLiteral = (flat) => {
     if (n.parentSlug && !bySlug.has(n.parentSlug)) {
       errors.push(`"${n.name}" references unknown parent "${n.parentSlug}"`);
     }
+    n.fieldKeys.forEach((k) => {
+      if (!knownFields.has(k)) errors.push(`"${n.name}" references unknown field "${k}"`);
+    });
+  });
+
+  // A field nothing references is dead weight — the registry's whole defence
+  // against proliferation is that every entry has a home.
+  const referenced = new Set(flat.flatMap((n) => n.fieldKeys));
+  FIELDS.forEach((f) => {
+    if (!referenced.has(f.key)) errors.push(`Field "${f.key}" is not used by any tag`);
   });
 
   // Re-express as id-shaped nodes so the pure rules can walk them.
@@ -317,7 +388,42 @@ const validateTreeLiteral = (flat) => {
 /**
  * Upsert every tag by slug, parents before children so parent ids resolve.
  */
-const seedTags = async (flat, report) => {
+/**
+ * Upsert field definitions by key. Options are replaced wholesale so adding a
+ * viscosity grade here reaches every item's dropdown on the next run.
+ */
+const seedFields = async (report) => {
+  const existing = await SupplyField.find({}, 'key').lean();
+  const existingKeys = new Set(existing.map((f) => f.key));
+  const idByKey = new Map();
+
+  for (const field of FIELDS) {
+    if (existingKeys.has(field.key)) report.fieldsUnchanged.push(field.key);
+    else report.fieldsCreated.push(field.key);
+
+    if (DRY_RUN) { idByKey.set(field.key, `dry-run:${field.key}`); continue; }
+
+    const saved = await SupplyField.findOneAndUpdate(
+      { key: field.key },
+      {
+        $set: {
+          label: field.label,
+          type: field.type,
+          options: field.options || [],
+          unit: field.unit || '',
+          placeholder: field.placeholder || '',
+          sortOrder: field.sortOrder || 0
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    idByKey.set(field.key, saved._id);
+  }
+
+  return idByKey;
+};
+
+const seedTags = async (flat, report, fieldIdByKey) => {
   const existing = await SupplyTag.find({}, '_id slug name parent sortOrder notes').lean();
   const existingBySlug = new Map(existing.map((t) => [t.slug, t]));
   const idBySlug = new Map(existing.map((t) => [t.slug, t._id]));
@@ -352,7 +458,8 @@ const seedTags = async (flat, report) => {
           parent: parentId,
           sortOrder: node.sortOrder,
           kind: node.kind,
-          notes: node.notes
+          notes: node.notes,
+          fields: node.fieldKeys.map((k) => fieldIdByKey.get(k)).filter(Boolean)
         }
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -506,21 +613,29 @@ async function main() {
     process.exit(1);
   }
   console.log(`Tree literal OK: ${flat.length} nodes, `
-    + `${flat.filter((n) => !n.parentSlug).length} top-level phases.\n`);
+    + `${flat.filter((n) => !n.parentSlug).length} top-level phases, `
+    + `${FIELDS.length} measurement fields.\n`);
 
   await mongoose.connect(MONGODB_URI);
   console.log('Connected to MongoDB.\n');
 
   const report = {
+    fieldsCreated: [], fieldsUnchanged: [],
     tagsCreated: [], tagsUpdated: [], tagsUnchanged: [], tagsOrphaned: [],
     vocabCreated: [], vocabUnchanged: [], validator: null
   };
 
-  await seedTags(flat, report);
+  const fieldIdByKey = await seedFields(report);
+  await seedTags(flat, report, fieldIdByKey);
   await seedVocab(report);
   await applyValidator(report);
 
-  console.log('─── Tags ───');
+  console.log('─── Measurement fields ───');
+  console.log(`  create:    ${report.fieldsCreated.length}`);
+  console.log(`  unchanged: ${report.fieldsUnchanged.length}`);
+  console.log(`  bound to ${flat.filter((n) => n.fieldKeys.length > 0).length} tag node(s)`);
+
+  console.log('\n─── Tags ───');
   console.log(`  create:    ${report.tagsCreated.length}`);
   console.log(`  update:    ${report.tagsUpdated.length}`);
   console.log(`  unchanged: ${report.tagsUnchanged.length}`);
@@ -565,6 +680,10 @@ async function main() {
     console.log('\n⚠  DRY RUN — re-run with --execute to apply.');
   } else {
     console.log('\n✓ Seed complete.');
+    console.log('\n  RESTART THE SERVER. It caches the tag tree in memory and invalidates that');
+    console.log('  cache on its own writes — it cannot know about this script\'s. Without a');
+    console.log('  restart, changes here take up to 10 minutes to appear, which reads exactly');
+    console.log('  like the seed having silently failed.');
   }
 
   await mongoose.disconnect();

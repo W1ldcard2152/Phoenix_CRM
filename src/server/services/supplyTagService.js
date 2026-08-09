@@ -25,13 +25,20 @@ const CACHE_TTL = 600; // seconds; belt-and-braces behind explicit invalidation
 
 /**
  * The whole tree as a flat array, cached.
- * @returns {Promise<Array>} [{ _id, name, slug, parent, sortOrder, kind, notes }]
+ *
+ * NOTE the projection includes `fields`. Leaving it out silently breaks the
+ * measurement registry everywhere at once — the form renders no inputs and the
+ * resolver finds nothing to require — with no error anywhere, because an absent
+ * binding is indistinguishable from a node that defines no fields. Any new
+ * property on SupplyTag has to be added here too.
+ *
+ * @returns {Promise<Array>} [{ _id, name, slug, parent, sortOrder, kind, fields, notes }]
  */
 const getFlat = async () => {
   const cached = cacheService.get(CACHE_KEY);
   if (cached) return cached;
 
-  const tags = await SupplyTag.find({}, '_id name slug parent sortOrder kind notes')
+  const tags = await SupplyTag.find({}, '_id name slug parent sortOrder kind fields notes')
     .sort({ sortOrder: 1, name: 1 })
     .lean();
 

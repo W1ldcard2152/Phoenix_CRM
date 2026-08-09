@@ -8,6 +8,7 @@ import SupplyForm from '../../components/supplies/SupplyForm';
 import TagPicker from '../../components/supplies/TagPicker';
 import SupplyService from '../../services/supplyService';
 import SettingsService from '../../services/settingsService';
+import { resolveFields } from '../../components/supplies/SupplyAttributes';
 import { indexTags, buildTree, tagPath, idOf } from '../../components/supplies/tagTree';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -27,6 +28,7 @@ const SupplyList = () => {
   const [supplies, setSupplies] = useState([]);
   const [tags, setTags] = useState([]);
   const [vocab, setVocab] = useState([]);
+  const [fields, setFields] = useState([]);
   const [untaggedCount, setUntaggedCount] = useState(0);
   const [markup, setMarkup] = useState(30);
   const [loading, setLoading] = useState(true);
@@ -39,6 +41,9 @@ const SupplyList = () => {
   const [vendorFilter, setVendorFilter] = useState(null);
   const [locationFilter, setLocationFilter] = useState(null);
   const [search, setSearch] = useState('');
+  // { viscosity: '5W-30' } — only meaningful once a tag filter narrows things
+  // to items that actually carry that measurement.
+  const [attrFilters, setAttrFilters] = useState({});
 
   // Selection + modals
   const [selectedIds, setSelectedIds] = useState([]);
@@ -64,13 +69,15 @@ const SupplyList = () => {
 
   const loadReference = useCallback(async () => {
     try {
-      const [tagRes, vocabRes, settingsRes] = await Promise.all([
+      const [tagRes, vocabRes, fieldRes, settingsRes] = await Promise.all([
         SupplyService.getTags(),
         SupplyService.getVocab(),
+        SupplyService.getFields(),
         SettingsService.getSettings()
       ]);
       setTags(tagRes.data.tags);
       setVocab(vocabRes.data.vocab);
+      setFields(fieldRes.data.fields);
       setMarkup(settingsRes.data.settings?.partMarkupPercentage ?? 30);
     } catch (err) {
       setError('Could not load tags and vocabulary.');
@@ -87,6 +94,9 @@ const SupplyList = () => {
       if (vendorFilter) params.vendor = vendorFilter;
       if (locationFilter) params.location = locationFilter;
       if (search.trim()) params.search = search.trim();
+      Object.entries(attrFilters).forEach(([k, v]) => {
+        if (v) params[`attr[${k}]`] = v;
+      });
 
       const res = await SupplyService.getAll(params);
       setSupplies(res.data.supplies);
@@ -97,7 +107,21 @@ const SupplyList = () => {
     } finally {
       setLoading(false);
     }
-  }, [tagFilter, untaggedOnly, brandFilter, vendorFilter, locationFilter, search]);
+  }, [tagFilter, untaggedOnly, brandFilter, vendorFilter, locationFilter, search, attrFilters]);
+
+  // Measurements offered as filters are those the SELECTED TAG defines — the
+  // reason "filter by viscosity" is a coherent question only once you've said
+  // you're looking at engine oil.
+  const filterableFields = useMemo(() => {
+    if (!tagFilter) return [];
+    const { required, optional } = resolveFields([tagFilter], tagFilter, tags);
+    const byId = {};
+    fields.forEach((f) => { byId[String(f._id)] = f; });
+    return [...required, ...optional]
+      .map((id) => byId[id])
+      .filter(Boolean)
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  }, [tagFilter, tags, fields]);
 
   useEffect(() => { loadReference(); }, [loadReference]);
 
@@ -113,9 +137,19 @@ const SupplyList = () => {
     setVendorFilter(null);
     setLocationFilter(null);
     setSearch('');
+    setAttrFilters({});
   };
 
-  const hasFilters = tagFilter || untaggedOnly || brandFilter || vendorFilter || locationFilter || search;
+  // Changing the tag changes which measurements exist, so stale attribute
+  // filters would silently return nothing with no visible cause.
+  const changeTagFilter = (value) => {
+    setTagFilter(value);
+    setUntaggedOnly(false);
+    setAttrFilters({});
+  };
+
+  const hasFilters = tagFilter || untaggedOnly || brandFilter || vendorFilter
+    || locationFilter || search || Object.values(attrFilters).some(Boolean);
 
   // Flat tag options, indented by depth, so a single dropdown can stand in for
   // the deferred browse sidebar without losing the shape of the tree.
@@ -164,6 +198,33 @@ const SupplyList = () => {
     if (!window.confirm(`Remove "${supply.name}" from supplies?`)) return;
     await SupplyService.remove(supply._id);
     loadSupplies();
+  };
+
+  // Measurements shown inline under the name — the point of pulling viscosity
+  // out of the title is that it stays visible without being part of the title.
+  const renderAttributes = (supply) => {
+    const attrs = supply.attributes || {};
+    const entries = Object.entries(attrs).filter(([, v]) => v);
+    if (entries.length === 0) return null;
+
+    const labelFor = (key) => {
+      const f = fields.find((x) => x.key === key);
+      return f ? f.label : key;
+    };
+
+    return (
+      <div className="mt-1 flex flex-wrap gap-1">
+        {entries.map(([key, value]) => (
+          <span
+            key={key}
+            title={labelFor(key)}
+            className="inline-flex items-center px-1.5 py-0.5 text-[11px] rounded bg-blue-50 text-blue-700 border border-blue-100"
+          >
+            {value}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   const renderTags = (supply) => {
@@ -239,7 +300,7 @@ const SupplyList = () => {
               size="md"
               options={tagOptions}
               value={tagFilter}
-              onChange={(v) => { setTagFilter(v); setUntaggedOnly(false); }}
+              onChange={changeTagFilter}
               placeholder="All tags"
               allowClear
               clearLabel="— All tags —"
@@ -296,6 +357,41 @@ const SupplyList = () => {
             </button>
           )}
         </div>
+
+        {/* Measurement filters, offered only for the selected tag. */}
+        {filterableFields.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="flex flex-wrap items-end gap-3">
+              {filterableFields.map((f) => (
+                <div key={String(f._id)} className="w-40">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    {f.label}
+                    {f.unit && <span className="text-gray-400"> ({f.unit})</span>}
+                  </label>
+                  {f.type === 'select' ? (
+                    <SearchableDropdown
+                      size="md"
+                      options={(f.options || []).map((o) => ({ value: o, label: o }))}
+                      value={attrFilters[f.key] || null}
+                      onChange={(v) => setAttrFilters((prev) => ({ ...prev, [f.key]: v || '' }))}
+                      placeholder="Any"
+                      allowClear
+                      clearLabel="— Any —"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={attrFilters[f.key] || ''}
+                      onChange={(e) => setAttrFilters((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder="Any"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Card>
 
       {selectedIds.length > 0 && isOfficeStaff && (
@@ -391,6 +487,7 @@ const SupplyList = () => {
                     <td className="px-4 py-2">
                       <div className="text-sm font-medium text-gray-900">{s.name}</div>
                       {s.partNumber && <div className="text-xs text-gray-400">{s.partNumber}</div>}
+                      {renderAttributes(s)}
                     </td>
                     <td className="px-4 py-2">{renderTags(s)}</td>
                     <td className="px-4 py-2 text-sm text-gray-600">
@@ -483,6 +580,7 @@ const SupplyList = () => {
         onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
         vocab={vocab}
         tags={tags}
+        fields={fields}
         markupPercentage={markup}
         initial={editing}
         lastUsed={lastUsed}

@@ -22,6 +22,8 @@ router.post('/tags', admin, supplyController.createTag);
 router.patch('/tags/:id', admin, supplyController.updateTag);
 router.delete('/tags/:id', admin, supplyController.deleteTag);
 
+router.get('/fields', supplyController.getFields);
+
 router.get('/vocab', supplyController.getVocab);
 router.post('/vocab', officeStaff, supplyController.createVocab);
 router.patch('/vocab/:id', admin, supplyController.updateVocab);

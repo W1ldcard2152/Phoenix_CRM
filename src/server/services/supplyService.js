@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const ShopSupply = require('../models/ShopSupply');
 const SupplyTag = require('../models/SupplyTag');
 const SupplyVocab = require('../models/SupplyVocab');
+const SupplyField = require('../models/SupplyField');
 const SupplyMovement = require('../models/SupplyMovement');
 const Settings = require('../models/Settings');
 const supplyTagService = require('./supplyTagService');
@@ -37,7 +38,8 @@ const SUPPLY_FIELDS = [
   'form', 'location',
   'stockUnit', 'purchaseUnit', 'unitsPerPurchase',
   'reorderPoint', 'cost', 'price', 'priceOverridden',
-  'sdsUrl', 'url', 'notes', 'isActive'
+  'sdsUrl', 'url', 'notes', 'isActive',
+  'attributes'
 ];
 
 // Quantity is set at creation and thereafter only moves through adjustQuantity,
@@ -79,6 +81,42 @@ const getMarkupPercentage = async () => {
   return settings.partMarkupPercentage;
 };
 
+/**
+ * Strip attribute keys that aren't in the field registry.
+ *
+ * Mandatory, not defensive: `attributes` is a Map written straight into the
+ * document, so an unchecked key is a client-controlled path. Whitelisting
+ * against the registry also keeps the data honest — an attribute nothing
+ * defines is invisible to every filter and every form, so writing one would
+ * silently lose the value.
+ *
+ * Empty values delete the key rather than storing '' — a blank measurement is
+ * an absent one, and storing it would make "has a viscosity" untrue-but-present.
+ */
+const sanitizeAttributes = async (attributes) => {
+  if (!attributes || typeof attributes !== 'object') return undefined;
+
+  const known = await SupplyField.find({}, 'key').lean();
+  const allowed = new Set(known.map((f) => f.key));
+
+  const clean = {};
+  const rejected = [];
+  Object.entries(attributes).forEach(([key, value]) => {
+    const k = String(key).toLowerCase();
+    if (!allowed.has(k)) { rejected.push(key); return; }
+    const v = value === null || value === undefined ? '' : String(value).trim();
+    if (v !== '') clean[k] = v;
+  });
+
+  if (rejected.length > 0) {
+    console.warn(`[supplies] Dropped unknown attribute key(s): ${rejected.join(', ')}`);
+  }
+
+  return clean;
+};
+
+const listFields = async () => SupplyField.find({}).sort({ sortOrder: 1, label: 1 }).lean();
+
 // ───────────────────────────────── Supplies ─────────────────────────────────
 
 /**
@@ -88,8 +126,20 @@ const getMarkupPercentage = async () => {
  * closure table or $graphLookup here.
  */
 const listSupplies = async (query = {}) => {
-  const { tag, untagged, brand, vendor, form, location, search, active } = query;
+  const { tag, untagged, brand, vendor, form, location, search, active, attr } = query;
   const filter = { isActive: active === 'false' ? false : true };
+
+  // attr[viscosity]=5W-30 — keys whitelisted against the registry so a crafted
+  // key can't address an arbitrary document path.
+  if (attr && typeof attr === 'object') {
+    const known = await SupplyField.find({}, 'key').lean();
+    const allowed = new Set(known.map((f) => f.key));
+    Object.entries(attr).forEach(([key, value]) => {
+      const k = String(key).toLowerCase();
+      if (!allowed.has(k) || value === '' || value === undefined) return;
+      filter[`attributes.${k}`] = String(value);
+    });
+  }
 
   if (untagged === 'true') {
     filter.tags = { $size: 0 };
@@ -124,6 +174,10 @@ const createSupply = async (body, userId) => {
 
   const check = validateTagAssignment(data.tags, data.primaryTag);
   if (!check.ok) throw new SupplyError(check.error, 400, { code: check.code });
+
+  if (data.attributes !== undefined) {
+    data.attributes = await sanitizeAttributes(data.attributes);
+  }
 
   data.price = resolvePrice(data, await getMarkupPercentage());
 
@@ -163,6 +217,13 @@ const updateSupply = async (id, body) => {
 
   const check = validateTagAssignment(nextTags, nextPrimary);
   if (!check.ok) throw new SupplyError(check.error, 400, { code: check.code });
+
+  if (data.attributes !== undefined) {
+    // Whole-map replace, not a merge: the form always submits the full set for
+    // the item's current fields, and a merge would strand the value of a field
+    // that stopped applying when the primary tag changed.
+    data.attributes = await sanitizeAttributes(data.attributes);
+  }
 
   const touchesPricing = ['cost', 'unitsPerPurchase', 'price', 'priceOverridden']
     .some((f) => data[f] !== undefined);
@@ -505,6 +566,7 @@ module.exports = {
   bulkUpdate,
   getShoppingList,
   countUntagged,
+  listFields,
   listTags,
   createTag,
   updateTag,
