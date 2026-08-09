@@ -68,6 +68,44 @@ const SupplyService = {
     }
   },
 
+  /**
+   * Attach a photo. Accepts a File from an <input type="file"> or a Blob from a
+   * clipboard paste — a pasted blob has no name, so one is supplied.
+   */
+  uploadPhoto: async (id, fileOrBlob) => {
+    try {
+      const form = new FormData();
+      const name = fileOrBlob.name || `pasted-${Date.now()}.png`;
+      form.append('photo', fileOrBlob, name);
+      const response = await API.post(`/supplies/${id}/photo`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error uploading photo for supply ${id}:`, error);
+      throw error;
+    }
+  },
+
+  deletePhoto: async (id) => {
+    try {
+      const response = await API.delete(`/supplies/${id}/photo`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error deleting photo for supply ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Same-origin src for an item photo. Keyed on photoUpdatedAt so replacing a
+   * photo busts the browser cache; returns null when there is no photo.
+   */
+  photoUrl: (supply) => (supply?.photoKey
+    ? `/api/supplies/${supply._id}/photo?v=${new Date(supply.photoUpdatedAt || 0).getTime()}`
+    : null),
+
   bulkUpdate: async (ids, set) => {
     try {
       const response = await API.patch('/supplies/bulk', { ids, set });

@@ -106,6 +106,14 @@ const ShopSupplySchema = new Schema({
   url: { type: String, trim: true },
   notes: { type: String, trim: true },
 
+  // S3 object key for the item photo. Server-set ONLY — deliberately absent
+  // from the writable field allow-list in supplyService. If a client could PATCH
+  // this, it could point a supply at any key in the bucket and read it back
+  // through the photo stream route.
+  photoKey: { type: String, default: null },
+  // Cache-buster for the <img> src, so replacing a photo shows the new one.
+  photoUpdatedAt: { type: Date, default: null },
+
   isActive: {
     type: Boolean,
     default: true

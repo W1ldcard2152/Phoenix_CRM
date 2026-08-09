@@ -1,6 +1,16 @@
+const multer = require('multer');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const supplyService = require('../services/supplyService');
+const { imageFilter } = require('../utils/uploadFilters');
+
+// Photos arrive either as a picked file or as a pasted clipboard blob; both are
+// plain multipart uploads by the time they reach here.
+exports.photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: imageFilter
+}).single('photo');
 
 /**
  * Shop supplies (new module). Lives beside inventoryController, which is
@@ -78,6 +88,39 @@ exports.deleteSupply = run(async (req, res, next) => {
 
 exports.adjustQuantity = run(async (req, res, next) => {
   const supply = await supplyService.adjustQuantity(req.params.id, req.body, req.user._id);
+  if (!supply) return next(new AppError('No supply found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { supply } });
+});
+
+exports.uploadPhoto = run(async (req, res, next) => {
+  if (!req.file) return next(new AppError('Please provide an image', 400));
+
+  const supply = await supplyService.setPhoto(req.params.id, req.file);
+  if (!supply) return next(new AppError('No supply found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { supply } });
+});
+
+/**
+ * Stream the photo back same-origin rather than handing out a presigned S3 URL.
+ *
+ * The client talks to /api through a proxy, so an <img src="/api/supplies/:id/photo">
+ * carries the auth cookie automatically — which a cross-origin S3 URL could not
+ * do — and the src never expires, so a page left open overnight still renders.
+ * Mirrors the company-logo route, except this one stays behind `protect`.
+ */
+exports.getPhoto = run(async (req, res, next) => {
+  const file = await supplyService.getPhotoStream(req.params.id);
+  if (!file || !file.body) return next(new AppError('No photo for that supply', 404));
+
+  res.set('Content-Type', file.contentType || 'image/png');
+  if (file.contentLength) res.set('Content-Length', String(file.contentLength));
+  // Private: it's behind auth, so let the browser cache it but not any shared proxy.
+  res.set('Cache-Control', 'private, max-age=86400');
+  file.body.pipe(res);
+});
+
+exports.deletePhoto = run(async (req, res, next) => {
+  const supply = await supplyService.clearPhoto(req.params.id);
   if (!supply) return next(new AppError('No supply found with that ID', 404));
   res.status(200).json({ status: 'success', data: { supply } });
 });

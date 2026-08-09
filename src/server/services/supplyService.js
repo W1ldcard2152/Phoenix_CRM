@@ -5,6 +5,7 @@ const SupplyVocab = require('../models/SupplyVocab');
 const SupplyMovement = require('../models/SupplyMovement');
 const Settings = require('../models/Settings');
 const supplyTagService = require('./supplyTagService');
+const s3Service = require('./s3Service');
 const escapeRegex = require('../utils/escapeRegex');
 const { resolvePrice } = require('../utils/supplyPricing');
 const {
@@ -205,6 +206,65 @@ const adjustQuantity = async (id, { quantity, type = 'adjust', unit, note }, use
   });
 
   return updated;
+};
+
+/**
+ * Attach (or replace) an item photo.
+ *
+ * The S3 key never comes from the client — it is minted here from the uploaded
+ * buffer. `photoKey` is deliberately not in SUPPLY_FIELDS for the same reason:
+ * a client-settable key would turn the photo stream route into a way to read
+ * any object in the bucket.
+ */
+const setPhoto = async (id, file) => {
+  const supply = await ShopSupply.findById(id).lean();
+  if (!supply) return null;
+
+  const upload = await s3Service.uploadFile(file.buffer, file.originalname || 'supply.png', file.mimetype);
+  if (!upload.key) {
+    throw new SupplyError('Photo storage is not configured on this server.', 500);
+  }
+
+  const updated = await ShopSupply.findByIdAndUpdate(
+    id,
+    { $set: { photoKey: upload.key, photoUpdatedAt: new Date() } },
+    { new: true }
+  ).lean();
+
+  // Best-effort cleanup of the replaced object; a leaked S3 object is a far
+  // smaller problem than failing the user's upload after it already succeeded.
+  if (supply.photoKey && supply.photoKey !== upload.key) {
+    try { await s3Service.deleteFile(supply.photoKey); } catch (err) {
+      console.error('[supplies] Failed to delete replaced photo:', err.message);
+    }
+  }
+
+  return updated;
+};
+
+const clearPhoto = async (id) => {
+  const supply = await ShopSupply.findById(id).lean();
+  if (!supply) return null;
+
+  const updated = await ShopSupply.findByIdAndUpdate(
+    id,
+    { $set: { photoKey: null, photoUpdatedAt: null } },
+    { new: true }
+  ).lean();
+
+  if (supply.photoKey) {
+    try { await s3Service.deleteFile(supply.photoKey); } catch (err) {
+      console.error('[supplies] Failed to delete photo object:', err.message);
+    }
+  }
+
+  return updated;
+};
+
+const getPhotoStream = async (id) => {
+  const supply = await ShopSupply.findById(id, 'photoKey').lean();
+  if (!supply || !supply.photoKey) return null;
+  return s3Service.getFileStream(supply.photoKey);
 };
 
 const getMovements = async (id, limit = 50) => SupplyMovement.find({ supply: id })
@@ -438,6 +498,9 @@ module.exports = {
   updateSupply,
   deleteSupply,
   adjustQuantity,
+  setPhoto,
+  clearPhoto,
+  getPhotoStream,
   getMovements,
   bulkUpdate,
   getShoppingList,

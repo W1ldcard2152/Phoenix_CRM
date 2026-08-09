@@ -347,6 +347,7 @@ const SupplyList = () => {
                     />
                   </th>
                 )}
+                <th className="px-2 py-2 w-12"></th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tags</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
@@ -373,6 +374,20 @@ const SupplyList = () => {
                         />
                       </td>
                     )}
+                    <td className="px-2 py-2">
+                      {SupplyService.photoUrl(s) ? (
+                        <img
+                          src={SupplyService.photoUrl(s)}
+                          alt=""
+                          loading="lazy"
+                          className="w-10 h-10 rounded object-cover border border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-gray-100 border border-gray-200 flex items-center justify-center">
+                          <i className="fas fa-image text-gray-300 text-xs"></i>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2">
                       <div className="text-sm font-medium text-gray-900">{s.name}</div>
                       {s.partNumber && <div className="text-xs text-gray-400">{s.partNumber}</div>}
@@ -423,9 +438,19 @@ const SupplyList = () => {
             {supplies.map((s) => (
               <MobileCard key={String(s._id)}>
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-medium text-gray-900">{s.name}</div>
-                    {s.partNumber && <div className="text-xs text-gray-400">{s.partNumber}</div>}
+                  <div className="flex items-start gap-3 min-w-0">
+                    {SupplyService.photoUrl(s) && (
+                      <img
+                        src={SupplyService.photoUrl(s)}
+                        alt=""
+                        loading="lazy"
+                        className="w-12 h-12 rounded object-cover border border-gray-200 shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900">{s.name}</div>
+                      {s.partNumber && <div className="text-xs text-gray-400">{s.partNumber}</div>}
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm text-gray-700">{s.quantityOnHand}</div>
@@ -454,6 +479,7 @@ const SupplyList = () => {
         isOpen={formOpen}
         onClose={() => { setFormOpen(false); setEditing(null); loadSupplies(); }}
         onSaved={(used) => { setLastUsed(used); loadSupplies(); }}
+        onRefresh={loadSupplies}
         onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
         vocab={vocab}
         tags={tags}

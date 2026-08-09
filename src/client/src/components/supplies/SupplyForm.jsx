@@ -3,6 +3,7 @@ import Modal from '../common/Modal';
 import Button from '../common/Button';
 import SearchableDropdown from '../common/SearchableDropdown';
 import TagPicker from './TagPicker';
+import SupplyPhoto from './SupplyPhoto';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -32,13 +33,18 @@ const EMPTY = {
 const round2 = (n) => parseFloat(Number(n).toFixed(2));
 
 const SupplyForm = ({
-  isOpen, onClose, onSaved, vocab = [], tags = [],
+  isOpen, onClose, onSaved, onRefresh, vocab = [], tags = [],
   markupPercentage = 30, initial = null, lastUsed = {}, onVocabAdded
 }) => {
   const [data, setData] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  // A photo pasted while creating: there is no id to POST to until the item
+  // exists, so hold the blob and upload it right after the create call.
+  const [pendingPhoto, setPendingPhoto] = useState(null);
+  const [savedSupply, setSavedSupply] = useState(null);
+  const [photoNonce, setPhotoNonce] = useState(0);
   const nameRef = useRef(null);
 
   const byId = useMemo(() => indexTags(tags), [tags]);
@@ -51,6 +57,9 @@ const SupplyForm = ({
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setPendingPhoto(null);
+    setSavedSupply(initial || null);
+    setPhotoNonce((n) => n + 1);
     if (initial) {
       setData({
         ...EMPTY,
@@ -121,11 +130,24 @@ const SupplyForm = ({
     setError(null);
     try {
       const payload = { ...data, name: data.name.trim() };
+      let photoFailed = false;
+
       if (isEditing) {
         delete payload.quantityOnHand; // moves only through /adjust
         await SupplyService.update(initial._id, payload);
       } else {
-        await SupplyService.create(payload);
+        const res = await SupplyService.create(payload);
+        // The item exists now, so a photo pasted during entry has somewhere to
+        // go. A failure here must not read as "the item didn't save" — it did.
+        if (pendingPhoto) {
+          try {
+            await SupplyService.uploadPhoto(res.data.supply._id, pendingPhoto);
+          } catch (photoErr) {
+            photoFailed = true;
+            setError('Item saved, but the photo failed to upload. Edit the item to add it.');
+          }
+          setPendingPhoto(null);
+        }
       }
 
       onSaved?.({
@@ -133,6 +155,11 @@ const SupplyForm = ({
         stockUnit: data.stockUnit,
         primaryTag: data.primaryTag
       });
+
+      // Hold the modal open on a photo failure — closing would take the only
+      // notice of it off screen, and the item would look photo-less for no
+      // stated reason.
+      if (photoFailed) return;
 
       if (addAnother) {
         // Keep location / unit / primary tag; clear what's item-specific.
@@ -144,6 +171,8 @@ const SupplyForm = ({
           tags: prev.primaryTag ? [prev.primaryTag] : [],
           primaryTag: prev.primaryTag
         }));
+        setSavedSupply(null);
+        setPhotoNonce((n) => n + 1);
         nameRef.current?.focus();
       } else {
         onClose();
@@ -182,16 +211,32 @@ const SupplyForm = ({
             </div>
           )}
 
-          <div>
-            <label className={label}>Name *</label>
-            <input
-              ref={nameRef}
-              type="text"
-              value={data.name}
-              onChange={(e) => set('name', e.target.value)}
-              className={field}
-              placeholder="e.g. Brake &amp; Parts Cleaner"
-            />
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-0">
+              <label className={label}>Name *</label>
+              <input
+                ref={nameRef}
+                type="text"
+                value={data.name}
+                onChange={(e) => set('name', e.target.value)}
+                className={field}
+                placeholder="e.g. Brake &amp; Parts Cleaner"
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                A photo of the label is usually faster to recognise on the shelf than the name.
+              </p>
+            </div>
+            <div>
+              <label className={label}>Photo</label>
+              <SupplyPhoto
+                // Remounting on reset clears the pasted-blob preview; without
+                // this, Save & Next would carry the last item's photo on screen.
+                key={photoNonce}
+                supply={savedSupply}
+                onPendingChange={setPendingPhoto}
+                onUploaded={(updated) => { setSavedSupply(updated); onRefresh?.(); }}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

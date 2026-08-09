@@ -38,4 +38,10 @@ router.patch('/:id', officeStaff, supplyController.updateSupply);
 router.delete('/:id', officeStaff, supplyController.deleteSupply);
 router.patch('/:id/adjust', officeStaff, supplyController.adjustQuantity);
 
+// Photo. GET is read-only so technicians can see what they're looking for on
+// the shelf; writing needs office staff like every other item mutation.
+router.get('/:id/photo', supplyController.getPhoto);
+router.post('/:id/photo', officeStaff, supplyController.photoUpload, supplyController.uploadPhoto);
+router.delete('/:id/photo', officeStaff, supplyController.deletePhoto);
+
 module.exports = router;
