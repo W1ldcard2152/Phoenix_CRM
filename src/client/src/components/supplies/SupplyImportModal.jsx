@@ -434,7 +434,7 @@ const SupplyImportModal = ({
                       value={current.draft.qualifier}
                       onChange={(e) => patchDraft(index, { qualifier: e.target.value })}
                       className={inputCls}
-                      placeholder="e.g. full synthetic, dexos-d"
+                      placeholder="e.g. High Mileage, Full Synthetic"
                     />
                   </div>
 

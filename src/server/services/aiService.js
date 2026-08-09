@@ -607,7 +607,17 @@ Extract these fields:
 1. brand - The manufacturer ONLY, exactly as printed ("Mobil 1", "Valvoline", "Bosch", "3M"). NEVER include the part number or product type. Empty string if not visible.
 2. partNumber - The manufacturer part number / SKU / model ONLY ("3330", "OX387D"). NEVER include the brand. Empty string if not printed.
 3. productType - A short generic noun for what this is ("engine oil", "oil filter", "masking tape"). No brand, no marketing words.
-4. qualifier - Distinguishing descriptors printed on the label that are NOT captured by the fields below: "full synthetic", "dexos-d", "high mileage", "with friction modifier", "pre-filled with oil". Keep it short and lowercase. Empty string if there is nothing meaningful.
+4. qualifier - The product VARIANT, in Title Case. At most three short terms, comma-separated.
+
+   The test: would this distinguish two otherwise-identical products from the same brand? A shop stocking two Mobil 1 5W-30 oils tells them apart by "High Mileage" vs "Extended Performance" — those are variants. Everything else on the bottle is advertising.
+
+   KEEP: product-line variants ("High Mileage", "Extended Performance", "Heavy Duty"), base chemistry ("Full Synthetic", "Synthetic Blend", "Conventional"), formal specs and certifications printed as codes ("dexos1", "API SN", "ILSAC GF-6") — leave codes in their printed form rather than re-casing them, and functional notes about how it is supplied ("Pre-Filled With Oil", "With Friction Modifier").
+
+   DROP: intensifiers and superlatives ("Advanced", "Ultimate", "Premium", "Maximum", "Pro"); restatements of something already captured elsewhere ("For Engines Over 75,000 Miles" merely repeats High Mileage; "5W-30" is already a measurement); compatibility and application claims ("Suitable For Hybrids", "For Gasoline Engines", "Fits Most Vehicles"); performance and benefit claims ("Cleans Sludge", "Extends Engine Life", "Superior Protection"); volume or count ("5 Quart") — that is packageQuantity.
+
+   Worked example. Label reads: "high mileage, advanced full synthetic, for engines over 75,000 miles, suitable for hybrids". Correct answer: "High Mileage, Full Synthetic". "Advanced" is an intensifier, "for engines over 75,000 miles" restates High Mileage, and "suitable for hybrids" is an application claim.
+
+   Empty string if nothing survives those rules. Most labels yield one or two terms; a long qualifier means advertising has been let in.
 5. tagSlug - Where this belongs, chosen from the CATEGORIES list below. Use the slug EXACTLY as written there. Choose the most specific category you are confident in. If you are not reasonably sure, return an empty string — a wrong category is much worse than none.
 6. confidence - "high", "medium" or "low": how sure you are about tagSlug.
 7. attributes - An object of measurements printed on the label. Use ONLY the keys from the MEASUREMENTS list below, and only ones that apply to this product. For a key that lists allowed values, return one of those values EXACTLY as written. Omit any measurement not printed on the label. Return {} if none apply.
@@ -659,7 +669,16 @@ Return a single JSON object with exactly these keys: brand, partNumber, productT
       brand: formatBrandName(parsed.brand || '', overridesMap),
       partNumber: String(parsed.partNumber || '').trim(),
       productType: String(parsed.productType || '').trim(),
-      qualifier: String(parsed.qualifier || '').trim(),
+      // Belt and braces on the three-term rule — models drift back toward the
+      // marketing copy on the bottle. Terms are NOT re-cased here: the prompt
+      // deliberately keeps spec codes as printed ("dexos1", "API SN"), and
+      // title-casing would mangle them.
+      qualifier: String(parsed.qualifier || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', '),
       tagSlug: String(parsed.tagSlug || '').trim().toLowerCase(),
       confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
       attributes: (parsed.attributes && typeof parsed.attributes === 'object' && !Array.isArray(parsed.attributes))

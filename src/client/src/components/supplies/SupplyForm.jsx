@@ -239,7 +239,7 @@ const SupplyForm = ({
                   value={data.qualifier}
                   onChange={(e) => set('qualifier', e.target.value)}
                   className={field}
-                  placeholder="e.g. full synthetic, dexos-d"
+                  placeholder="e.g. High Mileage, Full Synthetic"
                 />
               </div>
 

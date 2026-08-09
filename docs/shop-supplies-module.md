@@ -340,9 +340,16 @@ stale. So `displayName` is composed on read:
 
 ```
 Brand  PartNumber  Measurements  Noun  (Qualifier)
-Mobil 1            5W-30         Engine Oil  (full synthetic, dexos-d)
-Bosch  3330                      Oil Filter  (pre-filled with oil)
+Mobil 1            5W-30         Engine Oil  (High Mileage, Full Synthetic)
+Bosch  3330                      Oil Filter  (Pre-Filled With Oil)
 ```
+
+The qualifier is the product **variant**, Title Case, at most three terms. The
+test is whether it would distinguish two otherwise-identical products from the
+same brand: "High Mileage" would, "Suitable For Hybrids" would not. Intensifiers
+("Advanced"), restatements of a captured measurement, and application or benefit
+claims are all advertising and are excluded — the label extractor's prompt
+enumerates them, and caps the result at three terms regardless.
 
 Only measurements from the **primary tag** are used — a secondary tag describes
 the item's other door, not its identity. `SupplyTag.noun` carries the standalone
