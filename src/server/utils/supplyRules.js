@@ -246,6 +246,64 @@ const validateTagAssignment = (tags, primaryTag, options = {}) => {
   return { ok: true };
 };
 
+/**
+ * Compute what a bulk tag change would do to each item, and which items it
+ * would break.
+ *
+ * PATCH /bulk must preflight the WHOLE batch before writing anything (§6a).
+ * Failing on the first offender leaves the user guessing which of forty
+ * selected rows was the problem; applying partially is worse still, because
+ * half the batch silently succeeded. So this returns every violation at once
+ * and the caller writes nothing unless the list is empty.
+ *
+ * Pure — takes plain item states, does no I/O.
+ *
+ * @param {Array} items - [{ _id, name, tags, primaryTag }]
+ * @param {object} set - { addTags?, removeTags?, primaryTag? }
+ * @returns {{ results: Array, violations: Array }}
+ */
+const previewBulkTagChanges = (items, set = {}) => {
+  const addTags = (set.addTags || []).map(idOf).filter(Boolean);
+  const removeTags = new Set((set.removeTags || []).map(idOf).filter(Boolean));
+  // `primaryTag` present but null is an explicit "clear it"; absent means
+  // "leave it alone". Those are different intents and must not collapse.
+  const primaryTagProvided = Object.prototype.hasOwnProperty.call(set, 'primaryTag');
+  const nextPrimaryProvided = primaryTagProvided ? idOf(set.primaryTag) : undefined;
+
+  const results = [];
+  const violations = [];
+
+  (items || []).forEach((item) => {
+    const currentTags = (item.tags || []).map(idOf).filter(Boolean);
+    const kept = currentTags.filter((t) => !removeTags.has(t));
+    const nextTags = Array.from(new Set([...kept, ...addTags]));
+
+    const currentPrimary = idOf(item.primaryTag);
+    let nextPrimary = primaryTagProvided ? nextPrimaryProvided : currentPrimary;
+
+    // A removed tag that was the primary orphans it. Never auto-promote a
+    // survivor — array order would silently decide the canonical home.
+    if (!primaryTagProvided && currentPrimary && removeTags.has(currentPrimary)) {
+      nextPrimary = null;
+    }
+
+    const check = validateTagAssignment(nextTags, nextPrimary);
+    if (!check.ok) {
+      violations.push({
+        _id: idOf(item._id),
+        name: item.name || '',
+        code: check.code,
+        error: check.error
+      });
+      return;
+    }
+
+    results.push({ _id: idOf(item._id), tags: nextTags, primaryTag: nextPrimary });
+  });
+
+  return { results, violations };
+};
+
 module.exports = {
   MAX_JUDGMENT_TIERS,
   idOf,
@@ -255,5 +313,6 @@ module.exports = {
   validateTagPlacement,
   validateSubtreePlacement,
   collectDescendantIds,
-  validateTagAssignment
+  validateTagAssignment,
+  previewBulkTagChanges
 };

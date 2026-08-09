@@ -15,7 +15,8 @@ const {
   validateTagPlacement,
   validateSubtreePlacement,
   collectDescendantIds,
-  validateTagAssignment
+  validateTagAssignment,
+  previewBulkTagChanges
 } = require('../../utils/supplyRules');
 
 const oid = () => new mongoose.Types.ObjectId();
@@ -282,6 +283,129 @@ describe('validateSubtreePlacement', () => {
     const result = validateSubtreePlacement(x, byId);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/cycle/);
+  });
+});
+
+describe('previewBulkTagChanges', () => {
+  let tagA;
+  let tagB;
+  let tagC;
+  let items;
+
+  beforeEach(() => {
+    tagA = oid();
+    tagB = oid();
+    tagC = oid();
+    items = [
+      { _id: oid(), name: 'Brake Cleaner', tags: [tagA, tagB], primaryTag: tagA },
+      { _id: oid(), name: 'Shop Towels', tags: [tagB], primaryTag: tagB }
+    ];
+  });
+
+  it('adds tags without disturbing the primary', () => {
+    const { results, violations } = previewBulkTagChanges(items, { addTags: [tagC] });
+
+    expect(violations).toHaveLength(0);
+    expect(results[0].tags).toEqual(expect.arrayContaining([String(tagA), String(tagB), String(tagC)]));
+    expect(results[0].primaryTag).toBe(String(tagA));
+  });
+
+  it('does not duplicate a tag the item already has', () => {
+    const { results } = previewBulkTagChanges(items, { addTags: [tagB] });
+    expect(results[0].tags).toHaveLength(2);
+  });
+
+  it('flags an item whose primary tag would be removed', () => {
+    const { results, violations } = previewBulkTagChanges(items, { removeTags: [tagA] });
+
+    // Item 1 loses its primary; item 2 is untouched by this removal.
+    expect(violations).toHaveLength(1);
+    expect(violations[0].name).toBe('Brake Cleaner');
+    expect(violations[0].code).toBe('MISSING_PRIMARY');
+    expect(results).toHaveLength(1);
+    expect(results[0].primaryTag).toBe(String(tagB));
+  });
+
+  it('accepts the same removal when a replacement primary is supplied', () => {
+    const { results, violations } = previewBulkTagChanges(items, {
+      removeTags: [tagA],
+      primaryTag: tagB
+    });
+
+    expect(violations).toHaveLength(0);
+    expect(results).toHaveLength(2);
+    expect(results[0].primaryTag).toBe(String(tagB));
+  });
+
+  it('reports every offender, not just the first', () => {
+    // Both items keep a tag but lose their primary. Failing on the first would
+    // leave the user guessing which of a long selection was the problem.
+    const batch = [
+      { _id: oid(), name: 'Brake Cleaner', tags: [tagA, tagB], primaryTag: tagA },
+      { _id: oid(), name: 'Shop Towels', tags: [tagA, tagC], primaryTag: tagA }
+    ];
+    const { results, violations } = previewBulkTagChanges(batch, { removeTags: [tagA] });
+
+    expect(violations).toHaveLength(2);
+    expect(violations.map((v) => v.name)).toEqual(['Brake Cleaner', 'Shop Towels']);
+    expect(results).toHaveLength(0);
+  });
+
+  it('allows stripping every tag — that returns the item to the untagged pool', () => {
+    // Not a violation: no tags and no primary is the legitimate untagged state,
+    // and the Untagged filter is how such an item gets found again. Only a
+    // half-tagged item (tags but no primary) is invisible to everything.
+    const { results, violations } = previewBulkTagChanges(items, {
+      removeTags: [tagA, tagB]
+    });
+
+    expect(violations).toHaveLength(0);
+    expect(results).toHaveLength(2);
+    expect(results[0].tags).toEqual([]);
+    expect(results[0].primaryTag).toBeNull();
+  });
+
+  it('rejects a replacement primary that is not among the resulting tags', () => {
+    const { violations } = previewBulkTagChanges(items, { primaryTag: tagC });
+
+    expect(violations).toHaveLength(2);
+    expect(violations[0].code).toBe('PRIMARY_NOT_IN_TAGS');
+  });
+
+  it('distinguishes an explicit primaryTag:null from an absent one', () => {
+    // Explicit null means "clear it" and must be rejected for a tagged item...
+    expect(previewBulkTagChanges(items, { primaryTag: null }).violations).toHaveLength(2);
+    // ...while omitting the key entirely leaves each item's primary alone.
+    expect(previewBulkTagChanges(items, { addTags: [tagC] }).violations).toHaveLength(0);
+  });
+
+  it('never auto-promotes a survivor when the primary is removed', () => {
+    const { results, violations } = previewBulkTagChanges(
+      [{ _id: oid(), name: 'Two Tags', tags: [tagA, tagB, tagC], primaryTag: tagA }],
+      { removeTags: [tagA] }
+    );
+
+    // tagB and tagC both survive. Picking one would let array order decide the
+    // canonical home, so the whole item is rejected instead.
+    expect(results).toHaveLength(0);
+    expect(violations).toHaveLength(1);
+  });
+
+  it('handles an untagged item receiving its first tag and primary', () => {
+    const untagged = [{ _id: oid(), name: 'Fresh Import', tags: [], primaryTag: null }];
+    const { results, violations } = previewBulkTagChanges(untagged, {
+      addTags: [tagA],
+      primaryTag: tagA
+    });
+
+    expect(violations).toHaveLength(0);
+    expect(results[0].tags).toEqual([String(tagA)]);
+    expect(results[0].primaryTag).toBe(String(tagA));
+  });
+
+  it('leaves untagged items alone when only a location is being set', () => {
+    const untagged = [{ _id: oid(), name: 'Fresh Import', tags: [], primaryTag: null }];
+    expect(previewBulkTagChanges(untagged, {}).violations).toHaveLength(0);
   });
 });
 
