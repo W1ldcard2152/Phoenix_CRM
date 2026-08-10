@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import InventoryService from '../../services/inventoryService';
+import SupplyService from '../../services/supplyService';
 
 const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage, isLoading }) => {
   const [stockValidation, setStockValidation] = useState(null);
@@ -18,7 +19,36 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
         const validationResults = [];
 
         for (const item of servicePackage.includedItems || []) {
-          if (item.inventoryItemId) {
+          // New package lines draw from shop supplies; lines drafted before the
+          // switch still carry an inventory item. Branch the same way the
+          // server's commit does, or a supply-backed line would report "no
+          // item linked" while the server happily deducts from it.
+          if (item.shopSupplyId) {
+            const response = await SupplyService.getOne(item.shopSupplyId);
+            const supply = response.data?.supply;
+
+            if (!supply || !supply.isActive) {
+              validationResults.push({
+                name: item.name,
+                status: 'error',
+                message: 'Supply not found or inactive',
+                needed: item.quantity,
+                available: 0,
+                unit: ''
+              });
+            } else {
+              const hasEnough = supply.quantityOnHand >= item.quantity;
+              validationResults.push({
+                name: supply.displayName || item.name,
+                status: hasEnough ? 'ok' : 'insufficient',
+                message: hasEnough ? 'Stock available' : 'Insufficient stock',
+                needed: item.quantity,
+                available: supply.quantityOnHand,
+                unit: '',
+                supplyId: supply._id
+              });
+            }
+          } else if (item.inventoryItemId) {
             const response = await InventoryService.getItem(item.inventoryItemId);
             const invItem = response.data?.item;
 
@@ -47,7 +77,7 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
             validationResults.push({
               name: item.name,
               status: 'warning',
-              message: 'No inventory item linked',
+              message: 'Nothing picked for this line — it will not draw stock',
               needed: item.quantity,
               available: 'N/A',
               unit: item.unit || ''
@@ -173,16 +203,18 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
                         </div>
                       </div>
                     </div>
-                    {item.status === 'insufficient' && item.inventoryItemId && (
+                    {item.status === 'insufficient' && (item.supplyId || item.inventoryItemId) && (
                       <div className="mt-2 pt-2 border-t border-current border-opacity-20">
                         <a
-                          href={`/inventory/${item.inventoryItemId}`}
+                          // Supply-backed lines link to the supplies list; the
+                          // old inventory detail route doesn't know them.
+                          href={item.supplyId ? '/supplies' : `/inventory/${item.inventoryItemId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm font-medium hover:underline inline-flex items-center"
                         >
                           <i className="fas fa-external-link-alt mr-1"></i>
-                          View in Inventory
+                          {item.supplyId ? 'View in Shop Supplies' : 'View in Inventory'}
                         </a>
                       </div>
                     )}
