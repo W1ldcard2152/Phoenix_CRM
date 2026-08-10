@@ -2,13 +2,24 @@ const twilio = require('twilio');
 const AppError = require('../utils/appError');
 const { formatDate, formatTime } = require('../config/timezone');
 
-// Initialize Twilio client
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
+// SMS is optional per deployment. The Twilio SDK throws at construction when the
+// credentials are missing or malformed, and this module is required at boot by
+// workOrderController and appointmentController — so an unguarded init takes the
+// whole app down on any deployment that has no Twilio account (new tenants, local
+// dev). Guard the init and fail per-call instead. Mirrors s3Service.
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
+// Twilio account SIDs always start with "AC"; placeholder values throw the same
+// way missing ones do, so check the shape rather than mere presence.
+const smsEnabled = Boolean(accountSid && authToken && accountSid.startsWith('AC'));
+
+if (!smsEnabled) {
+  console.warn('Twilio credentials are not set or invalid. SMS/MMS operations will be disabled.');
+}
+
+const client = smsEnabled ? twilio(accountSid, authToken) : null;
 
 /**
  * Send an SMS message
@@ -17,6 +28,10 @@ const fromNumber = process.env.TWILIO_PHONE_NUMBER;
  * @returns {Promise<Object>} Message details
  */
 exports.sendSMS = async (to, body) => {
+  if (!client) {
+    throw new AppError('SMS is not configured for this deployment.', 503);
+  }
+
   try {
     const message = await client.messages.create({
       body,
@@ -42,6 +57,10 @@ exports.sendSMS = async (to, body) => {
  * @returns {Promise<Object>} Message details
  */
 exports.sendMMS = async (to, body, mediaUrl) => {
+  if (!client) {
+    throw new AppError('MMS is not configured for this deployment.', 503);
+  }
+
   try {
     const message = await client.messages.create({
       body,
