@@ -63,9 +63,46 @@ const SupplyList = () => {
   const byId = useMemo(() => indexTags(tags), [tags]);
   const tree = useMemo(() => buildTree(tags), [tags]);
 
+  /**
+   * Fold a created vocab entry into local state by id.
+   *
+   * The server's createVocab returns the EXISTING row when the value is already
+   * taken, so adding the same brand from several queued import cards is a no-op
+   * in the database but used to append a copy per click here — eight "Bosch"
+   * entries in the dropdown backed by one row.
+   */
+  const addVocabEntry = useCallback((entry) => {
+    if (!entry?._id) return;
+    setVocab((prev) => {
+      const without = prev.filter((v) => String(v._id) !== String(entry._id));
+      return [...without, entry];
+    });
+  }, []);
+
   const vocabByField = useCallback((fieldKey) => vocab
     .filter((v) => v.fieldKey === fieldKey && v.isActive !== false)
     .map((v) => ({ value: String(v._id), label: v.label || v.value })), [vocab]);
+
+  /**
+   * Filter options: only values something actually uses, with the count shown.
+   *
+   * Offering a value no item carries is indistinguishable from a broken filter
+   * — you pick "Walmart", get nothing, and conclude filtering doesn't work,
+   * when really the items are on "Walmart.com". Everything offered here returns
+   * at least one row by construction.
+   *
+   * Deliberately NOT used for the entry dropdowns in the form and import modal:
+   * a vendor you haven't used yet is exactly the one you're about to use.
+   */
+  const filterOptionsFor = useCallback((fieldKey) => vocab
+    .filter((v) => v.fieldKey === fieldKey && v.isActive !== false && v.usageCount > 0)
+    .sort((a, b) => (b.usageCount - a.usageCount)
+      || (a.label || a.value).localeCompare(b.label || b.value))
+    .map((v) => ({
+      value: String(v._id),
+      label: v.label || v.value,
+      sublabel: `${v.usageCount} item${v.usageCount === 1 ? '' : 's'}`
+    })), [vocab]);
 
   const vocabLabel = useCallback((id) => {
     const entry = vocab.find((v) => String(v._id) === idOf(id));
@@ -325,7 +362,7 @@ const SupplyList = () => {
             <label className="block text-xs font-medium text-gray-600 mb-1">Vendor</label>
             <SearchableDropdown
               size="md"
-              options={vocabByField('vendor')}
+              options={filterOptionsFor('vendor')}
               value={vendorFilter}
               onChange={setVendorFilter}
               placeholder="Any"
@@ -337,7 +374,7 @@ const SupplyList = () => {
             <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
             <SearchableDropdown
               size="md"
-              options={vocabByField('location')}
+              options={filterOptionsFor('location')}
               value={locationFilter}
               onChange={setLocationFilter}
               placeholder="Any"
@@ -359,7 +396,7 @@ const SupplyList = () => {
           </label>
           <SearchableDropdown
             className="w-48"
-            options={vocabByField('brand')}
+            options={filterOptionsFor('brand')}
             value={brandFilter}
             onChange={setBrandFilter}
             placeholder="Any brand"
@@ -590,7 +627,7 @@ const SupplyList = () => {
         onClose={() => { setFormOpen(false); setEditing(null); loadSupplies(); }}
         onSaved={(used) => { setLastUsed(used); loadSupplies(); }}
         onRefresh={loadSupplies}
-        onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
+        onVocabAdded={addVocabEntry}
         vocab={vocab}
         tags={tags}
         fields={fields}
@@ -620,7 +657,7 @@ const SupplyList = () => {
           ...prev.filter((r) => r.hostname !== rule.hostname), rule
         ])}
         lastUsed={lastUsed}
-        onVocabAdded={(entry) => setVocab((prev) => [...prev, entry])}
+        onVocabAdded={addVocabEntry}
       />
 
       {/* Bulk tag edit — adds tags to every selected item. */}
@@ -650,7 +687,7 @@ const SupplyList = () => {
           allowCreate
           onCreate={async (typed) => {
             const res = await SupplyService.createVocab('location', typed, typed);
-            setVocab((prev) => [...prev, res.data.entry]);
+            addVocabEntry(res.data.entry);
             return String(res.data.entry._id);
           }}
         />

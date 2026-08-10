@@ -315,6 +315,20 @@ const FIELDS = [
     placeholder: 'e.g. H7, 194' }
 ];
 
+/**
+ * The key two vocabulary spellings must share to count as the same value.
+ *
+ * Case, punctuation and a trailing ".com" are noise: the vendor directory says
+ * "Rock Auto" and "Amazon.com" while the old inventory table says "RockAuto"
+ * and "Amazon". Kept identical to `normalise` in
+ * scripts/merge-supply-vocab.js — if the two ever disagree, the seed will
+ * recreate exactly what the merge just cleaned up.
+ */
+const vocabKey = (s) => String(s || '')
+  .toLowerCase()
+  .replace(/\.com$/, '')
+  .replace(/[^a-z0-9]/g, '');
+
 const slugify = (name) => name
   .toLowerCase()
   .replace(/[^a-z0-9\s-]/g, ' ')   // drop &, em dashes, commas
@@ -410,7 +424,14 @@ const seedFields = async (report) => {
     if (existingKeys.has(field.key)) report.fieldsUnchanged.push(field.key);
     else report.fieldsCreated.push(field.key);
 
-    if (DRY_RUN) { idByKey.set(field.key, `dry-run:${field.key}`); continue; }
+    if (DRY_RUN) {
+      // Use the REAL id where the field already exists. Fabricating a
+      // placeholder made every tag's field list compare unequal, so the dry run
+      // reported 23 tags as changing when nothing was.
+      const prior = await SupplyField.findOne({ key: field.key }, '_id').lean();
+      idByKey.set(field.key, prior ? prior._id : `dry-run:${field.key}`);
+      continue;
+    }
 
     const saved = await SupplyField.findOneAndUpdate(
       { key: field.key },
@@ -516,16 +537,31 @@ const seedVocab = async (report) => {
   const usedVendors = (await db.collection('inventoryitems').distinct('vendor')) || [];
   const brands = (await db.collection('inventoryitems').distinct('brand')) || [];
 
+  /**
+   * Add values, collapsing spellings that mean the same vendor.
+   *
+   * The two sources disagree on formatting — the directory says "Rock Auto"
+   * and "Amazon.com" while the old inventory table says "RockAuto" and
+   * "Amazon" — and an exact lowercase dedupe let both survive, which is what
+   * made the vendor filter look broken. Normalising away punctuation and a
+   * trailing ".com" collapses them.
+   *
+   * FIRST spelling wins, so callers must pass the authoritative source first:
+   * the directory name is what URL detection resolves to, and choosing the
+   * other one would silently break vendor autofill.
+   */
   const addUnique = (fieldKey, values) => {
     const seen = new Set();
     values
       .map((v) => String(v || '').trim())
       .filter(Boolean)
       .forEach((value) => {
-        const key = value.toLowerCase();
-        if (seen.has(key)) return;
+        const key = vocabKey(value);
+        if (!key || seen.has(key)) return;
         seen.add(key);
-        entries.push({ fieldKey, value: key, label: value, sortOrder: 0 });
+        // Stored value stays the plain lowercase form; `key` is only used to
+        // decide sameness, and using it as the value would render "rockauto".
+        entries.push({ fieldKey, value: value.toLowerCase(), label: value, sortOrder: 0 });
       });
   };
 
@@ -538,11 +574,17 @@ const seedVocab = async (report) => {
     brand: brands.filter(Boolean).length
   };
 
-  const existing = await SupplyVocab.find({}, 'fieldKey value').lean();
-  const existingKeys = new Set(existing.map((v) => `${v.fieldKey}:${v.value}`));
+  // Existence is judged on the NORMALISED key, not the exact string. Comparing
+  // exactly is what let "Amazon" and "Amazon.com" both exist: the batch dedupe
+  // above picks one spelling, but if the database holds the other, an exact
+  // check reports it missing and creates the pair all over again on every run.
+  const existing = await SupplyVocab.find({}, 'fieldKey value label').lean();
+  const existingKeys = new Set(existing.map(
+    (v) => `${v.fieldKey}:${vocabKey(v.label || v.value)}`
+  ));
 
   for (const entry of entries) {
-    const key = `${entry.fieldKey}:${entry.value}`;
+    const key = `${entry.fieldKey}:${vocabKey(entry.label || entry.value)}`;
     if (existingKeys.has(key)) {
       report.vocabUnchanged.push(key);
       continue;

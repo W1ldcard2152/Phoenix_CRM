@@ -280,6 +280,49 @@ const SupplyImportModal = ({
   const stockLabel = unitLabel(current?.draft.stockUnit, 'unit');
   const purchaseLabel = upp > 1 ? unitLabel(current?.draft.purchaseUnit, 'purchase') : stockLabel;
 
+  /**
+   * Heal stale suggestions across the WHOLE queue whenever the vocabulary
+   * changes.
+   *
+   * Suggestions are computed server-side at extract time, and "Read all labels"
+   * reads the entire queue before the user touches anything — so eight Bosch
+   * filters each arrive carrying "add Bosch", judged against a vocabulary that
+   * had no Bosch yet. Adding it once should answer all eight, not one.
+   *
+   * Sweeping the queue rather than just the visible card is the point: the
+   * seven cards behind this one get fixed before they are ever looked at.
+   */
+  useEffect(() => {
+    if (!isOpen || queue.length === 0) return;
+
+    const match = (fieldKey, suggestion) => (suggestion
+      ? vocab.find((v) => v.fieldKey === fieldKey
+        && (v.label || v.value || '').toLowerCase() === suggestion.toLowerCase())
+      : null);
+
+    setQueue((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const brandHit = match('brand', item.brandSuggestion);
+        const vendorHit = match('vendor', item.vendorSuggestion);
+        if (!brandHit && !vendorHit) return item;
+        changed = true;
+        return {
+          ...item,
+          brandSuggestion: brandHit ? '' : item.brandSuggestion,
+          vendorSuggestion: vendorHit ? '' : item.vendorSuggestion,
+          draft: {
+            ...item.draft,
+            brand: brandHit ? (item.draft.brand || String(brandHit._id)) : item.draft.brand,
+            vendor: vendorHit ? (item.draft.vendor || String(vendorHit._id)) : item.draft.vendor
+          }
+        };
+      });
+      // Returning `prev` unchanged keeps this effect from looping on itself.
+      return changed ? next : prev;
+    });
+  }, [vocab, isOpen, queue.length]);
+
   // Vendor tax is part of what the item cost, like shipping — not a separate
   // line and not a pass-through.
   const landedCostOf = (draft) => Math.round(

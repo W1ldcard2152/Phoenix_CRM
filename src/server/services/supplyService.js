@@ -844,7 +844,35 @@ const getTagUsage = async () => {
 
 // ────────────────────────────────── Vocab ──────────────────────────────────
 
-const listVocab = async () => SupplyVocab.find({}).sort({ fieldKey: 1, sortOrder: 1, label: 1 }).lean();
+/**
+ * Vocabulary, each entry carrying how many active supplies reference it.
+ *
+ * The count is what lets the FILTER dropdowns offer only values something
+ * actually uses. Offering a vendor no item has is indistinguishable from a
+ * broken filter — you pick it, get nothing, and conclude filtering is broken
+ * rather than that the value was never used. Entry dropdowns still offer
+ * everything, since a value you have not used yet is exactly what you are about
+ * to use.
+ *
+ * One aggregation over active supplies rather than one query per entry: at a
+ * few hundred rows the whole thing is cheaper than the round trips would be.
+ */
+const listVocab = async () => {
+  const [entries, supplies] = await Promise.all([
+    SupplyVocab.find({}).sort({ fieldKey: 1, sortOrder: 1, label: 1 }).lean(),
+    ShopSupply.find({ isActive: true }, VOCAB_REF_FIELDS.join(' ')).lean()
+  ]);
+
+  const counts = new Map();
+  supplies.forEach((s) => {
+    VOCAB_REF_FIELDS.forEach((f) => {
+      const id = idOf(s[f]);
+      if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    });
+  });
+
+  return entries.map((e) => ({ ...e, usageCount: counts.get(String(e._id)) || 0 }));
+};
 
 const createVocab = async (body) => {
   const value = String(body.value || body.label || '').trim().toLowerCase();
