@@ -6,6 +6,7 @@ import SearchableDropdown from '../../components/common/SearchableDropdown';
 import ResponsiveTable, { MobileCard, MobileContainer } from '../../components/common/ResponsiveTable';
 import SupplyForm from '../../components/supplies/SupplyForm';
 import SupplyImportModal from '../../components/supplies/SupplyImportModal';
+import SupplyDetailModal from '../../components/supplies/SupplyDetailModal';
 import TagPicker from '../../components/supplies/TagPicker';
 import SupplyService from '../../services/supplyService';
 import SettingsService from '../../services/settingsService';
@@ -53,6 +54,7 @@ const SupplyList = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [detailId, setDetailId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [bulkLocationOpen, setBulkLocationOpen] = useState(false);
@@ -240,6 +242,8 @@ const SupplyList = () => {
       }
     }
   };
+
+  const openDetail = (id) => setDetailId(id);
 
   const handleDelete = async (supply) => {
     if (!window.confirm(`Remove "${supply.displayName || supply.name}" from supplies?`)) return;
@@ -511,9 +515,15 @@ const SupplyList = () => {
                 const id = String(s._id);
                 const lowStock = s.quantityOnHand <= s.reorderPoint;
                 return (
-                  <tr key={id} className={selectedIds.includes(id) ? 'bg-primary-50' : ''}>
+                  <tr
+                    key={id}
+                    onClick={() => openDetail(id)}
+                    className={`cursor-pointer hover:bg-gray-50 ${selectedIds.includes(id) ? 'bg-primary-50' : ''}`}
+                  >
                     {isOfficeStaff && (
-                      <td className="px-3 py-2">
+                      // Selecting rows for a bulk edit must not also open each
+                      // one, so the checkbox cell swallows the row click.
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedIds.includes(id)}
@@ -556,7 +566,7 @@ const SupplyList = () => {
                     <td className="px-4 py-2 text-sm text-right text-gray-700">
                       ${(s.price ?? 0).toFixed(2)}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       {isOfficeStaff && (
                         <>
                           <button
@@ -584,7 +594,7 @@ const SupplyList = () => {
 
           <MobileContainer>
             {supplies.map((s) => (
-              <MobileCard key={String(s._id)}>
+              <MobileCard key={String(s._id)} onClick={() => openDetail(String(s._id))}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-3 min-w-0">
                     {SupplyService.photoUrl(s) && (
@@ -610,7 +620,7 @@ const SupplyList = () => {
                   {vocabLabel(s.location) && <span>· {vocabLabel(s.location)}</span>}
                 </div>
                 {isOfficeStaff && (
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="light" onClick={() => { setEditing(s); setFormOpen(true); }}>
                       Edit
                     </Button>
@@ -640,6 +650,21 @@ const SupplyList = () => {
         ])}
         initial={editing}
         lastUsed={lastUsed}
+      />
+
+      <SupplyDetailModal
+        isOpen={!!detailId}
+        onClose={() => setDetailId(null)}
+        supplyId={detailId}
+        tags={tags}
+        vocab={vocab}
+        fields={fields}
+        onEdit={isOfficeStaff ? (supply) => {
+          // Hand off to the form rather than stacking modals.
+          setDetailId(null);
+          setEditing(supply);
+          setFormOpen(true);
+        } : null}
       />
 
       <SupplyImportModal
