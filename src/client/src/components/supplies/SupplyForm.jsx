@@ -7,6 +7,7 @@ import SupplyPhoto from './SupplyPhoto';
 import SupplyAttributes from './SupplyAttributes';
 import { composeDisplayName } from './composeName';
 import { hostnameOf, detectVendor } from './hostname';
+import { unitWord, meaningfulUnit } from './units';
 import SupplyService from '../../services/supplyService';
 import { indexTags, tagPath, idOf } from './tagTree';
 
@@ -132,12 +133,11 @@ const SupplyForm = ({
   const taxMultiplier = data.costIncludesTax ? 1 + (taxRate || 0) / 100 : 1;
   const landedCost = round2((parseFloat(data.costEntered) || 0) * taxMultiplier);
 
-  const unitLabel = (id, fallback) => {
-    const entry = vocab.find((v) => String(v._id) === idOf(id));
-    return entry ? (entry.label || entry.value) : fallback;
-  };
-  const stockLabel = unitLabel(data.stockUnit, 'unit');
-  const purchaseLabel = upp > 1 ? unitLabel(data.purchaseUnit, 'purchase') : stockLabel;
+  // Never a bare "unit", and never a naive "+ s" — see units.js.
+  const stockWord = (n = 1) => unitWord(vocab, data.stockUnit, 'stock', n);
+  const purchaseWord = (n = 1) => (upp > 1
+    ? unitWord(vocab, data.purchaseUnit, 'purchase', n)
+    : stockWord(n));
 
   // Price always derives from the LANDED cost, so turning the tax toggle on
   // raises the price the same way a higher invoice would.
@@ -523,7 +523,7 @@ const SupplyForm = ({
               <div>
                 <label className={label}>
                   Starting Qty <span className="font-normal text-gray-400">
-                    in {upp > 1 ? `${purchaseLabel}s` : `${stockLabel}s`}
+                    {meaningfulUnit(purchaseWord(2)) ? `in ${purchaseWord(2)}` : ''}
                   </span>
                 </label>
                 <input
@@ -535,14 +535,16 @@ const SupplyForm = ({
                 />
                 {upp > 1 && data.packagesOnHand > 0 && (
                   <p className="mt-1 text-[11px] text-blue-600">
-                    = <strong>{data.packagesOnHand * upp} {stockLabel}</strong> in stock
+                    = <strong>
+                      {data.packagesOnHand * upp} {stockWord(data.packagesOnHand * upp)}
+                    </strong> in stock
                   </p>
                 )}
               </div>
             )}
             <div>
               <label className={label}>
-                Reorder At <span className="font-normal text-gray-400">in {stockLabel}s</span>
+                Reorder At <span className="font-normal text-gray-400">in {stockWord(2)}</span>
               </label>
               <input
                 type="number"
@@ -574,7 +576,10 @@ const SupplyForm = ({
               />
             </div>
             <div>
-              <label className={label}>{stockLabel}s per {purchaseLabel}</label>
+              {/* Fixed wording. Interpolating the two unit names produced
+                  "Eachs per each" — grammatically fixable, but still asking a
+                  meaningless question. The qualified terms always read. */}
+              <label className={label}>Stock units per purchase unit</label>
               <input
                 type="number"
                 min="1"
@@ -582,7 +587,9 @@ const SupplyForm = ({
                 onChange={(e) => handleUpp(e.target.value)}
                 className={field}
               />
-              <p className="mt-1 text-[10px] text-gray-400">5 for a 5qt jug</p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                e.g. quarts per jug — 5 for a 5qt jug
+              </p>
             </div>
             <div>
               <label className={label}>
@@ -603,7 +610,7 @@ const SupplyForm = ({
 
           <div className="grid grid-cols-2 gap-3 items-end">
             <div>
-              <label className={label}>Cost <span className="text-gray-400">per {purchaseLabel}</span></label>
+              <label className={label}>Cost <span className="text-gray-400">per {purchaseWord(1)}</span></label>
               <input
                 type="number"
                 step="0.01"
@@ -630,12 +637,12 @@ const SupplyForm = ({
               )}
               {data.costIncludesTax && landedCost > 0 && (
                 <p className="mt-0.5 text-[11px] text-blue-600">
-                  Real cost <strong>${landedCost.toFixed(2)}</strong> per {purchaseLabel}
+                  Real cost <strong>${landedCost.toFixed(2)}</strong> per {purchaseWord(1)}
                 </p>
               )}
             </div>
             <div>
-              <label className={label}>Price <span className="text-gray-400">per {stockLabel}</span></label>
+              <label className={label}>Price <span className="text-gray-400">per {stockWord(1)}</span></label>
               <input
                 type="number"
                 step="0.01"

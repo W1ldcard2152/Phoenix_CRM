@@ -8,7 +8,8 @@ import UrlExtractButton from '../common/UrlExtractButton';
 import SupplyService from '../../services/supplyService';
 import { composeDisplayName } from './composeName';
 import { hostnameOf, detectVendor } from './hostname';
-import { indexTags, tagPath, idOf } from './tagTree';
+import { unitWord, meaningfulUnit } from './units';
+import { indexTags, tagPath } from './tagTree';
 
 /**
  * Bulk label import: drop in a stack of product photos, work them one at a time.
@@ -270,15 +271,12 @@ const SupplyImportModal = ({
     return String(res.data.entry._id);
   };
 
-  // Unit names for the labels and the conversion echo. Falling back to generic
-  // words keeps every label grammatical before the units are chosen.
-  const unitLabel = (id, fallback) => {
-    const entry = vocab.find((v) => String(v._id) === idOf(id));
-    return entry ? (entry.label || entry.value) : fallback;
-  };
   const upp = Math.max(1, current?.draft.unitsPerPurchase || 1);
-  const stockLabel = unitLabel(current?.draft.stockUnit, 'unit');
-  const purchaseLabel = upp > 1 ? unitLabel(current?.draft.purchaseUnit, 'purchase') : stockLabel;
+  // Never a bare "unit", and never a naive "+ s" — see units.js.
+  const stockWord = (n = 1) => unitWord(vocab, current?.draft.stockUnit, 'stock', n);
+  const purchaseWord = (n = 1) => (upp > 1
+    ? unitWord(vocab, current?.draft.purchaseUnit, 'purchase', n)
+    : stockWord(n));
 
   /**
    * Heal stale suggestions across the WHOLE queue whenever the vocabulary
@@ -718,8 +716,10 @@ const SupplyImportModal = ({
                       />
                     </div>
                     <div>
+                      {/* Fixed wording. Interpolating the two unit names gave
+                          "Eachs per each" — the qualified terms always read. */}
                       <label className={labelCls}>
-                        {stockLabel}s per {purchaseLabel}
+                        Stock units per purchase unit
                       </label>
                       <input
                         type="number" min="1"
@@ -730,7 +730,9 @@ const SupplyImportModal = ({
                         }}
                         className={inputCls}
                       />
-                      <p className="mt-1 text-[10px] text-gray-400">5 for a 5qt jug</p>
+                      <p className="mt-1 text-[10px] text-gray-400">
+                        e.g. quarts per jug — 5 for a 5qt jug
+                      </p>
                     </div>
                     <div>
                       <label className={labelCls}>
@@ -752,7 +754,7 @@ const SupplyImportModal = ({
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className={labelCls}>
-                        How many {upp > 1 ? `${purchaseLabel}s` : `${stockLabel}s`} on hand
+                        How many {meaningfulUnit(purchaseWord(2))} on hand
                       </label>
                       <input
                         type="number" min="0"
@@ -762,15 +764,18 @@ const SupplyImportModal = ({
                       />
                       {upp > 1 && current.draft.packagesOnHand > 0 && (
                         <p className="mt-1 text-[11px] text-blue-600">
-                          {current.draft.packagesOnHand} {purchaseLabel}
-                          {current.draft.packagesOnHand === 1 ? '' : 's'} ={' '}
-                          <strong>{current.draft.packagesOnHand * upp} {stockLabel}</strong> in stock
+                          {current.draft.packagesOnHand}{' '}
+                          {purchaseWord(current.draft.packagesOnHand)} ={' '}
+                          <strong>
+                            {current.draft.packagesOnHand * upp}{' '}
+                            {stockWord(current.draft.packagesOnHand * upp)}
+                          </strong> in stock
                         </p>
                       )}
                     </div>
                     <div>
                       <label className={labelCls}>
-                        Cost <span className="font-normal text-gray-400">per {purchaseLabel}</span>
+                        Cost <span className="font-normal text-gray-400">per {purchaseWord(1)}</span>
                       </label>
                       <input
                         type="number" step="0.01" min="0"
@@ -804,7 +809,7 @@ const SupplyImportModal = ({
                     </div>
                     <div>
                       <label className={labelCls}>
-                        Price <span className="font-normal text-gray-400">per {stockLabel}</span>
+                        Price <span className="font-normal text-gray-400">per {stockWord(1)}</span>
                       </label>
                       <input
                         type="number" step="0.01" min="0"

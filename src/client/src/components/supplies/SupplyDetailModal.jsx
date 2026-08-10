@@ -4,6 +4,7 @@ import Button from '../common/Button';
 import SupplyService from '../../services/supplyService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { indexTags, tagPath, idOf } from './tagTree';
+import { unitWord } from './units';
 
 /**
  * Read-only detail card for a supply.
@@ -87,9 +88,11 @@ const SupplyDetailModal = ({ isOpen, onClose, supplyId, tags = [], vocab = [], f
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [supply, fields]);
 
-  const stockUnit = supply ? vocabLabel(supply.stockUnit) : null;
-  const purchaseUnit = supply ? vocabLabel(supply.purchaseUnit) : null;
   const upp = Math.max(1, supply?.unitsPerPurchase || 1);
+  const stockWord = (n = 1) => unitWord(vocab, supply?.stockUnit, 'stock', n);
+  const purchaseWord = (n = 1) => (upp > 1
+    ? unitWord(vocab, supply?.purchaseUnit, 'purchase', n)
+    : stockWord(n));
   const lowStock = supply && supply.quantityOnHand <= supply.reorderPoint;
   const photoUrl = supply ? SupplyService.photoUrl(supply) : null;
 
@@ -183,7 +186,9 @@ const SupplyDetailModal = ({ isOpen, onClose, supplyId, tags = [], vocab = [], f
               <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Stock</div>
               <div className={`text-2xl font-semibold ${lowStock ? 'text-red-600' : 'text-gray-900'}`}>
                 {supply.quantityOnHand}
-                {stockUnit && <span className="text-sm font-normal text-gray-500 ml-1">{stockUnit}</span>}
+                <span className="text-sm font-normal text-gray-500 ml-1">
+                  {stockWord(supply.quantityOnHand)}
+                </span>
               </div>
               <div className="text-xs text-gray-500 mt-1">
                 Reorder at {supply.reorderPoint}
@@ -191,7 +196,7 @@ const SupplyDetailModal = ({ isOpen, onClose, supplyId, tags = [], vocab = [], f
               </div>
               {upp > 1 && (
                 <div className="text-xs text-gray-400 mt-1">
-                  Bought as {purchaseUnit || 'pack'} of {upp} {stockUnit || 'unit'}
+                  Bought as 1 {purchaseWord(1)} of {upp} {stockWord(upp)}
                 </div>
               )}
             </div>
@@ -201,11 +206,11 @@ const SupplyDetailModal = ({ isOpen, onClose, supplyId, tags = [], vocab = [], f
               <div className="text-2xl font-semibold text-gray-900">
                 {formatCurrency(supply.price || 0)}
                 <span className="text-sm font-normal text-gray-500 ml-1">
-                  per {stockUnit || 'unit'}
+                  per {stockWord(1)}
                 </span>
               </div>
               <div className="text-xs text-gray-500 mt-1">
-                Cost {formatCurrency(supply.cost || 0)} per {purchaseUnit || stockUnit || 'unit'}
+                Cost {formatCurrency(supply.cost || 0)} per {purchaseWord(1)}
                 {supply.costIncludesTax && <span className="text-gray-400"> · tax included</span>}
               </div>
               {supply.priceOverridden && (
