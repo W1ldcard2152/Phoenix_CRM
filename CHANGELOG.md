@@ -15,6 +15,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - **Product URL fills in the rest.** Paste a listing URL and the vendor is recognised from the shop's vendor directory; the existing AI extraction can also pull brand, part number and cost from the page.
 
 ### Changed
+- **Work orders pull parts from Shop Supplies.** "Add from inventory" is now a proper search — type to find, filter by category (which includes everything beneath it) or shelf location, sort by name, stock or price, and see a photo, stock level and price on every row. If something came in this morning and isn't entered yet, **add it without leaving the work order**: the full supply form opens right there and the new item is selected when you save. Parts still go on as drafts, so stock only moves when you commit, and removing a committed part offers to put it back.
 - **Service packages now draw from Shop Supplies.** A package line names a *kind* of supply — "5 of something tagged Engine Oil" — and when you add the package to a work order you pick from whatever is tagged there, including sub-categories. Committing deducts from supplies and records the work order against that item's history. Existing packages were converted automatically; work orders already committed still show exactly what they consumed.
 - Package requirements are chosen from the supply tag tree rather than the separate tag list in Settings, which is no longer used.
 

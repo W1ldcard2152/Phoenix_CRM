@@ -108,7 +108,12 @@ const PartSchema = new Schema({
     type: String,
     trim: true
   },
-  inventoryItemId: { // Link to inventory item this part was pulled from
+  // The shop supply this part was pulled from. Written for every new pull.
+  shopSupplyId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ShopSupply'
+  },
+  inventoryItemId: { // Legacy: the old inventory item this part was pulled from
     type: Schema.Types.ObjectId,
     ref: 'InventoryItem'
   },

@@ -16,7 +16,7 @@ import { formatDate, formatDateTime } from '../../utils/formatters';
 import FileList from '../../components/common/FileList';
 import ReceiptImportModal from '../../components/common/ReceiptImportModal';
 import JobServiceSelect from '../../components/common/JobServiceSelect';
-import InventoryPickerModal from '../../components/workorder/InventoryPickerModal';
+import SupplyPickerModal from '../../components/workorder/SupplyPickerModal';
 import ServicePackageModal from '../../components/workorder/ServicePackageModal';
 import ServicePackageCommitModal from '../../components/workorder/ServicePackageCommitModal';
 import ServicePackageRemovalModal from '../../components/workorder/ServicePackageRemovalModal';
@@ -930,15 +930,15 @@ const DocumentDetail = () => {
     }
   };
 
-  // Add part from inventory as a draft (no deduction yet)
-  const handleAddFromInventory = async ({ inventoryItemId, quantity }) => {
+  // Add a part from shop supplies as a draft — stock moves only on commit.
+  const handleAddFromInventory = async ({ shopSupplyId, quantity }) => {
     setInventoryModalLoading(true);
     try {
-      const response = await DocumentService.addPartFromInventory(id, { inventoryItemId, quantity, serviceId: activeServiceId });
+      const response = await DocumentService.addPartFromSupply(id, { shopSupplyId, quantity, serviceId: activeServiceId });
       setWorkOrder(response.data.workOrder);
       setInventoryModalOpen(false);
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to add inventory item';
+      const msg = err.response?.data?.message || 'Failed to add supply';
       setError(msg);
     } finally {
       setInventoryModalLoading(false);
@@ -3210,8 +3210,8 @@ const DocumentDetail = () => {
         serviceId={activeServiceId}
       />
 
-      {/* Inventory & Service modals */}
-      <InventoryPickerModal
+      {/* Supplies & Service modals */}
+      <SupplyPickerModal
         isOpen={inventoryModalOpen}
         onClose={() => setInventoryModalOpen(false)}
         onConfirm={handleAddFromInventory}

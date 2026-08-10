@@ -7,6 +7,7 @@ const WorkOrderNote = require('../models/WorkOrderNote');
 const InventoryItem = require('../models/InventoryItem');
 const ShopSupply = require('../models/ShopSupply');
 const SupplyMovement = require('../models/SupplyMovement');
+const SupplyVocab = require('../models/SupplyVocab');
 const supplyService = require('../services/supplyService');
 const supplyTagService = require('../services/supplyTagService');
 const ServicePackage = require('../models/ServicePackage');
@@ -774,6 +775,74 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * Add a part pulled from shop supplies, as an uncommitted draft.
+ *
+ * Sibling of addPartFromInventory rather than a replacement: the old endpoint
+ * still serves the old inventory page, and six historical parts were created
+ * through it. Stock moves only on commit, same as before.
+ */
+exports.addPartFromSupply = catchAsync(async (req, res, next) => {
+  const { shopSupplyId, quantity, serviceId } = req.body;
+  if (!shopSupplyId || !quantity || quantity < 1) {
+    return next(new AppError('shopSupplyId and quantity (>= 1) are required', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const supply = await supplyService.getSupply(shopSupplyId);
+  if (!supply || !supply.isActive) {
+    return next(new AppError('Supply not found or inactive', 404));
+  }
+
+  // `price` is already per stock unit and respects a manual override; `cost` is
+  // per PURCHASE unit, so it has to be divided to match.
+  const unitsPerPurchase = supply.unitsPerPurchase || 1;
+  const unitCost = parseFloat(((supply.cost || 0) / unitsPerPurchase).toFixed(4));
+  const settings = await Settings.getSettings();
+  const markup = settings.partMarkupPercentage || 30;
+  const price = supply.price > 0
+    ? supply.price
+    : parseFloat((unitCost * (1 + markup / 100)).toFixed(2));
+
+  const vendorLabel = supply.vendor
+    ? (await SupplyVocab.findById(supply.vendor).lean())
+    : null;
+
+  workOrder.parts.push({
+    name: supply.displayName,
+    partNumber: supply.partNumber || '',
+    quantity,
+    price,
+    cost: unitCost,
+    vendor: vendorLabel ? (vendorLabel.label || vendorLabel.value) : '',
+    warranty: '',
+    url: supply.url || '',
+    // `category` is the BILLING classification (how the line is charged), not a
+    // description of the thing — deliberately not derived from the supply's
+    // tags. Left for the writer to set.
+    category: '',
+    shopSupplyId: supply._id,
+    committed: false,
+    ordered: true,
+    received: true,
+    serviceId: serviceId || null
+  });
+
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({ status: 'success', data: { workOrder: populatedWorkOrder } });
+});
+
 // Commit an inventory-pulled part — atomically deduct stock and mark committed.
 exports.commitPart = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
@@ -784,13 +853,69 @@ exports.commitPart = catchAsync(async (req, res, next) => {
   }
 
   const part = workOrder.parts[partIndex];
-  if (!part.inventoryItemId) {
+  if (!part.inventoryItemId && !part.shopSupplyId) {
     return next(new AppError('This part is not linked to an inventory item', 400));
   }
   // committed !== false rejects pre-migration parts whose stock was deducted at add-time;
   // re-committing them would double-deduct.
   if (part.committed !== false) {
     return next(new AppError('This part is already committed', 400));
+  }
+
+  // Shop supplies first; the inventory path below is only for parts pulled
+  // before the switch.
+  if (part.shopSupplyId) {
+    const supply = await supplyService.getSupply(part.shopSupplyId);
+    if (!supply || !supply.isActive) {
+      return next(new AppError(`Supply "${part.name}" is not found or inactive`, 400));
+    }
+    if (supply.quantityOnHand < part.quantity) {
+      return next(new AppError(
+        `Insufficient stock for "${part.name}": ${supply.quantityOnHand} available, ${part.quantity} needed`, 400
+      ));
+    }
+
+    const deducted = await ShopSupply.findOneAndUpdate(
+      { _id: supply._id, quantityOnHand: { $gte: part.quantity } },
+      { $inc: { quantityOnHand: -part.quantity } },
+      { new: true }
+    );
+    if (!deducted) {
+      return next(new AppError(`Failed to deduct stock for "${part.name}" (concurrent update)`, 409));
+    }
+
+    await SupplyMovement.create({
+      supply: deducted._id,
+      type: 'consume',
+      quantity: -part.quantity,
+      unit: deducted.stockUnit || null,
+      resultingQoh: deducted.quantityOnHand,
+      sourceModel: 'WorkOrder',
+      sourceId: workOrder._id,
+      note: `Used on work order`,
+      createdBy: req.user._id
+    });
+
+    workOrder.parts[partIndex].committed = true;
+    workOrder.markModified('parts');
+    await workOrder.save();
+
+    const populated = await applyPopulation(
+      WorkOrder.findById(req.params.id), 'workOrder', 'detailed'
+    );
+    cacheService.invalidateAllWorkOrders();
+    cacheService.invalidateServiceWritersCorner();
+
+    const supplyResponse = { status: 'success', data: { workOrder: populated } };
+    if (deducted.quantityOnHand <= deducted.reorderPoint) {
+      supplyResponse.lowStockWarning = {
+        itemName: part.name,
+        currentQoh: deducted.quantityOnHand,
+        unit: '',
+        reorderPoint: deducted.reorderPoint
+      };
+    }
+    return res.status(200).json(supplyResponse);
   }
 
   const inv = await InventoryItem.findById(part.inventoryItemId);
@@ -863,9 +988,28 @@ exports.removePart = catchAsync(async (req, res, next) => {
 
   const removedPart = workOrder.parts[partIndex];
 
-  // Restock only if explicitly requested AND the part was committed AND linked to inventory.
+  // Restock only if explicitly requested AND the part was committed AND linked to stock.
   // committed !== false covers pre-migration parts that lack the field (stock was deducted at add-time).
-  if (returnToInventory && removedPart.inventoryItemId && removedPart.committed !== false) {
+  if (returnToInventory && removedPart.shopSupplyId && removedPart.committed !== false) {
+    const restocked = await ShopSupply.findByIdAndUpdate(
+      removedPart.shopSupplyId,
+      { $inc: { quantityOnHand: removedPart.quantity } },
+      { new: true }
+    );
+    if (restocked) {
+      await SupplyMovement.create({
+        supply: restocked._id,
+        type: 'return',
+        quantity: removedPart.quantity,
+        unit: restocked.stockUnit || null,
+        resultingQoh: restocked.quantityOnHand,
+        sourceModel: 'WorkOrder',
+        sourceId: workOrder._id,
+        note: 'Returned from removed part',
+        createdBy: req.user._id
+      });
+    }
+  } else if (returnToInventory && removedPart.inventoryItemId && removedPart.committed !== false) {
     const inv = await InventoryItem.findById(removedPart.inventoryItemId);
     if (inv) {
       const previousQty = inv.quantityOnHand;

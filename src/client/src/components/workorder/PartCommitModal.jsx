@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import InventoryService from '../../services/inventoryService';
+import SupplyService from '../../services/supplyService';
 
 const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
   const [validation, setValidation] = useState(null);
@@ -15,6 +16,35 @@ const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
     const validateStock = async () => {
       setValidating(true);
       try {
+        // Supply-backed parts first; parts pulled before the switch still carry
+        // an inventory item and resolve below.
+        if (part.shopSupplyId) {
+          const res = await SupplyService.getOne(part.shopSupplyId);
+          const supply = res.data?.supply;
+
+          if (!supply || !supply.isActive) {
+            setValidation({
+              status: 'error',
+              message: 'Supply not found or inactive',
+              needed: part.quantity,
+              available: 0,
+              unit: ''
+            });
+            return;
+          }
+
+          const enough = supply.quantityOnHand >= part.quantity;
+          setValidation({
+            status: enough ? 'ok' : 'insufficient',
+            message: enough ? 'Stock available' : 'Insufficient stock',
+            needed: part.quantity,
+            available: supply.quantityOnHand,
+            unit: '',
+            supplyId: supply._id
+          });
+          return;
+        }
+
         if (!part.inventoryItemId) {
           setValidation({
             status: 'error',
@@ -156,6 +186,19 @@ const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
                     </div>
                   </div>
                 </div>
+                {validation.status === 'insufficient' && validation.supplyId && (
+                  <div className="mt-2 pt-2 border-t border-current border-opacity-20">
+                    <a
+                      href="/supplies"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium hover:underline inline-flex items-center"
+                    >
+                      <i className="fas fa-external-link-alt mr-1"></i>
+                      View in Shop Supplies
+                    </a>
+                  </div>
+                )}
                 {validation.status === 'insufficient' && validation.inventoryItemId && (
                   <div className="mt-2 pt-2 border-t border-current border-opacity-20">
                     <a
