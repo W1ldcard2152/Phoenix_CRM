@@ -250,8 +250,14 @@ const TREE = [
 ];
 
 // Static vocabularies. Locations are deliberately NOT seeded — see seedVocab().
+//
+// These are DISPLAY LABELS; the stable `value` key is derived by lowercasing.
+// Forms are Title Case to match brands, vendors and locations, which are all
+// shown as standalone values in a dropdown or on the detail card. Units stay
+// lowercase on purpose — they appear mid-sentence ("3 jugs = 15 quarts"), where
+// a capital would read as a proper noun.
 const STATIC_VOCAB = {
-  form: ['aerosol', 'liquid', 'solid', 'paste', 'gel', 'powder'],
+  form: ['Aerosol', 'Liquid', 'Solid', 'Paste', 'Gel', 'Powder'],
   // Both stock units (what the shop uses: quart, ft, each) and purchase units
   // (what you order: jug, case, box) live in one `unit` vocabulary — the same
   // word is often both, depending on the product.
@@ -521,9 +527,15 @@ const seedVocab = async (report) => {
   const db = mongoose.connection.db;
   const entries = [];
 
-  Object.entries(STATIC_VOCAB).forEach(([fieldKey, values]) => {
-    values.forEach((value, index) => {
-      entries.push({ fieldKey, value, label: value, sortOrder: index });
+  Object.entries(STATIC_VOCAB).forEach(([fieldKey, labels]) => {
+    labels.forEach((label, index) => {
+      // `authoritative` means this script owns the display label, so a label
+      // change here reaches entries that already exist. Discovered vocabulary
+      // (brands and vendors read out of real data) is NOT authoritative — its
+      // label came from the data and must not be overwritten by a re-run.
+      entries.push({
+        fieldKey, value: label.toLowerCase(), label, sortOrder: index, authoritative: true
+      });
     });
   });
 
@@ -578,15 +590,30 @@ const seedVocab = async (report) => {
   // exactly is what let "Amazon" and "Amazon.com" both exist: the batch dedupe
   // above picks one spelling, but if the database holds the other, an exact
   // check reports it missing and creates the pair all over again on every run.
-  const existing = await SupplyVocab.find({}, 'fieldKey value label').lean();
-  const existingKeys = new Set(existing.map(
-    (v) => `${v.fieldKey}:${vocabKey(v.label || v.value)}`
+  const existing = await SupplyVocab.find({}, 'fieldKey value label sortOrder').lean();
+  const existingByKey = new Map(existing.map(
+    (v) => [`${v.fieldKey}:${vocabKey(v.label || v.value)}`, v]
   ));
 
   for (const entry of entries) {
     const key = `${entry.fieldKey}:${vocabKey(entry.label || entry.value)}`;
-    if (existingKeys.has(key)) {
-      report.vocabUnchanged.push(key);
+    const prior = existingByKey.get(key);
+
+    if (prior) {
+      // An authoritative entry's display label is owned by this script, so a
+      // rename here has to reach rows that already exist — otherwise changing
+      // "liquid" to "Liquid" would only ever affect fresh databases.
+      const labelDrifted = entry.authoritative && prior.label !== entry.label;
+      if (!labelDrifted) {
+        report.vocabUnchanged.push(key);
+        continue;
+      }
+      report.vocabRelabelled.push(`${prior.label} -> ${entry.label}`);
+      if (DRY_RUN) continue;
+      await SupplyVocab.updateOne(
+        { _id: prior._id },
+        { $set: { label: entry.label, sortOrder: entry.sortOrder } }
+      );
       continue;
     }
     report.vocabCreated.push(key);
@@ -681,7 +708,7 @@ async function main() {
   const report = {
     fieldsCreated: [], fieldsUnchanged: [],
     tagsCreated: [], tagsUpdated: [], tagsUnchanged: [], tagsOrphaned: [],
-    vocabCreated: [], vocabUnchanged: [], validator: null
+    vocabCreated: [], vocabUnchanged: [], vocabRelabelled: [], validator: null
   };
 
   const fieldIdByKey = await seedFields(report);
@@ -707,6 +734,8 @@ async function main() {
 
   console.log('\n─── Vocabulary ───');
   console.log(`  create:    ${report.vocabCreated.length}`);
+  console.log(`  relabel:   ${report.vocabRelabelled.length}`);
+  report.vocabRelabelled.forEach((r) => console.log(`               ${r}`));
   console.log(`  unchanged: ${report.vocabUnchanged.length}`);
   console.log(`  vendors from Settings directory: ${report.vocabFromDirectory}`);
   console.log(`  vendors found on inventory items: ${report.vocabFromInventory.vendor}`);
