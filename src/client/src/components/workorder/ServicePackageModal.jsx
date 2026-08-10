@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ServicePackageService from '../../services/servicePackageService';
-import InventoryService from '../../services/inventoryService';
+import SupplyService from '../../services/supplyService';
+import { idOf as tagIdOf } from '../supplies/tagTree';
 import { formatCurrency } from '../../utils/formatters';
 
 const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
@@ -32,26 +33,35 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
     fetchPackages();
   }, [isOpen]);
 
-  // When a package is selected, fetch inventory for each unique tag
+  /**
+   * Load the supplies that can satisfy each line.
+   *
+   * The server resolves `tag` through a descendant walk, so a line tagged
+   * "Service Fluids" offers everything beneath it while one tagged "Engine Oil"
+   * offers only engine oils. Keyed by tag id rather than the old free-text
+   * packageTag.
+   */
   const selectPackage = async (pkg) => {
     setSelectedPkg(pkg);
     setSelections({});
 
-    const uniqueTags = [...new Set(pkg.includedItems.map(i => i.packageTag))];
-    const newInventory = {};
+    const uniqueTags = [...new Set(
+      (pkg.includedItems || []).map(i => tagIdOf(i.supplyTag)).filter(Boolean)
+    )];
+    const bySupplyTag = {};
     setLoadingTags(uniqueTags.reduce((acc, t) => ({ ...acc, [t]: true }), {}));
 
-    await Promise.all(uniqueTags.map(async (tag) => {
+    await Promise.all(uniqueTags.map(async (tagId) => {
       try {
-        const res = await InventoryService.getAllItems({ packageTag: tag });
-        newInventory[tag] = res.data?.items || [];
+        const res = await SupplyService.getAll({ tag: tagId });
+        bySupplyTag[tagId] = res.data?.supplies || [];
       } catch (err) {
-        console.error(`Error fetching inventory for tag "${tag}":`, err);
-        newInventory[tag] = [];
+        console.error(`Error fetching supplies for tag "${tagId}":`, err);
+        bySupplyTag[tagId] = [];
       }
     }));
 
-    setInventoryByTag(newInventory);
+    setInventoryByTag(bySupplyTag);
     setLoadingTags({});
   };
 
@@ -60,8 +70,8 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
 
     const selectionArray = selectedPkg.includedItems.map(item => ({
       includedItemId: item._id,
-      inventoryItemId: selections[item._id] || null
-    })).filter(s => s.inventoryItemId);
+      shopSupplyId: selections[item._id] || null
+    })).filter(s => s.shopSupplyId);
 
     onConfirm({
       servicePackageId: selectedPkg._id,
@@ -177,8 +187,9 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                 </p>
 
                 {selectedPkg.includedItems.map((included) => {
-                  const tagItems = inventoryByTag[included.packageTag] || [];
-                  const isTagLoading = loadingTags[included.packageTag];
+                  const tagId = tagIdOf(included.supplyTag);
+                  const tagItems = inventoryByTag[tagId] || [];
+                  const isTagLoading = loadingTags[tagId];
                   const selected = getSelectedItem(included._id);
 
                   return (
@@ -188,7 +199,7 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                           {included.quantity}x {included.label}
                         </div>
                         <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded-full">
-                          {included.packageTag}
+                          {tagItems.length} available
                         </span>
                       </div>
 
@@ -199,7 +210,7 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                       ) : tagItems.length === 0 ? (
                         <div className="text-xs text-red-500 py-2">
                           <i className="fas fa-exclamation-triangle mr-1"></i>
-                          No inventory items with tag "{included.packageTag}"
+                          Nothing in shop supplies is tagged for "{included.label}" yet
                         </div>
                       ) : (
                         <select
@@ -216,10 +227,9 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                               key={inv._id}
                               value={inv._id}
                             >
-                              {inv.name}
-                              {inv.partNumber ? ` (${inv.partNumber})` : ''}
-                              {` — ${inv.quantityOnHand} ${inv.unit} avail`}
-                              {inv.quantityOnHand < included.quantity ? ' (low stock)' : ''}
+                              {inv.displayName || inv.name}
+                              {` — ${inv.quantityOnHand} available`}
+                              {inv.quantityOnHand < included.quantity ? ' (not enough)' : ''}
                             </option>
                           ))}
                         </select>
@@ -227,8 +237,7 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
 
                       {selected && (
                         <div className="mt-1.5 text-xs text-gray-500">
-                          {selected.vendor && <span>{selected.vendor} · </span>}
-                          Cost: {formatCurrency(selected.cost)}/{selected.unit}
+                          Cost: {formatCurrency(selected.cost)}
                           {selected.quantityOnHand <= selected.reorderPoint && (
                             <span className="ml-2 text-yellow-600">
                               <i className="fas fa-exclamation-triangle mr-0.5"></i>Low stock

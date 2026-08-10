@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const ShopSupply = require('../models/ShopSupply');
 const SupplyTag = require('../models/SupplyTag');
 const SupplyVocab = require('../models/SupplyVocab');
@@ -7,7 +7,15 @@ const SupplyTaxRule = require('../models/SupplyTaxRule');
 const SupplyMovement = require('../models/SupplyMovement');
 const Settings = require('../models/Settings');
 const supplyTagService = require('./supplyTagService');
-const s3Service = require('./s3Service');
+
+/**
+ * Lazily required. s3Service pulls in the AWS SDK, which is ESM and cannot be
+ * parsed by the (Babel-less) jest config â€” so a top-level import here breaks
+ * every suite that reaches this file transitively, including the work-order
+ * controller's. Only the three photo functions need it, and the same lazy
+ * pattern is already used for aiService below.
+ */
+const s3 = () => require('./s3Service');
 const { resolvePrice } = require('../utils/supplyPricing');
 const { composeDisplayName, canComposeName } = require('../utils/supplyNaming');
 const {
@@ -88,11 +96,11 @@ const getMarkupPercentage = async () => {
  *
  * Mandatory, not defensive: `attributes` is a Map written straight into the
  * document, so an unchecked key is a client-controlled path. Whitelisting
- * against the registry also keeps the data honest — an attribute nothing
+ * against the registry also keeps the data honest â€” an attribute nothing
  * defines is invisible to every filter and every form, so writing one would
  * silently lose the value.
  *
- * Empty values delete the key rather than storing '' — a blank measurement is
+ * Empty values delete the key rather than storing '' â€” a blank measurement is
  * an absent one, and storing it would make "has a viscosity" untrue-but-present.
  */
 const sanitizeAttributes = async (attributes) => {
@@ -147,7 +155,7 @@ const namingContext = async () => {
  * Refuse a save that would leave an item with nothing to call it.
  *
  * With `name` optional, an item carrying no name, no brand, no part number and
- * no primary tag has no way to render — it would appear as "Untitled supply"
+ * no primary tag has no way to render â€” it would appear as "Untitled supply"
  * and be effectively unfindable. Catching it at the boundary beats discovering
  * it in the list.
  */
@@ -169,7 +177,7 @@ const decorate = (supply, ctx) => {
 
   const primaryTag = supply.primaryTag ? ctx.tagById.get(String(supply.primaryTag)) : null;
 
-  // Only the fields the primary tag actually contributes belong in the name —
+  // Only the fields the primary tag actually contributes belong in the name â€”
   // a secondary tag's measurements describe the item's other door, not its
   // identity.
   const fieldIds = [];
@@ -195,19 +203,19 @@ const decorate = (supply, ctx) => {
   };
 };
 
-// ───────────────────────────────── Supplies ─────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Supplies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * List supplies.
  *
- * `tag` walks descendants in memory — see supplyTagService for why there is no
+ * `tag` walks descendants in memory â€” see supplyTagService for why there is no
  * closure table or $graphLookup here.
  */
 const listSupplies = async (query = {}) => {
   const { tag, untagged, brand, vendor, form, location, search, active, attr } = query;
   const filter = { isActive: active === 'false' ? false : true };
 
-  // attr[viscosity]=5W-30 — keys whitelisted against the registry so a crafted
+  // attr[viscosity]=5W-30 â€” keys whitelisted against the registry so a crafted
   // key can't address an arbitrary document path.
   if (attr && typeof attr === 'object') {
     const known = await SupplyField.find({}, 'key').lean();
@@ -240,7 +248,7 @@ const listSupplies = async (query = {}) => {
   // Search runs against the COMPOSED name, in memory.
   //
   // It has to: the name a user sees and would search for ("mobil 5w-30") exists
-  // in no single column — brand is a ref, viscosity is a Map entry, the noun
+  // in no single column â€” brand is a ref, viscosity is a Map entry, the noun
   // lives on the tag. A Mongo regex can only see the fragments. Phase 1 has no
   // server-side pagination, so the full filtered set is already in hand; if that
   // ever changes, this needs a denormalized search key and the cascade that
@@ -306,7 +314,7 @@ const createSupply = async (body, userId) => {
  *
  * Resolves the INTENDED final tag state and validates it before issuing the
  * write, keeping the single-query shape. The model's pre('validate') hook does
- * not fire for findByIdAndUpdate — this is the actual enforcement point, not a
+ * not fire for findByIdAndUpdate â€” this is the actual enforcement point, not a
  * duplicate of it.
  */
 const updateSupply = async (id, body) => {
@@ -334,7 +342,7 @@ const updateSupply = async (id, body) => {
     data.price = resolvePrice({ ...current, ...data }, await getMarkupPercentage());
   }
 
-  // Validate against the RESULTING item — clearing the name is fine if a brand
+  // Validate against the RESULTING item â€” clearing the name is fine if a brand
   // and tag remain, and not fine if they don't.
   const ctx = await namingContext();
   await assertNameable({ ...current, ...data }, ctx);
@@ -387,7 +395,7 @@ const adjustQuantity = async (id, { quantity, type = 'adjust', unit, note }, use
 /**
  * Attach (or replace) an item photo.
  *
- * The S3 key never comes from the client — it is minted here from the uploaded
+ * The S3 key never comes from the client â€” it is minted here from the uploaded
  * buffer. `photoKey` is deliberately not in SUPPLY_FIELDS for the same reason:
  * a client-settable key would turn the photo stream route into a way to read
  * any object in the bucket.
@@ -396,7 +404,7 @@ const setPhoto = async (id, file) => {
   const supply = await ShopSupply.findById(id).lean();
   if (!supply) return null;
 
-  const upload = await s3Service.uploadFile(file.buffer, file.originalname || 'supply.png', file.mimetype);
+  const upload = await s3().uploadFile(file.buffer, file.originalname || 'supply.png', file.mimetype);
   if (!upload.key) {
     throw new SupplyError('Photo storage is not configured on this server.', 500);
   }
@@ -410,7 +418,7 @@ const setPhoto = async (id, file) => {
   // Best-effort cleanup of the replaced object; a leaked S3 object is a far
   // smaller problem than failing the user's upload after it already succeeded.
   if (supply.photoKey && supply.photoKey !== upload.key) {
-    try { await s3Service.deleteFile(supply.photoKey); } catch (err) {
+    try { await s3().deleteFile(supply.photoKey); } catch (err) {
       console.error('[supplies] Failed to delete replaced photo:', err.message);
     }
   }
@@ -429,7 +437,7 @@ const clearPhoto = async (id) => {
   ).lean();
 
   if (supply.photoKey) {
-    try { await s3Service.deleteFile(supply.photoKey); } catch (err) {
+    try { await s3().deleteFile(supply.photoKey); } catch (err) {
       console.error('[supplies] Failed to delete photo object:', err.message);
     }
   }
@@ -440,7 +448,7 @@ const clearPhoto = async (id) => {
 const getPhotoStream = async (id) => {
   const supply = await ShopSupply.findById(id, 'photoKey').lean();
   if (!supply || !supply.photoKey) return null;
-  return s3Service.getFileStream(supply.photoKey);
+  return s3().getFileStream(supply.photoKey);
 };
 
 const getMovements = async (id, limit = 50) => SupplyMovement.find({ supply: id })
@@ -525,7 +533,7 @@ const getShoppingList = async () => {
 
 const countUntagged = async () => ShopSupply.countDocuments({ isActive: true, tags: { $size: 0 } });
 
-// ────────────────────────────── Tax rules ───────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tax rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Learned per-vendor tax defaults, keyed by hostname. A handful of rows, served
@@ -548,7 +556,7 @@ const setTaxRule = async (hostname, chargesTax, userId) => {
   ).lean();
 };
 
-// ─────────────────────────── Label extraction ───────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Label extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Human-readable path for a tag, for the prompt's category list. */
 const tagPathOf = (tag, tagById) => {
@@ -571,14 +579,14 @@ const tagPathOf = (tag, tagById) => {
  *
  * Everything the model returns is treated as a SUGGESTION and validated against
  * the real vocabulary before it reaches the client. Language models invent
- * plausible identifiers — a slug that looks right but matches nothing, a
- * measurement key that doesn't exist — and an invented value that silently
+ * plausible identifiers â€” a slug that looks right but matches nothing, a
+ * measurement key that doesn't exist â€” and an invented value that silently
  * became real data would be exactly the "looks finished from every angle"
  * failure the tagging rule warns about.
  *
  * The suggested tag is returned SEPARATELY from the draft, never merged into
  * it. The client renders it as unconfirmed; if the user saves without accepting
- * it, the item lands untagged and shows up in Untagged (N) — the same safe
+ * it, the item lands untagged and shows up in Untagged (N) â€” the same safe
  * default as if the AI had never run.
  */
 const extractFromLabel = async (file) => {
@@ -612,13 +620,13 @@ const extractFromLabel = async (file) => {
     }))
   });
 
-  // ── Validate the tag suggestion ──
+  // â”€â”€ Validate the tag suggestion â”€â”€
   const tagBySlug = new Map(tags.map((t) => [t.slug, t]));
   const suggestedTag = raw.tagSlug ? tagBySlug.get(raw.tagSlug) || null : null;
   const rejected = [];
   if (raw.tagSlug && !suggestedTag) rejected.push(`category "${raw.tagSlug}"`);
 
-  // ── Validate attributes: known key, applicable to the tag, allowed value ──
+  // â”€â”€ Validate attributes: known key, applicable to the tag, allowed value â”€â”€
   const fieldByKey = new Map(fields.map((f) => [f.key, f]));
   const applicable = suggestedTag
     ? new Set(resolveFieldsForItem(
@@ -639,7 +647,7 @@ const extractFromLabel = async (file) => {
     if (!v) return;
 
     if (field.type === 'select') {
-      // Snap to the canonical option so "5w-30" becomes "5W-30" — otherwise the
+      // Snap to the canonical option so "5w-30" becomes "5W-30" â€” otherwise the
       // dropdown can't display it and the value can't be filtered on.
       const match = (field.options || []).find((o) => o.toLowerCase() === v.toLowerCase());
       if (!match) { rejected.push(`${field.label} "${v}"`); return; }
@@ -649,7 +657,7 @@ const extractFromLabel = async (file) => {
     }
   });
 
-  // ── Map form and package unit onto existing vocab; never invent entries ──
+  // â”€â”€ Map form and package unit onto existing vocab; never invent entries â”€â”€
   const vocabMatch = (fieldKey, value) => {
     if (!value) return null;
     const entry = vocab.find((e) => e.fieldKey === fieldKey
@@ -668,7 +676,7 @@ const extractFromLabel = async (file) => {
     qualifier: raw.qualifier,
     attributes,
     form: vocabMatch('form', raw.form),
-    // The unit the shop USES the product in — quarts, not jugs. Quantity on
+    // The unit the shop USES the product in â€” quarts, not jugs. Quantity on
     // hand is counted in this.
     stockUnit: vocabMatch('unit', raw.contentUnit),
     // The thing you order one of. Distinct from stockUnit, and the pair only
@@ -703,7 +711,7 @@ const extractFromLabel = async (file) => {
  * Done locally rather than with a second AI call: it runs once per photo in a
  * bulk import, and brand + part number is a decisive comparison that doesn't
  * need a language model. Composes [brand, partNumber] at compare time rather
- * than assuming a joined string — the old inventory stored the brand INSIDE
+ * than assuming a joined string â€” the old inventory stored the brand INSIDE
  * partNumber, and matching against supplies must not inherit that.
  */
 const findSimilar = async (draft, productType) => {
@@ -736,7 +744,7 @@ const findSimilar = async (draft, productType) => {
     .slice(0, 3);
 };
 
-// ─────────────────────────────────── Tags ───────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const listTags = async () => supplyTagService.getFlat();
 
@@ -769,7 +777,7 @@ const updateTag = async (id, body) => {
 };
 
 /**
- * Delete a tag — refused unless it is BOTH childless and unused.
+ * Delete a tag â€” refused unless it is BOTH childless and unused.
  *
  * The usage count checks `primaryTag` as well as `tags`. Checking `tags` alone
  * would only be sufficient if the invariant already held everywhere, which is
@@ -802,7 +810,7 @@ const deleteTag = async (id) => {
   // Sweep: the count-then-delete window above is not transactional. At this
   // user count a race is vanishingly unlikely, and this sweep is the control
   // rather than a transaction and the replica-set commitment it would imply.
-  // If this ever logs, that assumption was wrong and §6a needs revisiting.
+  // If this ever logs, that assumption was wrong and Â§6a needs revisiting.
   const [pulled, cleared] = await Promise.all([
     ShopSupply.updateMany({ tags: id }, { $pull: { tags: id } }),
     ShopSupply.updateMany({ primaryTag: id }, { $set: { primaryTag: null } })
@@ -810,7 +818,7 @@ const deleteTag = async (id) => {
   const sweptCount = Math.max(pulled.modifiedCount || 0, cleared.modifiedCount || 0);
   if (sweptCount > 0) {
     console.warn(`[supplies] Tag ${id} was attached to ${sweptCount} item(s) between the `
-      + 'usage check and the delete. Swept — but this race was assumed not to happen.');
+      + 'usage check and the delete. Swept â€” but this race was assumed not to happen.');
   }
 
   return deleted;
@@ -842,14 +850,14 @@ const getTagUsage = async () => {
   return usage;
 };
 
-// ────────────────────────────────── Vocab ──────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Vocab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Vocabulary, each entry carrying how many active supplies reference it.
  *
  * The count is what lets the FILTER dropdowns offer only values something
  * actually uses. Offering a vendor no item has is indistinguishable from a
- * broken filter — you pick it, get nothing, and conclude filtering is broken
+ * broken filter â€” you pick it, get nothing, and conclude filtering is broken
  * rather than that the value was never used. Entry dropdowns still offer
  * everything, since a value you have not used yet is exactly what you are about
  * to use.
@@ -910,7 +918,7 @@ const deleteVocab = async (id) => {
   if (inUse > 0) {
     throw new SupplyError(
       `"${entry.label || entry.value}" is used by ${inUse} item${inUse === 1 ? '' : 's'}. `
-      + 'Deactivate it instead — it will stop being offered but existing items keep resolving.',
+      + 'Deactivate it instead â€” it will stop being offered but existing items keep resolving.',
       409,
       { code: 'VOCAB_IN_USE', inUse }
     );

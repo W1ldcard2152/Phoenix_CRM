@@ -2,6 +2,26 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-08-09
+
+### Added
+- **Shop Supplies** — a new stocking module alongside Shop Inventory, reachable from the sidebar. Supplies are filed against a 100-node tag tree organised by job phase (Chemicals & Fluids, Refinish & Body, Consumable Hardware, Shop & Safety, Service Parts), and filtering by a tag includes everything beneath it, so picking "Chemicals & Fluids" finds the brake cleaner filed under Shop Chemicals. Untagged items are counted separately so nothing gets lost after an import.
+- **Measurements per category.** Tag an item Engine Oil and a Viscosity dropdown appears; tag it Abrasives → Discs and you get Grit and Diameter. Nineteen measurements are defined across the tree, most as fixed lists so 5W-30 can't also be stored as "5w30" and go missing from a filter. Filter by them once you've picked a tag.
+- **Item names are built from what you record**, not typed. Brand, part number, measurements and the tag combine into "Bosch 3330 Oil Filter" or "Mobil 1 5W-30 Engine Oil (High Mileage, Full Synthetic)". You type only the qualifier — the part that isn't derivable. Rename a brand and every item's name follows.
+- **Import from product photos.** Drop in a stack of label photos and work them one at a time; each offers a one-click AI read of the label into brand, part number, measurements and package size, and the photo becomes that item's picture. The suggested category is never applied on its own — accept it or the item saves untagged, ready for triage.
+- **Item photos** on any supply: paste a screenshot with Ctrl+V, drop a file, or upload one. Thumbnails show in the list, which is usually faster than a name for matching something on a shelf.
+- **Click a supply for a detail card** — photo, tags, measurements, stock and pricing at a glance, plus the full history of every quantity change with who made it and what it left behind.
+- **Vendor sales tax folds into cost.** Tick "vendor charged tax" and the shop tax rate is applied, because tax you pay a vendor is part of what the item cost. The answer is remembered per vendor from the product URL, so the next Walmart item defaults the same way.
+- **Product URL fills in the rest.** Paste a listing URL and the vendor is recognised from the shop's vendor directory; the existing AI extraction can also pull brand, part number and cost from the page.
+
+### Changed
+- **Service packages now draw from Shop Supplies.** A package line names a *kind* of supply — "5 of something tagged Engine Oil" — and when you add the package to a work order you pick from whatever is tagged there, including sub-categories. Committing deducts from supplies and records the work order against that item's history. Existing packages were converted automatically; work orders already committed still show exactly what they consumed.
+- Package requirements are chosen from the supply tag tree rather than the separate tag list in Settings, which is no longer used.
+
+### Fixed
+- Brands appeared several times in the supplies dropdowns after adding the same one from several import cards. Only ever one was stored; the list on screen was miscounting.
+- Filtering supplies by vendor could return nothing for a vendor you clearly buy from, because the shop's directory and the old inventory spelled some vendors differently ("Rock Auto" vs "RockAuto"). The duplicates are merged and filters now offer only values something actually uses, with a count.
+
 ## 2026-06-24
 
 ### Added

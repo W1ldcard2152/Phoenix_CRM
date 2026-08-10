@@ -5,6 +5,10 @@ const Customer = require('../models/Customer');
 const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const InventoryItem = require('../models/InventoryItem');
+const ShopSupply = require('../models/ShopSupply');
+const SupplyMovement = require('../models/SupplyMovement');
+const supplyService = require('../services/supplyService');
+const supplyTagService = require('../services/supplyTagService');
 const ServicePackage = require('../models/ServicePackage');
 const Settings = require('../models/Settings');
 const catchAsync = require('../utils/catchAsync');
@@ -913,43 +917,62 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
     return next(new AppError('Service package not found or inactive', 404));
   }
 
-  // selections = [{ includedItemId, inventoryItemId }]
+  // selections = [{ includedItemId, shopSupplyId }]
   const selectionMap = {};
   if (selections && Array.isArray(selections)) {
     for (const sel of selections) {
-      selectionMap[sel.includedItemId] = sel.inventoryItemId;
+      selectionMap[sel.includedItemId] = sel.shopSupplyId || sel.supplyId;
     }
   }
 
-  // Validate selected items exist and match tags (but don't check QOH yet)
+  // Validate the chosen supplies satisfy their lines. Quantity on hand is NOT
+  // checked here — this is a draft, and stock only moves on commit.
   const packageIncludedItems = [];
   for (const included of pkg.includedItems) {
-    const inventoryItemId = selectionMap[included._id.toString()];
-    if (inventoryItemId) {
-      const inv = await InventoryItem.findById(inventoryItemId);
-      if (!inv || !inv.isActive) {
-        return next(new AppError(`Inventory item for "${included.label}" is not found or inactive`, 400));
-      }
-      if (inv.packageTag !== included.packageTag) {
-        return next(new AppError(`Selected item "${inv.name}" does not match required tag "${included.packageTag}"`, 400));
-      }
-      const invUnitCost = parseFloat((inv.cost / (inv.unitsPerPurchase || 1)).toFixed(4));
+    const shopSupplyId = selectionMap[included._id.toString()];
+
+    if (!shopSupplyId) {
+      // Nothing chosen: the line still appears on the work order so the writer
+      // can see what the package owes, it just isn't linked to stock.
       packageIncludedItems.push({
-        inventoryItemId: inv._id,
-        name: inv.name,
-        partNumber: inv.partNumber || '',
-        brand: inv.brand || '',
-        quantity: included.quantity,
-        cost: invUnitCost,
-        unit: inv.unit || ''
-      });
-    } else {
-      packageIncludedItems.push({
-        name: `${included.label} (${included.packageTag})`,
+        name: included.label,
         quantity: included.quantity,
         cost: 0
       });
+      continue;
     }
+
+    const supply = await supplyService.getSupply(shopSupplyId);
+    if (!supply || !supply.isActive) {
+      return next(new AppError(`Supply for "${included.label}" is not found or inactive`, 400));
+    }
+
+    // The line is satisfied by anything tagged at or BENEATH its tag, so a
+    // package asking for "Service Fluids" accepts an engine oil. Same
+    // descendant walk the supplies filter uses.
+    if (included.supplyTag) {
+      const allowed = await supplyTagService.getDescendantIds(included.supplyTag);
+      const supplyTags = (supply.tags || []).map(String);
+      if (!supplyTags.some((t) => allowed.includes(t))) {
+        return next(new AppError(
+          `"${supply.displayName}" isn't tagged for "${included.label}"`, 400
+        ));
+      }
+    }
+
+    packageIncludedItems.push({
+      shopSupplyId: supply._id,
+      // Snapshot: a work-order line records what was actually used, so later
+      // edits to the supply must not rewrite history.
+      name: supply.displayName,
+      partNumber: supply.partNumber || '',
+      brand: '',
+      quantity: included.quantity,
+      cost: supply.cost && supply.unitsPerPurchase
+        ? parseFloat((supply.cost / supply.unitsPerPurchase).toFixed(4))
+        : 0,
+      unit: ''
+    });
   }
 
   // Add as uncommitted draft — no inventory deducted
@@ -993,9 +1016,20 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
     return next(new AppError('This service package is already committed', 400));
   }
 
-  // Pre-validate all inventory items have sufficient QOH
+  // Pre-validate stock across BOTH sources before moving any of it, so a
+  // package that can't be fully satisfied fails without half-deducting.
   for (const item of pkg.includedItems) {
-    if (item.inventoryItemId) {
+    if (item.shopSupplyId) {
+      const supply = await supplyService.getSupply(item.shopSupplyId);
+      if (!supply || !supply.isActive) {
+        return next(new AppError(`Supply "${item.name}" is not found or inactive`, 400));
+      }
+      if (supply.quantityOnHand < item.quantity) {
+        return next(new AppError(
+          `Insufficient stock for "${item.name}": ${supply.quantityOnHand} available, ${item.quantity} needed`, 400
+        ));
+      }
+    } else if (item.inventoryItemId) {
       const inv = await InventoryItem.findById(item.inventoryItemId);
       if (!inv || !inv.isActive) {
         return next(new AppError(`Inventory item "${item.name}" is not found or inactive`, 400));
@@ -1006,10 +1040,45 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
     }
   }
 
-  // Deduct inventory
   const lowStockWarnings = [];
   for (const item of pkg.includedItems) {
-    if (item.inventoryItemId) {
+    if (item.shopSupplyId) {
+      // Atomic guard, same shape as the old table's: the $gte in the filter is
+      // what stops two writers double-spending the last unit.
+      const updated = await ShopSupply.findOneAndUpdate(
+        { _id: item.shopSupplyId, quantityOnHand: { $gte: item.quantity } },
+        { $inc: { quantityOnHand: -item.quantity } },
+        { new: true }
+      );
+      if (!updated) {
+        return next(new AppError(`Failed to deduct stock for "${item.name}" (concurrent update)`, 409));
+      }
+
+      // The movement's source FK has existed since the model was written and
+      // this is the first thing to populate it — a supply's history can now say
+      // which work order consumed it.
+      await SupplyMovement.create({
+        supply: updated._id,
+        type: 'consume',
+        quantity: -item.quantity,
+        unit: updated.stockUnit || null,
+        resultingQoh: updated.quantityOnHand,
+        sourceModel: 'WorkOrder',
+        sourceId: workOrder._id,
+        note: `Service "${pkg.name}"`,
+        createdBy: req.user._id
+      });
+
+      if (updated.quantityOnHand <= updated.reorderPoint) {
+        lowStockWarnings.push({
+          itemName: item.name,
+          currentQoh: updated.quantityOnHand,
+          unit: '',
+          reorderPoint: updated.reorderPoint
+        });
+      }
+    } else if (item.inventoryItemId) {
+      // Legacy path, kept for package lines drafted before the switch.
       const inv = await InventoryItem.findById(item.inventoryItemId);
       const previousQty = inv.quantityOnHand;
       const newQty = previousQty - item.quantity;
@@ -1081,9 +1150,32 @@ exports.removeServicePackage = catchAsync(async (req, res, next) => {
 
   const removedPkg = workOrder.servicePackages[packageIndex];
 
-  // Return items to inventory if requested
-  if (returnToInventory && removedPkg.includedItems) {
+  // Return stock if requested. Only a committed package took any — an
+  // uncommitted draft never moved stock, so returning it would invent units.
+  if (returnToInventory && removedPkg.committed && removedPkg.includedItems) {
     for (const item of removedPkg.includedItems) {
+      if (item.shopSupplyId) {
+        const updated = await ShopSupply.findByIdAndUpdate(
+          item.shopSupplyId,
+          { $inc: { quantityOnHand: item.quantity } },
+          { new: true }
+        );
+        if (updated) {
+          await SupplyMovement.create({
+            supply: updated._id,
+            type: 'return',
+            quantity: item.quantity,
+            unit: updated.stockUnit || null,
+            resultingQoh: updated.quantityOnHand,
+            sourceModel: 'WorkOrder',
+            sourceId: workOrder._id,
+            note: `Returned from removed service "${removedPkg.name}"`,
+            createdBy: req.user._id
+          });
+        }
+        continue;
+      }
+
       if (item.inventoryItemId) {
         const inv = await InventoryItem.findById(item.inventoryItemId);
         if (inv) {
