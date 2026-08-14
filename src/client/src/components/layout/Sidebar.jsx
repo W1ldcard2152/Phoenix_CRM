@@ -95,8 +95,10 @@ const Sidebar = () => {
     { name: 'Follow-Ups', path: '/follow-ups', icon: 'fas fa-thumbtack', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
     { name: 'Calendar & Tasks', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
-    { name: 'Shop Inventory', path: '/inventory', icon: 'fas fa-boxes-stacked', roles: null },
-    { name: 'Shop Supplies', path: '/supplies', icon: 'fas fa-spray-can-sparkles', roles: null },
+    // The old Shop Inventory page is retired and deliberately absent here. Its
+    // route still resolves so historical stock records stay viewable — see the
+    // banner on InventoryList.
+    { name: 'Inventory & Shop Supplies', path: '/supplies', icon: 'fas fa-boxes-stacked', roles: null },
     { name: 'Service Packages', path: '/service-packages', icon: 'fas fa-box-open', roles: ['admin', 'management'] },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];

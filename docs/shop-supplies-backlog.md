@@ -242,3 +242,17 @@ Two inventory pages in the nav is tolerable for weeks, corrosive for months.
 Completing the triage pass is the trigger to schedule wire-in.
 
 _Observations:_
+
+- **2026-08-14 — closed. Coexistence lasted under a week.** The module was
+  specced on 08-08; wire-in landed and Shop Inventory was retired on 08-14. The
+  nav now carries one entry, "Inventory & Shop Supplies" (`/supplies`).
+- What retirement actually meant, for the record: the nav entry went, nothing
+  writes to `InventoryItem` any more (the work order receipt importer's
+  "+ Shop Inventory" action and its server branch are gone, as is the orphaned
+  `InventoryPickerModal`), and `/inventory` still routes to a banner-topped page
+  so the work orders that drew stock from it stay legible. The legacy read and
+  restock branches in `workOrderController` stay for the same reason.
+- **Left open by the retirement:** `InventoryReceiptImportModal` still works on
+  the retired page, which is the only remaining way to add stock from a receipt —
+  supplies-side receipt import (item 2f) is still unbuilt, and building it is
+  what would let `/inventory` be deleted outright.

@@ -35,6 +35,7 @@ import { generatePdfFilename, generatePdfFromHtml, printHtml, generateDocumentHt
 import { calculateDiscountAmount, describeDiscount } from '../../utils/discountUtils';
 import { getCustomerFacingName } from '../../utils/nameUtils';
 import { rankVendors } from '../../utils/vendorRanking';
+import { isStockLinked, isStockDraft, isStockPulled } from '../../utils/stockLinks';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions, isOfficeStaff, isAdminOrManagement } from '../../utils/permissions';
 import { WARRANTY_OPTIONS, DEFAULT_WARRANTY } from '../../utils/warrantyOptions';
@@ -909,9 +910,9 @@ const DocumentDetail = () => {
     if (!partRemovalData) return;
     const { partIndex, part } = partRemovalData;
     try {
-      // Manually-entered parts (no inventory link) just splice — go through the bulk update path.
-      // Inventory-linked parts go through the dedicated endpoint so restock can be requested.
-      if (part.inventoryItemId) {
+      // Manually-entered parts (no stock link) just splice — go through the bulk update path.
+      // Stock-linked parts go through the dedicated endpoint so restock can be requested.
+      if (isStockLinked(part)) {
         // For drafts (committed === false) restock is irrelevant; for committed and
         // pre-migration parts (committed undefined) we forward the user's choice.
         const payload = part.committed === false ? { partIndex } : { partIndex, returnToInventory };
@@ -975,7 +976,7 @@ const DocumentDetail = () => {
             .filter(pkg => !pkg.committed);
           const remainingParts = (wo.parts || [])
             .map((p, idx) => ({ ...p, partIndex: idx }))
-            .filter(p => p.inventoryItemId && p.committed === false);
+            .filter(isStockDraft);
           if (remainingPackages.length === 0 && remainingParts.length === 0) {
             navigate(`/invoices/generate?workOrder=${id}`);
           } else {
@@ -1056,7 +1057,7 @@ const DocumentDetail = () => {
             .filter(pkg => !pkg.committed);
           const remainingParts = (wo.parts || [])
             .map((p, idx) => ({ ...p, partIndex: idx }))
-            .filter(p => p.inventoryItemId && p.committed === false);
+            .filter(isStockDraft);
 
           if (remainingPackages.length === 0 && remainingParts.length === 0) {
             navigate(`/invoices/generate?workOrder=${id}`);
@@ -1334,13 +1335,13 @@ const DocumentDetail = () => {
       return;
     }
 
-    // Check for uncommitted service packages and inventory-linked parts
+    // Check for uncommitted service packages and stock-linked parts
     const uncommittedPackages = (workOrder.servicePackages || [])
       .map((pkg, idx) => ({ ...pkg, packageIndex: idx }))
       .filter(pkg => !pkg.committed);
     const uncommittedParts = (workOrder.parts || [])
       .map((p, idx) => ({ ...p, partIndex: idx }))
-      .filter(p => p.inventoryItemId && p.committed === false);
+      .filter(isStockDraft);
 
     if (uncommittedPackages.length > 0 || uncommittedParts.length > 0) {
       setUncommittedPackagesForWarning(uncommittedPackages);
@@ -1692,7 +1693,7 @@ const DocumentDetail = () => {
               <React.Fragment key={part.originalIndex}>
               <tr
                 className={`cursor-pointer ${
-                  part.inventoryItemId && part.committed === false
+                  isStockDraft(part)
                     ? 'bg-yellow-50/40 hover:bg-yellow-50'
                     : 'hover:bg-gray-50'
                 }`}
@@ -1705,10 +1706,10 @@ const DocumentDetail = () => {
                     {part.serviceIncluded && (
                       <span className="px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded">incl.</span>
                     )}
-                    {part.inventoryItemId && part.committed === false && (
+                    {isStockDraft(part) && (
                       <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-100 text-yellow-700 rounded">Draft</span>
                     )}
-                    {part.inventoryItemId && part.committed !== false && (
+                    {isStockPulled(part) && (
                       <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded">
                         <i className="fas fa-check mr-0.5"></i>Pulled
                       </span>
@@ -1789,7 +1790,7 @@ const DocumentDetail = () => {
                 )}
                 <td className="px-4 py-2 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end items-center space-x-2">
-                    {part.inventoryItemId && part.committed === false && (
+                    {isStockDraft(part) && (
                       <button
                         onClick={() => handleCommitPart(part.originalIndex)}
                         className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700"

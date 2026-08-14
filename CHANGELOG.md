@@ -2,6 +2,22 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-08-14
+
+### Changed
+- **Shop Supplies is now "Inventory & Shop Supplies" — the single source of truth for stock.** Shop Inventory is retired and gone from the sidebar. Nothing writes to it any more, so there is one place to look for what's on the shelf.
+- **Parts pulled from supplies now behave like inventory parts always did on a work order.** They show a **Draft** badge until pulled and a **Pulled** badge after, they have a **Pull** button on the line, and they appear in the warning that comes up when you generate an invoice with items still un-pulled. Previously none of that appeared for a supply-backed part, so the only way to spot one was to remember adding it.
+- Stock quantities now read with their unit throughout the pull flow — "2 quarts available" rather than "2 available" — in the pull confirmation, the low-stock alert and the not-enough-stock message.
+- A supply's history now names the work order that consumed it, instead of recording a bare "used on work order".
+- The vendor directory in Settings labels stock vendors **Inventory & Supplies** rather than Shop Inventory.
+
+### Fixed
+- **Removing a pulled supply part no longer loses the stock.** The removal prompt offered "Remove & Restock", but for supply-backed parts the choice was ignored and the units were never returned. Inventory-backed parts were unaffected.
+- Generating an invoice no longer skips past supply-backed parts that haven't been pulled. They were invisible to the pre-invoice check, so a work order could be invoiced with stock never deducted.
+
+### Removed
+- **"+ Shop Inventory" is gone from the work order receipt importer**, along with its inventory-match column — it added items to the retired table, which nothing surfaces any more. Receipt lines still match and merge against parts already on the work order. Adding stock from a receipt is, for now, only possible on the retired Shop Inventory page; the supplies-side replacement is still to come.
+
 ## 2026-08-09
 
 ### Added

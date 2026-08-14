@@ -167,11 +167,12 @@ const App = () => {
                       {/* Feedback Admin Route (admin only) */}
                       <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
 
-                      {/* Inventory Route */}
-                      <Route path="/inventory" element={<InventoryList />} />
-                      {/* Shop Supplies — new module, runs alongside /inventory
-                          until the wire-in phase retires the old one. */}
+                      {/* Inventory & Shop Supplies — the single source of truth for stock. */}
                       <Route path="/supplies" element={<SupplyList />} />
+                      {/* Retired Shop Inventory. Unlinked from the nav and no
+                          longer written to, but still routed: work order lines
+                          created before the switch reference these records. */}
+                      <Route path="/inventory" element={<InventoryList />} />
                       <Route path="/service-packages" element={<ServicePackageList />} />
 
                       {/* Technician Portal Routes */}

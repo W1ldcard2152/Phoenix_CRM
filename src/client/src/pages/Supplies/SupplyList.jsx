@@ -15,10 +15,11 @@ import { indexTags, buildTree, tagPath, idOf } from '../../components/supplies/t
 import { useAuth } from '../../contexts/AuthContext';
 
 /**
- * Shop Supplies — the new inventory module.
+ * Inventory & Shop Supplies — the single source of truth for stock.
  *
- * Runs alongside the old Shop Inventory page, which is untouched. Both appear
- * in the nav during the transition.
+ * The old Shop Inventory page is retired: it is gone from the nav and nothing
+ * writes to `InventoryItem` any more. Its route still resolves read-only so the
+ * work order lines that consumed stock from it stay legible.
  *
  * Uses the shared primitives (Modal, ResponsiveTable, Button) rather than the
  * hand-rolled table and inline modals that InventoryList grew.
@@ -310,7 +311,7 @@ const SupplyList = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Shop Supplies</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Inventory &amp; Shop Supplies</h1>
           <p className="text-sm text-gray-500">
             {supplies.length} shown
             {untaggedCount > 0 && (
