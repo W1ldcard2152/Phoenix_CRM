@@ -42,6 +42,34 @@ export const buildTree = (flat = []) => {
   return roots;
 };
 
+
+/**
+ * Indent prefix for a node at `depth` in a flattened dropdown.
+ *
+ * Replaces two nbsp per level followed by the same '└' elbow at every depth.
+ * That indented correctly - the spaces are non-breaking, so nothing was
+ * collapsing - but two spaces sits below the threshold where an eye scanning a
+ * list can tell tier 2 from tier 3, and an identical elbow left it no other cue.
+ *
+ * So depth is carried by a repeated bar rather than by width alone. The number
+ * of bars states the level outright, which survives whatever a proportional
+ * font does to the spacing:
+ *
+ *     Service Fluids
+ *     │ └ Engine Oil
+ *     │ │ └ Full Synthetic
+ *
+ * Non-breaking throughout, matching what these labels already used - a normal
+ * space run would collapse wherever the label is rendered as HTML text.
+ */
+const BAR = '│ ';
+const ELBOW = '└ ';
+
+export const treeLabel = (name, depth) => {
+  if (depth <= 0) return name;
+  return `${BAR.repeat(depth - 1)}${ELBOW}${name}`;
+};
+
 /** Ancestors nearest-last, e.g. ['Refinish & Body', 'Masking'] for Tape. */
 export const ancestorNames = (tagId, byId) => {
   const out = [];

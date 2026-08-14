@@ -174,6 +174,19 @@ const ShopSupplySchema = new Schema({
   // Cache-buster for the <img> src, so replacing a photo shows the new one.
   photoUpdatedAt: { type: Date, default: null },
 
+  /**
+   * When this item was last physically counted.
+   *
+   * Stamped by posting a cycle count, for EVERY line that carried a number —
+   * including the ones that matched, since "we looked and it was right" is the
+   * fact this records. A movement is only written when something differed, so
+   * the movement ledger cannot answer this question on its own: an item counted
+   * correctly ten times running would look never-counted.
+   *
+   * Null means never counted, which is the honest state for imported stock.
+   */
+  lastCountedAt: { type: Date, default: null },
+
   isActive: {
     type: Boolean,
     default: true

@@ -4,7 +4,14 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 
 ## 2026-08-14
 
+### Added
+- **Cycle counts.** Cut a count sheet over a slice of the shelves — by category, brand, vendor, location or measurement — and walk it with a phone. Entering counts is open to everyone; deciding what gets counted and posting the results stays with admin and management. Counts are entered the way stock actually sits on a shelf: whole packages plus loose units, so two full jugs and three loose quarts is entered as 2 and 3.
+- **Posting a count applies the variance, not the counted figure.** If a technician pulls stock from a shelf while the count is in progress, that consumption survives posting instead of being erased — and the line is flagged so you can see it happened. Counts entered but not yet posted never touch stock, so a half-finished sheet is harmless.
+- **Saved count scopes** — name a slice ("Monday: Fluids", "Quarterly: Stock Room 2") and re-run it. A scope stores the filter rather than the items, so re-running it next quarter picks up everything bought since.
+- **Edit quantity on hand inline** from the supplies list, without opening the item.
+
 ### Changed
+- **Location filtering follows the shelf hierarchy.** Picking "Stock Room 1" now includes everything on its columns and shelves, rather than only items filed at that exact code.
 - **Shop Supplies is now "Inventory & Shop Supplies" — the single source of truth for stock.** Shop Inventory is retired and gone from the sidebar. Nothing writes to it any more, so there is one place to look for what's on the shelf.
 - **Parts pulled from supplies now behave like inventory parts always did on a work order.** They show a **Draft** badge until pulled and a **Pulled** badge after, they have a **Pull** button on the line, and they appear in the warning that comes up when you generate an invoice with items still un-pulled. Previously none of that appeared for a supply-backed part, so the only way to spot one was to remember adding it.
 - Stock quantities now read with their unit throughout the pull flow — "2 quarts available" rather than "2 available" — in the pull confirmation, the low-stock alert and the not-enough-stock message.

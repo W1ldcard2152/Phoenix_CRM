@@ -2,6 +2,7 @@ const multer = require('multer');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const supplyService = require('../services/supplyService');
+const supplyCountService = require('../services/supplyCountService');
 const { imageFilter } = require('../utils/uploadFilters');
 
 // Photos arrive either as a picked file or as a pasted clipboard blob; both are
@@ -133,6 +134,125 @@ exports.bulkUpdate = run(async (req, res) => {
 exports.getShoppingList = run(async (req, res) => {
   const supplies = await supplyService.getShoppingList();
   res.status(200).json({ status: 'success', results: supplies.length, data: { supplies } });
+});
+
+// ────────────────────────────── Cycle counts ──────────────────────────────
+
+/**
+ * Entering counts is open to anyone on staff; creating and posting is not (see
+ * supplyRoutes). The blind-count projection lives in the service and is decided
+ * by the count's status — there is deliberately no parameter here that could
+ * ask for the expected quantities early.
+ */
+exports.previewCountScope = run(async (req, res) => {
+  const preview = await supplyCountService.previewScope(req.body.scope || req.body);
+  res.status(200).json({ status: 'success', data: preview });
+});
+
+exports.getCounts = run(async (req, res) => {
+  const counts = await supplyCountService.listCounts();
+  res.status(200).json({ status: 'success', results: counts.length, data: { counts } });
+});
+
+exports.getCount = run(async (req, res, next) => {
+  const count = await supplyCountService.getCount(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.getCountVariances = run(async (req, res, next) => {
+  const count = await supplyCountService.getVariances(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.createCount = run(async (req, res) => {
+  const count = await supplyCountService.createCount(req.body, req.user._id);
+  res.status(201).json({ status: 'success', data: { count } });
+});
+
+exports.setCountLine = run(async (req, res, next) => {
+  const count = await supplyCountService.setLineCount(
+    req.params.id, req.params.lineId, req.body, req.user._id
+  );
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.addCountLine = run(async (req, res, next) => {
+  const count = await supplyCountService.addLine(req.params.id, req.body.supply, req.user._id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.removeCountLine = run(async (req, res, next) => {
+  const count = await supplyCountService.removeLine(req.params.id, req.params.lineId);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.addCountFoundItem = run(async (req, res, next) => {
+  const count = await supplyCountService.addFoundItem(req.params.id, req.body);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.reviewCount = run(async (req, res, next) => {
+  const count = await supplyCountService.reviewCount(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.reopenCount = run(async (req, res, next) => {
+  const count = await supplyCountService.reopenCount(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.postCount = run(async (req, res, next) => {
+  const count = await supplyCountService.postCount(req.params.id, req.user._id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.cancelCount = run(async (req, res, next) => {
+  const count = await supplyCountService.cancelCount(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { count } });
+});
+
+exports.deleteCount = run(async (req, res, next) => {
+  const count = await supplyCountService.deleteCount(req.params.id);
+  if (!count) return next(new AppError('No count found with that ID', 404));
+  res.status(204).json({ status: 'success', data: null });
+});
+
+exports.getCountScopes = run(async (req, res) => {
+  const scopes = await supplyCountService.listScopes();
+  res.status(200).json({ status: 'success', results: scopes.length, data: { scopes } });
+});
+
+exports.createCountScope = run(async (req, res) => {
+  const scope = await supplyCountService.createScope(req.body, req.user._id);
+  res.status(201).json({ status: 'success', data: { scope } });
+});
+
+exports.updateCountScope = run(async (req, res, next) => {
+  const scope = await supplyCountService.updateScope(req.params.id, req.body);
+  if (!scope) return next(new AppError('No saved scope found with that ID', 404));
+  res.status(200).json({ status: 'success', data: { scope } });
+});
+
+exports.deleteCountScope = run(async (req, res, next) => {
+  const scope = await supplyCountService.deleteScope(req.params.id);
+  if (!scope) return next(new AppError('No saved scope found with that ID', 404));
+  res.status(204).json({ status: 'success', data: null });
+});
+
+exports.runCountScope = run(async (req, res, next) => {
+  const count = await supplyCountService.runScope(req.params.id, req.user._id);
+  if (!count) return next(new AppError('No saved scope found with that ID', 404));
+  res.status(201).json({ status: 'success', data: { count } });
 });
 
 // ─────────────────────────────────── Tags ───────────────────────────────────

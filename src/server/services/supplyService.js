@@ -16,6 +16,7 @@ const supplyTagService = require('./supplyTagService');
  * pattern is already used for aiService below.
  */
 const s3 = () => require('./s3Service');
+const escapeRegex = require('../utils/escapeRegex');
 const { resolvePrice } = require('../utils/supplyPricing');
 const { composeDisplayName, canComposeName } = require('../utils/supplyNaming');
 const {
@@ -211,34 +212,105 @@ const decorate = (supply, ctx) => {
  * `tag` walks descendants in memory â€” see supplyTagService for why there is no
  * closure table or $graphLookup here.
  */
+/**
+ * Normalize a filter value that may arrive as one value or several.
+ *
+ * Express parses `?brand=a&brand=b` into an array and `?brand=a` into a string,
+ * so every multi-value filter has to cope with both. Empty entries are dropped
+ * rather than matched on: a cleared row in a scope builder means "no
+ * constraint", not "match the empty string".
+ */
+const asList = (value) => {
+  if (value === undefined || value === null || value === '') return [];
+  const list = Array.isArray(value) ? value : [value];
+  return list.filter((v) => v !== undefined && v !== null && v !== '');
+};
+
+// One value stays an equality match; several become $in. Mongoose casts the
+// strings to ObjectIds either way.
+const anyOf = (value) => {
+  const list = asList(value);
+  if (list.length === 0) return null;
+  return list.length === 1 ? list[0] : { $in: list };
+};
+
+/**
+ * Resolve location prefixes to the vocab ids they cover.
+ *
+ * Locations are opaque references by design - SupplyVocab is explicit that 'B3'
+ * carries no row/column semantics - so "everything in Stock Room 1" cannot be a
+ * query on the supply at all. It resolves against the vocabulary first, then
+ * filters supplies by the resulting id set.
+ *
+ * This leans on the shelf codes sharing one syntax, which they do. A value that
+ * does not fit the pattern simply matches no prefix; it stays reachable by
+ * exact selection, so nothing becomes invisible.
+ */
+const resolveLocationPrefixes = async (prefixes) => {
+  const list = asList(prefixes).map((p) => String(p).slice(0, 100).trim()).filter(Boolean);
+  if (list.length === 0) return [];
+
+  const rows = await SupplyVocab.find({
+    fieldKey: 'location',
+    value: { $in: list.map((p) => new RegExp(`^${escapeRegex(p)}`, 'i')) }
+  }, '_id').lean();
+
+  return rows.map((r) => r._id);
+};
+
 const listSupplies = async (query = {}) => {
-  const { tag, untagged, brand, vendor, form, location, search, active, attr } = query;
+  const {
+    tag, untagged, brand, vendor, form, location, locationPrefix,
+    search, active, attr
+  } = query;
   const filter = { isActive: active === 'false' ? false : true };
 
   // attr[viscosity]=5W-30 â€” keys whitelisted against the registry so a crafted
   // key can't address an arbitrary document path.
+  // Values may be multiple too: attr[viscosity]=5W-30&attr[viscosity]=0W-20
+  // matches either.
   if (attr && typeof attr === 'object') {
     const known = await SupplyField.find({}, 'key').lean();
     const allowed = new Set(known.map((f) => f.key));
     Object.entries(attr).forEach(([key, value]) => {
       const k = String(key).toLowerCase();
-      if (!allowed.has(k) || value === '' || value === undefined) return;
-      filter[`attributes.${k}`] = String(value);
+      if (!allowed.has(k)) return;
+      const values = asList(value).map(String);
+      if (values.length === 0) return;
+      filter[`attributes.${k}`] = values.length === 1 ? values[0] : { $in: values };
     });
   }
 
   if (untagged === 'true') {
     filter.tags = { $size: 0 };
-  } else if (tag) {
-    const descendantIds = await supplyTagService.getDescendantIds(tag);
+  } else if (asList(tag).length > 0) {
+    // Several tags union their subtrees, so "count fluids and abrasives" is one
+    // sweep rather than two. Deduplicated, because subtrees can overlap.
+    const sets = await Promise.all(asList(tag).map((t) => supplyTagService.getDescendantIds(t)));
+    const descendantIds = [...new Set(sets.flat().map(String))];
     if (descendantIds.length === 0) return [];
     filter.tags = { $in: descendantIds.map((id) => new mongoose.Types.ObjectId(id)) };
   }
 
-  if (brand) filter.brand = brand;
-  if (vendor) filter.vendor = vendor;
-  if (form) filter.form = form;
-  if (location) filter.location = location;
+  const brandFilter = anyOf(brand);
+  if (brandFilter) filter.brand = brandFilter;
+  const vendorFilter = anyOf(vendor);
+  if (vendorFilter) filter.vendor = vendorFilter;
+  const formFilter = anyOf(form);
+  if (formFilter) filter.form = formFilter;
+
+  // Exact locations and prefix-matched ones are ONE constraint, not two ANDed
+  // together: asking for shelf 1-C-2 plus everything in Stock Room 2 has to
+  // return both, and ANDing them would return nothing at all.
+  const prefixIds = await resolveLocationPrefixes(locationPrefix);
+  const locationIds = [...asList(location), ...prefixIds];
+  // A prefix that matched no shelf is an empty result, not an absent filter.
+  if (asList(locationPrefix).length > 0 && prefixIds.length === 0 && asList(location).length === 0) {
+    return [];
+  }
+  if (locationIds.length > 0) {
+    filter.location = locationIds.length === 1 ? locationIds[0] : { $in: locationIds };
+  }
 
   const rows = await ShopSupply.find(filter).lean();
 
@@ -272,6 +344,22 @@ const getSupply = async (id) => {
   const supply = await ShopSupply.findById(id).lean();
   if (!supply) return null;
   return decorate(supply, await namingContext());
+};
+
+/**
+ * Fetch a specific set of supplies, decorated.
+ *
+ * For callers holding ids rather than a filter - a cycle count sheet, whose
+ * lines were resolved when it was cut. Deliberately does NOT filter on
+ * isActive: a sheet cut last week may name an item retired since, and dropping
+ * it here would make the line render as "Unknown item" rather than as the
+ * retired thing it is.
+ */
+const listSuppliesByIds = async (ids = []) => {
+  if (!ids || ids.length === 0) return [];
+  const rows = await ShopSupply.find({ _id: { $in: ids } }).lean();
+  const ctx = await namingContext();
+  return rows.map((r) => decorate(r, ctx));
 };
 
 const createSupply = async (body, userId) => {
@@ -360,17 +448,40 @@ const deleteSupply = async (id) => ShopSupply.findByIdAndUpdate(
 
 /**
  * Move quantity and record why.
+ *
+ * Two ways in. `quantity` is a signed delta — "two more arrived". `countedQuantity`
+ * is an absolute figure — "there are six on the shelf" — which is turned into a
+ * delta HERE, against live stock, rather than in the browser. That distinction is
+ * the whole point: a list left open since this morning holds a QOH that may have
+ * moved since, and a client-computed delta built on it would post a correction
+ * for a discrepancy that no longer exists.
+ *
+ * An absolute figure matching current stock is a no-op, not an error, and writes
+ * no movement — recounting something that was already right is a normal outcome.
  */
-const adjustQuantity = async (id, { quantity, type = 'adjust', unit, note }, userId) => {
-  const delta = Number(quantity);
-  if (!Number.isFinite(delta) || delta === 0) {
-    throw new SupplyError('Adjustment quantity is required and cannot be zero.', 400);
-  }
-
+const adjustQuantity = async (id, { quantity, countedQuantity, type = 'adjust', unit, note }, userId) => {
   const supply = await ShopSupply.findById(id);
   if (!supply) return null;
 
-  const resultingQoh = Math.max(0, (supply.quantityOnHand || 0) + delta);
+  const current = supply.quantityOnHand || 0;
+  const absolute = countedQuantity !== undefined && countedQuantity !== null && countedQuantity !== '';
+
+  let delta;
+  if (absolute) {
+    const counted = Number(countedQuantity);
+    if (!Number.isFinite(counted) || counted < 0) {
+      throw new SupplyError('Counted quantity must be a number, and cannot be negative.', 400);
+    }
+    delta = counted - current;
+    if (delta === 0) return decorate(supply.toObject(), await namingContext());
+  } else {
+    delta = Number(quantity);
+    if (!Number.isFinite(delta) || delta === 0) {
+      throw new SupplyError('Adjustment quantity is required and cannot be zero.', 400);
+    }
+  }
+
+  const resultingQoh = Math.max(0, current + delta);
 
   const updated = decorate(
     await ShopSupply.findByIdAndUpdate(
@@ -931,6 +1042,7 @@ module.exports = {
   SupplyError,
   SUPPLY_FIELDS,
   listSupplies,
+  listSuppliesByIds,
   getSupply,
   createSupply,
   updateSupply,

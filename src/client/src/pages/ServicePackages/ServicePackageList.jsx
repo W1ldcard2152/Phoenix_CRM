@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import ServicePackageService from '../../services/servicePackageService';
 import SupplyService from '../../services/supplyService';
 import SearchableDropdown from '../../components/common/SearchableDropdown';
-import { buildTree, indexTags, tagPath, idOf } from '../../components/supplies/tagTree';
+import { buildTree, indexTags, tagPath, idOf, treeLabel } from '../../components/supplies/tagTree';
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -37,7 +37,7 @@ const ServicePackageList = () => {
       nodes.forEach((n) => {
         out.push({
           value: idOf(n._id),
-          label: `${'  '.repeat(depth)}${depth > 0 ? '└ ' : ''}${n.name}`,
+          label: treeLabel(n.name, depth),
           keywords: n.name,
           sublabel: n.noun && n.noun !== n.name ? n.noun : undefined
         });
