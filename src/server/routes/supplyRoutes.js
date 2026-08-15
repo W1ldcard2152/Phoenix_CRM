@@ -38,6 +38,47 @@ router.delete('/vocab/:id', admin, supplyController.deleteVocab);
 
 router.patch('/bulk', officeStaff, supplyController.bulkUpdate);
 
+/**
+ * Cycle counts.
+ *
+ * The split here is deliberate and is the point of the feature's permissions:
+ * ENTERING counts is open to every authenticated user, because walking the
+ * shelves with a phone is exactly the work worth handing to a technician.
+ * Deciding what gets counted, and POSTING the variances — the step that
+ * actually rewrites stock and carries the dollar impact — stays with admin and
+ * management.
+ *
+ * Saved-scope paths come before /counts/:id so an id-shaped match can't swallow
+ * them, the same rule the top of this file follows.
+ */
+router.get('/counts/scopes', supplyController.getCountScopes);
+router.post('/counts/scopes', admin, supplyController.createCountScope);
+router.patch('/counts/scopes/:id', admin, supplyController.updateCountScope);
+router.delete('/counts/scopes/:id', admin, supplyController.deleteCountScope);
+router.post('/counts/scopes/:id/run', admin, supplyController.runCountScope);
+
+router.post('/counts/preview', admin, supplyController.previewCountScope);
+
+router.get('/counts', supplyController.getCounts);
+router.post('/counts', admin, supplyController.createCount);
+
+router.get('/counts/:id', supplyController.getCount);
+router.get('/counts/:id/variances', supplyController.getCountVariances);
+router.delete('/counts/:id', admin, supplyController.deleteCount);
+
+// Entry — open to anyone counting.
+router.patch('/counts/:id/lines/:lineId', supplyController.setCountLine);
+router.post('/counts/:id/lines', supplyController.addCountLine);
+router.delete('/counts/:id/lines/:lineId', supplyController.removeCountLine);
+router.post('/counts/:id/found', supplyController.addCountFoundItem);
+// "I've finished counting" is the counter's call; it writes nothing to stock.
+router.post('/counts/:id/review', supplyController.reviewCount);
+
+// Corrections — admin only.
+router.post('/counts/:id/reopen', admin, supplyController.reopenCount);
+router.post('/counts/:id/post', admin, supplyController.postCount);
+router.post('/counts/:id/cancel', admin, supplyController.cancelCount);
+
 // ── Collection + item ──
 router.get('/', supplyController.getAllSupplies);
 router.post('/', officeStaff, supplyController.createSupply);

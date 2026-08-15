@@ -58,9 +58,16 @@ const SupplyService = {
     }
   },
 
-  adjustQuantity: async (id, { quantity, type, unit, note }) => {
+  /**
+   * `quantity` is a signed delta; `countedQuantity` is an absolute figure the
+   * server turns into one against live stock. Pass one or the other, never both
+   * — see supplyService.adjustQuantity for why absolute is resolved server-side.
+   */
+  adjustQuantity: async (id, { quantity, countedQuantity, type, unit, note }) => {
     try {
-      const response = await API.patch(`/supplies/${id}/adjust`, { quantity, type, unit, note });
+      const response = await API.patch(`/supplies/${id}/adjust`, {
+        quantity, countedQuantity, type, unit, note
+      });
       return response.data;
     } catch (error) {
       console.error(`Error adjusting supply ${id}:`, error);

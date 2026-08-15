@@ -1274,7 +1274,10 @@ const SettingsPage = () => {
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Used for</label>
                       <div className="flex gap-2">
-                        {[{ value: 'parts', label: 'Parts sourcing' }, { value: 'inventory', label: 'Shop Inventory' }].map((opt) => {
+                        {/* The stored value stays 'inventory' — it tags stock vendors and
+                            is read by supplies, so renaming it would mean migrating every
+                            customVendors entry. Only the label moved on from Shop Inventory. */}
+                        {[{ value: 'parts', label: 'Parts sourcing' }, { value: 'inventory', label: 'Inventory & Supplies' }].map((opt) => {
                           const on = (vendorEditor.usedFor || []).includes(opt.value);
                           return (
                             <button
@@ -1406,7 +1409,7 @@ const SettingsPage = () => {
                           {v.name}
                           {(v.usedFor && v.usedFor.length ? v.usedFor : ['parts']).map((u) => (
                             <span key={u} className="ml-1.5 text-[10px] uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">
-                              {u === 'inventory' ? 'Shop Inventory' : 'Parts'}
+                              {u === 'inventory' ? 'Inventory & Supplies' : 'Parts'}
                             </span>
                           ))}
                         </div>

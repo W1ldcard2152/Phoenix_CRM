@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import InventoryService from '../../services/inventoryService';
 import SupplyService from '../../services/supplyService';
+import { unitWord } from '../supplies/units';
 
 const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
   const [validation, setValidation] = useState(null);
@@ -19,8 +20,15 @@ const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
         // Supply-backed parts first; parts pulled before the switch still carry
         // an inventory item and resolve below.
         if (part.shopSupplyId) {
-          const res = await SupplyService.getOne(part.shopSupplyId);
+          // `stockUnit` is a vocab reference, so the vocabulary comes along to
+          // resolve it — the inventory branch below reads a plain string. Without
+          // it the panel reads "Need: 2 · Available: 5" with no unit at all.
+          const [res, vocabRes] = await Promise.all([
+            SupplyService.getOne(part.shopSupplyId),
+            SupplyService.getVocab()
+          ]);
           const supply = res.data?.supply;
+          const vocab = vocabRes.data?.vocab || [];
 
           if (!supply || !supply.isActive) {
             setValidation({
@@ -39,7 +47,7 @@ const PartCommitModal = ({ isOpen, onClose, onConfirm, part, isLoading }) => {
             message: enough ? 'Stock available' : 'Insufficient stock',
             needed: part.quantity,
             available: supply.quantityOnHand,
-            unit: '',
+            unit: unitWord(vocab, supply.stockUnit, 'stock', supply.quantityOnHand),
             supplyId: supply._id
           });
           return;

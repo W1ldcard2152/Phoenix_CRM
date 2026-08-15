@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../../utils/formatters';
 import InventoryService from '../../services/inventoryService';
 import SupplyService from '../../services/supplyService';
+import { unitWord } from '../supplies/units';
 
 const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage, isLoading }) => {
   const [stockValidation, setStockValidation] = useState(null);
@@ -17,6 +18,13 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
       setValidating(true);
       try {
         const validationResults = [];
+
+        // Supply stock units are vocab references. Fetched once for the whole
+        // package rather than per line, and only when a line actually needs it.
+        const needsVocab = (servicePackage.includedItems || []).some(i => i.shopSupplyId);
+        const vocab = needsVocab
+          ? ((await SupplyService.getVocab()).data?.vocab || [])
+          : [];
 
         for (const item of servicePackage.includedItems || []) {
           // New package lines draw from shop supplies; lines drafted before the
@@ -34,7 +42,7 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
                 message: 'Supply not found or inactive',
                 needed: item.quantity,
                 available: 0,
-                unit: ''
+                unit: item.unit || ''
               });
             } else {
               const hasEnough = supply.quantityOnHand >= item.quantity;
@@ -44,7 +52,7 @@ const ServicePackageCommitModal = ({ isOpen, onClose, onConfirm, servicePackage,
                 message: hasEnough ? 'Stock available' : 'Insufficient stock',
                 needed: item.quantity,
                 available: supply.quantityOnHand,
-                unit: '',
+                unit: unitWord(vocab, supply.stockUnit, 'stock', supply.quantityOnHand),
                 supplyId: supply._id
               });
             }

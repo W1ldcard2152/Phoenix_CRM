@@ -30,6 +30,12 @@ jest.mock('../../models/Customer', () => mockModel('Customer'));
 jest.mock('../../models/Appointment', () => mockModel('Appointment'));
 jest.mock('../../models/WorkOrderNote', () => mockModel('WorkOrderNote'));
 jest.mock('../../models/InventoryItem', () => mockModel('InventoryItem'));
+jest.mock('../../models/ShopSupply', () => mockModel('ShopSupply'));
+jest.mock('../../models/SupplyMovement', () => mockModel('SupplyMovement'));
+jest.mock('../../models/SupplyVocab', () => mockModel('SupplyVocab'));
+jest.mock('../../services/supplyService', () => ({
+  getSupply: jest.fn(),
+}));
 jest.mock('../../models/ServicePackage', () => mockModel('ServicePackage'));
 jest.mock('../../models/Settings', () => {
   const m = mockModel('Settings');
@@ -58,6 +64,10 @@ jest.mock('../../utils/calculationHelpers', () => ({
 
 const WorkOrder = require('../../models/WorkOrder');
 const InventoryItem = require('../../models/InventoryItem');
+const ShopSupply = require('../../models/ShopSupply');
+const SupplyMovement = require('../../models/SupplyMovement');
+const SupplyVocab = require('../../models/SupplyVocab');
+const supplyService = require('../../services/supplyService');
 const Settings = require('../../models/Settings');
 
 const controller = require('../../controllers/workOrderController');
@@ -116,6 +126,24 @@ const makeInventoryItem = (overrides = {}) => ({
   ...overrides,
 });
 
+// A supply as supplyService.getSupply returns it: `displayName` decorated on,
+// vocab fields still raw ObjectIds, `cost` per PURCHASE unit.
+const makeSupply = (overrides = {}) => ({
+  _id: objectId(),
+  displayName: 'Mobil 1 5W-30 Engine Oil',
+  partNumber: 'M1-5W30-5Q',
+  vendor: objectId(),
+  stockUnit: objectId(),
+  unitsPerPurchase: 5,
+  cost: 25,        // per jug
+  price: 6.5,      // per quart
+  quantityOnHand: 10,
+  reorderPoint: 2,
+  url: '',
+  isActive: true,
+  ...overrides,
+});
+
 const makePart = (overrides = {}) => ({
   _id: objectId(),
   name: 'Mobil 1 5W-30',
@@ -138,8 +166,15 @@ beforeEach(() => {
 });
 
 const resetAll = () => {
-  [WorkOrder, InventoryItem, Settings].forEach(m => m._resetMocks && m._resetMocks());
+  [WorkOrder, InventoryItem, ShopSupply, SupplyMovement, SupplyVocab, Settings]
+    .forEach(m => m._resetMocks && m._resetMocks());
+  supplyService.getSupply.mockReset();
   Settings.getSettings.mockReset();
+};
+
+// vocabLabel() resolves stock/vendor labels through SupplyVocab.findById(...).lean()
+const mockVocabLabel = (label) => {
+  SupplyVocab.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(label ? { label } : null) });
 };
 
 // =========================================================================
@@ -757,5 +792,313 @@ describe('removePart', () => {
     await flushPromises();
 
     expect(wo.totalEstimate).toBe(42);
+  });
+});
+
+// =========================================================================
+//  Shop supplies — the same draft → pull → remove lifecycle, second source
+// =========================================================================
+describe('addPartFromSupply', () => {
+  afterEach(() => {
+    resetAll();
+    Settings.getSettings.mockResolvedValue({ partMarkupPercentage: 30 });
+  });
+
+  it('pushes a part with committed: false and shopSupplyId (draft regression guard)', async () => {
+    const wo = makeWorkOrder();
+    const supply = makeSupply();
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    mockVocabLabel('Walmart');
+
+    const req = { params: { id: wo._id.toString() }, body: { shopSupplyId: supply._id.toString(), quantity: 1 }, user: makeUser() };
+    const res = mockRes();
+    const next = mockNext();
+    controller.addPartFromSupply(req, res, next);
+    await flushPromises();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(wo.parts).toHaveLength(1);
+    expect(wo.parts[0].committed).toBe(false);
+    expect(wo.parts[0].shopSupplyId).toBe(supply._id);
+    expect(wo.parts[0].inventoryItemId).toBeUndefined();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('does NOT deduct stock when adding a draft', async () => {
+    const wo = makeWorkOrder();
+    const supply = makeSupply({ quantityOnHand: 10 });
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    mockVocabLabel('Walmart');
+
+    const req = { params: { id: wo._id.toString() }, body: { shopSupplyId: supply._id.toString(), quantity: 3 }, user: makeUser() };
+    controller.addPartFromSupply(req, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(ShopSupply.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(SupplyMovement.create).not.toHaveBeenCalled();
+    expect(supply.quantityOnHand).toBe(10);
+  });
+
+  it('resolves the vendor vocab reference to a label on the part', async () => {
+    const wo = makeWorkOrder();
+    const supply = makeSupply();
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    mockVocabLabel('Walmart');
+
+    const req = { params: { id: wo._id.toString() }, body: { shopSupplyId: supply._id.toString(), quantity: 1 }, user: makeUser() };
+    controller.addPartFromSupply(req, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(wo.parts[0].vendor).toBe('Walmart');
+  });
+
+  it('computes per-unit cost as supply.cost / unitsPerPurchase (5qt jug → 1qt = $5)', async () => {
+    const wo = makeWorkOrder();
+    const supply = makeSupply({ cost: 25, unitsPerPurchase: 5 });
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    mockVocabLabel('Walmart');
+
+    const req = { params: { id: wo._id.toString() }, body: { shopSupplyId: supply._id.toString(), quantity: 1 }, user: makeUser() };
+    controller.addPartFromSupply(req, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(wo.parts[0].cost).toBe(5);
+  });
+
+  it('returns 404 when the supply is inactive', async () => {
+    const wo = makeWorkOrder();
+    const supply = makeSupply({ isActive: false });
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+
+    const req = { params: { id: wo._id.toString() }, body: { shopSupplyId: supply._id.toString(), quantity: 1 }, user: makeUser() };
+    const next = mockNext();
+    controller.addPartFromSupply(req, mockRes(), next);
+    await flushPromises();
+
+    expect(next.mock.calls[0][0].statusCode).toBe(404);
+    expect(wo.parts).toHaveLength(0);
+  });
+
+  it('returns 400 when shopSupplyId is missing', async () => {
+    const req = { params: { id: objectId().toString() }, body: { quantity: 1 }, user: makeUser() };
+    const next = mockNext();
+    controller.addPartFromSupply(req, mockRes(), next);
+    await flushPromises();
+
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+  });
+});
+
+describe('commitPart — shop supply source', () => {
+  afterEach(() => {
+    resetAll();
+    Settings.getSettings.mockResolvedValue({ partMarkupPercentage: 30 });
+  });
+
+  const supplyPart = (overrides = {}) => makePart({
+    inventoryItemId: undefined,
+    shopSupplyId: objectId(),
+    ...overrides,
+  });
+
+  it('atomically deducts stock and records a consume movement', async () => {
+    const part = supplyPart({ quantity: 2 });
+    const wo = makeWorkOrder({ parts: [part] });
+    const supply = makeSupply({ _id: part.shopSupplyId, quantityOnHand: 10 });
+
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    ShopSupply.findOneAndUpdate.mockResolvedValue({ ...supply, quantityOnHand: 8 });
+
+    const user = makeUser();
+    const req = { params: { id: wo._id.toString() }, body: { partIndex: 0 }, user };
+    const next = mockNext();
+    controller.commitPart(req, mockRes(), next);
+    await flushPromises();
+
+    expect(next).not.toHaveBeenCalled();
+    const [filter, update] = ShopSupply.findOneAndUpdate.mock.calls[0];
+    expect(filter.quantityOnHand).toEqual({ $gte: 2 });
+    expect(update.$inc.quantityOnHand).toBe(-2);
+
+    expect(SupplyMovement.create).toHaveBeenCalledTimes(1);
+    expect(SupplyMovement.create.mock.calls[0][0]).toMatchObject({
+      type: 'consume',
+      quantity: -2,
+      resultingQoh: 8,
+      sourceModel: 'WorkOrder',
+      sourceId: wo._id,
+      createdBy: user._id,
+    });
+    // The movement has to name the work order, or a supply's history can't say
+    // which job spent it.
+    expect(SupplyMovement.create.mock.calls[0][0].note).toContain(wo._id.toString());
+    expect(wo.parts[0].committed).toBe(true);
+  });
+
+  it('never touches the legacy inventory table for a supply-backed part', async () => {
+    const part = supplyPart({ quantity: 1 });
+    const wo = makeWorkOrder({ parts: [part] });
+    const supply = makeSupply({ _id: part.shopSupplyId, quantityOnHand: 4 });
+
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    ShopSupply.findOneAndUpdate.mockResolvedValue({ ...supply, quantityOnHand: 3 });
+
+    controller.commitPart({ params: { id: wo._id.toString() }, body: { partIndex: 0 }, user: makeUser() }, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(InventoryItem.findById).not.toHaveBeenCalled();
+    expect(InventoryItem.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects when supply stock is short, without deducting', async () => {
+    const part = supplyPart({ quantity: 5 });
+    const wo = makeWorkOrder({ parts: [part] });
+    const supply = makeSupply({ _id: part.shopSupplyId, quantityOnHand: 2 });
+
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    mockVocabLabel('quart');
+
+    const next = mockNext();
+    controller.commitPart({ params: { id: wo._id.toString() }, body: { partIndex: 0 }, user: makeUser() }, mockRes(), next);
+    await flushPromises();
+
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(next.mock.calls[0][0].message).toContain('2 quart available');
+    expect(ShopSupply.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(wo.parts[0].committed).toBe(false);
+  });
+
+  it('returns 409 when the atomic deduction loses a race', async () => {
+    const part = supplyPart({ quantity: 1 });
+    const wo = makeWorkOrder({ parts: [part] });
+    const supply = makeSupply({ _id: part.shopSupplyId, quantityOnHand: 1 });
+
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    ShopSupply.findOneAndUpdate.mockResolvedValue(null);
+
+    const next = mockNext();
+    controller.commitPart({ params: { id: wo._id.toString() }, body: { partIndex: 0 }, user: makeUser() }, mockRes(), next);
+    await flushPromises();
+
+    expect(next.mock.calls[0][0].statusCode).toBe(409);
+    expect(SupplyMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('labels the low stock warning with the resolved stock unit', async () => {
+    const part = supplyPart({ quantity: 8 });
+    const wo = makeWorkOrder({ parts: [part] });
+    const supply = makeSupply({ _id: part.shopSupplyId, quantityOnHand: 10, reorderPoint: 3 });
+
+    WorkOrder.findById.mockResolvedValue(wo);
+    supplyService.getSupply.mockResolvedValue(supply);
+    ShopSupply.findOneAndUpdate.mockResolvedValue({ ...supply, quantityOnHand: 2 });
+    mockVocabLabel('quart');
+
+    const res = mockRes();
+    controller.commitPart({ params: { id: wo._id.toString() }, body: { partIndex: 0 }, user: makeUser() }, res, mockNext());
+    await flushPromises();
+
+    expect(res.json.mock.calls[0][0].lowStockWarning).toMatchObject({
+      currentQoh: 2,
+      unit: 'quart',
+      reorderPoint: 3,
+    });
+  });
+
+  it('rejects a supply-backed part that is already committed', async () => {
+    const part = supplyPart({ committed: true });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+
+    const next = mockNext();
+    controller.commitPart({ params: { id: wo._id.toString() }, body: { partIndex: 0 }, user: makeUser() }, mockRes(), next);
+    await flushPromises();
+
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(ShopSupply.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('removePart — shop supply source', () => {
+  afterEach(() => {
+    resetAll();
+    Settings.getSettings.mockResolvedValue({ partMarkupPercentage: 30 });
+  });
+
+  const supplyPart = (overrides = {}) => makePart({
+    inventoryItemId: undefined,
+    shopSupplyId: objectId(),
+    ...overrides,
+  });
+
+  it('committed + returnToInventory=true → increments stock and records a return movement', async () => {
+    const part = supplyPart({ committed: true, quantity: 2 });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+    ShopSupply.findByIdAndUpdate.mockResolvedValue({ _id: part.shopSupplyId, quantityOnHand: 7, stockUnit: objectId() });
+
+    const user = makeUser();
+    controller.removePart({ params: { id: wo._id.toString() }, body: { partIndex: 0, returnToInventory: true }, user }, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(wo.parts).toHaveLength(0);
+    const [, update] = ShopSupply.findByIdAndUpdate.mock.calls[0];
+    expect(update.$inc.quantityOnHand).toBe(2);
+    expect(SupplyMovement.create.mock.calls[0][0]).toMatchObject({
+      type: 'return',
+      quantity: 2,
+      resultingQoh: 7,
+      sourceId: wo._id,
+      createdBy: user._id,
+    });
+  });
+
+  it('draft + returnToInventory=true → splices without inventing stock', async () => {
+    const part = supplyPart({ committed: false, quantity: 2 });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+
+    controller.removePart({ params: { id: wo._id.toString() }, body: { partIndex: 0, returnToInventory: true }, user: makeUser() }, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(wo.parts).toHaveLength(0);
+    expect(ShopSupply.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(SupplyMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('committed + returnToInventory=false → splices, no stock movement', async () => {
+    const part = supplyPart({ committed: true, quantity: 2 });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+
+    controller.removePart({ params: { id: wo._id.toString() }, body: { partIndex: 0, returnToInventory: false }, user: makeUser() }, mockRes(), mockNext());
+    await flushPromises();
+
+    expect(wo.parts).toHaveLength(0);
+    expect(ShopSupply.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('supply deleted between commit and remove → splices without crashing', async () => {
+    const part = supplyPart({ committed: true, quantity: 1 });
+    const wo = makeWorkOrder({ parts: [part] });
+    WorkOrder.findById.mockResolvedValue(wo);
+    ShopSupply.findByIdAndUpdate.mockResolvedValue(null);
+
+    const next = mockNext();
+    controller.removePart({ params: { id: wo._id.toString() }, body: { partIndex: 0, returnToInventory: true }, user: makeUser() }, mockRes(), next);
+    await flushPromises();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(wo.parts).toHaveLength(0);
+    expect(SupplyMovement.create).not.toHaveBeenCalled();
   });
 });

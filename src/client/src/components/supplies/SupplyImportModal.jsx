@@ -247,7 +247,10 @@ const SupplyImportModal = ({
         console.error('Photo upload failed for imported supply:', photoErr);
       }
       patch(index, { status: 'saved', error: null });
-      onImported?.();
+      // Hands back what was created, so a caller that needs the new item can
+      // act on it — the cycle-count sheet adds it straight to the count. The
+      // supply list ignores the argument and just reloads.
+      onImported?.(res.data.supply);
       advance();
     } catch (err) {
       patch(index, { error: err.response?.data?.message || 'Could not save this item.' });

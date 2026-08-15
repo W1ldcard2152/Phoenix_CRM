@@ -95,8 +95,13 @@ const Sidebar = () => {
     { name: 'Follow-Ups', path: '/follow-ups', icon: 'fas fa-thumbtack', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Technician Portal', path: '/technician-portal', icon: 'fas fa-wrench', roles: ['admin', 'management', 'service-writer', 'technician'] },
     { name: 'Calendar & Tasks', path: '/appointments', icon: 'fas fa-calendar-alt', roles: ['admin', 'management', 'service-writer'] },
-    { name: 'Shop Inventory', path: '/inventory', icon: 'fas fa-boxes-stacked', roles: null },
-    { name: 'Shop Supplies', path: '/supplies', icon: 'fas fa-spray-can-sparkles', roles: null },
+    // The old Shop Inventory page is retired and deliberately absent here. Its
+    // route still resolves so historical stock records stay viewable — see the
+    // banner on InventoryList.
+    { name: 'Inventory & Shop Supplies', path: '/supplies', icon: 'fas fa-boxes-stacked', roles: null },
+    // Open to every role: entering counts is the part worth handing to whoever
+    // is holding the phone. Creating and posting are gated on the server.
+    { name: 'Cycle Counts', path: '/supplies/counts', icon: 'fas fa-clipboard-check', roles: null },
     { name: 'Service Packages', path: '/service-packages', icon: 'fas fa-box-open', roles: ['admin', 'management'] },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];
@@ -112,6 +117,24 @@ const Sidebar = () => {
 
   const primaryNavigationItems = filterByRole(allPrimaryItems);
   const secondaryNavigationItems = filterByRole(allSecondaryItems);
+
+  /**
+   * Which single nav item is highlighted for the current URL.
+   *
+   * Longest matching path wins. A plain `startsWith` test per item lights up
+   * every ancestor as well, so on /supplies/counts both "Inventory & Shop
+   * Supplies" and "Cycle Counts" would appear selected at once. Resolving it
+   * once here also means the four render sites can't drift from each other.
+   */
+  const activePath = [...allPrimaryItems, ...allSecondaryItems]
+    .map((item) => item.path)
+    .filter((path) => (
+      location.pathname === path
+      || (path !== '/' && location.pathname.startsWith(`${path}/`))
+    ))
+    .sort((a, b) => b.length - a.length)[0] || location.pathname;
+
+  const isActive = (path) => path === activePath;
 
   // Get user initial - using a placeholder if user or user.name is not available
   const userInitial = user && user.name ? user.name.charAt(0).toUpperCase() : (user && user.email ? user.email.charAt(0).toUpperCase() : 'U');
@@ -177,7 +200,7 @@ const Sidebar = () => {
                         <Link
                           to={item.path}
                           className={`flex items-center py-4 px-6 ${
-                            location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                            isActive(item.path)
                               ? 'bg-primary-700 border-l-4 border-accent-500'
                               : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
                           } transition-colors duration-150`}
@@ -206,7 +229,7 @@ const Sidebar = () => {
                               to={item.path}
                               onClick={() => { setUserMenuOpen(false); setMobileMenuOpen(false); }}
                               className={`flex items-center py-3 px-5 ${
-                                location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                                isActive(item.path)
                                   ? 'bg-primary-700 text-white'
                                   : 'hover:bg-primary-700'
                               } transition-colors duration-150`}
@@ -307,7 +330,7 @@ const Sidebar = () => {
                 className={`flex items-center py-3 px-4 ${
                   collapsed ? 'justify-center' : 'justify-start'
                 } ${
-                  location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                  isActive(item.path)
                     ? 'bg-primary-700 border-l-4 border-accent-500'
                     : 'hover:bg-primary-700 hover:border-l-4 hover:border-accent-500/50'
                 } transition-colors duration-150`}
@@ -337,7 +360,7 @@ const Sidebar = () => {
                     to={item.path}
                     onClick={() => setUserMenuOpen(false)}
                     className={`flex items-center py-2.5 px-4 text-sm ${
-                      location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                      isActive(item.path)
                         ? 'bg-primary-700 text-white'
                         : 'hover:bg-primary-700'
                     } transition-colors duration-150`}

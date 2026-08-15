@@ -6,7 +6,7 @@ import SupplyForm from '../supplies/SupplyForm';
 import SupplyService from '../../services/supplyService';
 import SettingsService from '../../services/settingsService';
 import { formatCurrency } from '../../utils/formatters';
-import { buildTree, indexTags, idOf } from '../supplies/tagTree';
+import { buildTree, indexTags, idOf, treeLabel } from '../supplies/tagTree';
 
 /**
  * Pull a part onto a work order from shop supplies.
@@ -112,7 +112,7 @@ const SupplyPickerModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
       nodes.forEach((n) => {
         out.push({
           value: idOf(n._id),
-          label: `${'  '.repeat(depth)}${depth > 0 ? '└ ' : ''}${n.name}`,
+          label: treeLabel(n.name, depth),
           keywords: n.name
         });
         walk(n.children, depth + 1);

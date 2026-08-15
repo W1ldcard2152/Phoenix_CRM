@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
@@ -8,22 +9,26 @@ import SupplyForm from '../../components/supplies/SupplyForm';
 import SupplyImportModal from '../../components/supplies/SupplyImportModal';
 import SupplyDetailModal from '../../components/supplies/SupplyDetailModal';
 import TagPicker from '../../components/supplies/TagPicker';
+import QohEditor from '../../components/supplies/QohEditor';
 import SupplyService from '../../services/supplyService';
 import SettingsService from '../../services/settingsService';
 import { resolveFields } from '../../components/supplies/SupplyAttributes';
-import { indexTags, buildTree, tagPath, idOf } from '../../components/supplies/tagTree';
+import { indexTags, buildTree, tagPath, idOf, treeLabel } from '../../components/supplies/tagTree';
+import { locationOptions, locationParams } from '../../components/supplies/locationTree';
 import { useAuth } from '../../contexts/AuthContext';
 
 /**
- * Shop Supplies — the new inventory module.
+ * Inventory & Shop Supplies — the single source of truth for stock.
  *
- * Runs alongside the old Shop Inventory page, which is untouched. Both appear
- * in the nav during the transition.
+ * The old Shop Inventory page is retired: it is gone from the nav and nothing
+ * writes to `InventoryItem` any more. Its route still resolves read-only so the
+ * work order lines that consumed stock from it stay legible.
  *
  * Uses the shared primitives (Modal, ResponsiveTable, Button) rather than the
  * hand-rolled table and inline modals that InventoryList grew.
  */
 const SupplyList = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isOfficeStaff = ['admin', 'management', 'service-writer'].includes(user?.role);
 
@@ -106,6 +111,16 @@ const SupplyList = () => {
       sublabel: `${v.usageCount} item${v.usageCount === 1 ? '' : 's'}`
     })), [vocab]);
 
+  /**
+   * Shelf codes as a hierarchy, so one dropdown offers "Stock Room 1" (the
+   * whole room), "1-C" (a column) and "1-C-2" (a single shelf). Derived from
+   * the vocab values themselves, so new shelves appear without any change here.
+   */
+  const locationFilterOptions = useMemo(
+    () => locationOptions(vocab, { usedOnly: true }),
+    [vocab]
+  );
+
   const vocabLabel = useCallback((id) => {
     const entry = vocab.find((v) => String(v._id) === idOf(id));
     return entry ? (entry.label || entry.value) : '';
@@ -141,7 +156,9 @@ const SupplyList = () => {
       else if (tagFilter) params.tag = tagFilter;
       if (brandFilter) params.brand = brandFilter;
       if (vendorFilter) params.vendor = vendorFilter;
-      if (locationFilter) params.location = locationFilter;
+      // Either an exact shelf or a prefix covering everything under a room or
+      // column, depending on which level was picked.
+      Object.assign(params, locationParams(locationFilter));
       if (search.trim()) params.search = search.trim();
       Object.entries(attrFilters).forEach(([k, v]) => {
         if (v) params[`attr[${k}]`] = v;
@@ -208,7 +225,7 @@ const SupplyList = () => {
       nodes.forEach((n) => {
         out.push({
           value: idOf(n._id),
-          label: `${'  '.repeat(depth)}${depth > 0 ? '└ ' : ''}${n.name}`,
+          label: treeLabel(n.name, depth),
           keywords: n.name
         });
         walk(n.children, depth + 1);
@@ -244,6 +261,20 @@ const SupplyList = () => {
   };
 
   const openDetail = (id) => setDetailId(id);
+
+  /**
+   * Fold one updated supply back into the list.
+   *
+   * Used instead of reloading after an inline quantity edit: a reload re-sorts
+   * and re-renders the whole table, so correcting a run of stock levels would
+   * make rows jump under the cursor between edits.
+   */
+  const applySupply = useCallback((updated) => {
+    if (!updated?._id) return;
+    setSupplies((prev) => prev.map((s) => (
+      String(s._id) === String(updated._id) ? { ...s, ...updated } : s
+    )));
+  }, []);
 
   const handleDelete = async (supply) => {
     if (!window.confirm(`Remove "${supply.displayName || supply.name}" from supplies?`)) return;
@@ -310,7 +341,7 @@ const SupplyList = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Shop Supplies</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Inventory &amp; Shop Supplies</h1>
           <p className="text-sm text-gray-500">
             {supplies.length} shown
             {untaggedCount > 0 && (
@@ -326,16 +357,21 @@ const SupplyList = () => {
             )}
           </p>
         </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate('/supplies/counts')}>
+            <i className="fas fa-clipboard-check mr-2"></i>Cycle counts
+          </Button>
         {isOfficeStaff && (
-          <div className="flex gap-2">
+          <>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <i className="fas fa-camera mr-2"></i>Import from photos
             </Button>
             <Button variant="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
               <i className="fas fa-plus mr-2"></i>Add Supply
             </Button>
-          </div>
+          </>
         )}
+        </div>
       </div>
 
       <Card>
@@ -375,10 +411,12 @@ const SupplyList = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Location <span className="font-normal text-gray-400">(includes sub-shelves)</span>
+            </label>
             <SearchableDropdown
               size="md"
-              options={filterOptionsFor('location')}
+              options={locationFilterOptions}
               value={locationFilter}
               onChange={setLocationFilter}
               placeholder="Any"
@@ -513,7 +551,6 @@ const SupplyList = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {supplies.map((s) => {
                 const id = String(s._id);
-                const lowStock = s.quantityOnHand <= s.reorderPoint;
                 return (
                   <tr
                     key={id}
@@ -560,8 +597,14 @@ const SupplyList = () => {
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-600">{vocabLabel(s.vendor) || '—'}</td>
                     <td className="px-4 py-2 text-sm text-gray-600">{vocabLabel(s.location) || '—'}</td>
-                    <td className={`px-4 py-2 text-sm text-right ${lowStock ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
-                      {s.quantityOnHand}
+                    {/* Editing stock must not also open the detail modal. */}
+                    <td className="px-4 py-2 text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                      <QohEditor
+                        supply={s}
+                        vocab={vocab}
+                        disabled={!isOfficeStaff}
+                        onSaved={applySupply}
+                      />
                     </td>
                     <td className="px-4 py-2 text-sm text-right text-gray-700">
                       ${(s.price ?? 0).toFixed(2)}
@@ -609,8 +652,15 @@ const SupplyList = () => {
                       <div className="font-medium text-gray-900">{s.displayName || s.name}</div>
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm text-gray-700">{s.quantityOnHand}</div>
+                  <div className="text-right shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <div className="text-sm">
+                      <QohEditor
+                        supply={s}
+                        vocab={vocab}
+                        disabled={!isOfficeStaff}
+                        onSaved={applySupply}
+                      />
+                    </div>
                     <div className="text-xs text-gray-400">${(s.price ?? 0).toFixed(2)}</div>
                   </div>
                 </div>

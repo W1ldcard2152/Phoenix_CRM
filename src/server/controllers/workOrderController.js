@@ -73,6 +73,15 @@ const revertPartsReceivedIfIncomplete = (workOrder) => {
   }
 };
 
+// A supply's vendor/unit are SupplyVocab references, where the old inventory table
+// stored plain strings. Work order lines snapshot the label, so both sources render
+// the same way once a part or package item is on the work order.
+const vocabLabel = async (vocabId) => {
+  if (!vocabId) return '';
+  const vocab = await SupplyVocab.findById(vocabId).lean();
+  return vocab ? (vocab.label || vocab.value || '') : '';
+};
+
 // Get all work orders
 exports.getAllWorkOrders = catchAsync(async (req, res, next) => {
   const { status, customer, vehicle, startDate, endDate, excludeStatuses } = req.query;
@@ -804,17 +813,13 @@ exports.addPartFromSupply = catchAsync(async (req, res, next) => {
     ? supply.price
     : parseFloat((unitCost * (1 + markup / 100)).toFixed(2));
 
-  const vendorLabel = supply.vendor
-    ? (await SupplyVocab.findById(supply.vendor).lean())
-    : null;
-
   workOrder.parts.push({
     name: supply.displayName,
     partNumber: supply.partNumber || '',
     quantity,
     price,
     cost: unitCost,
-    vendor: vendorLabel ? (vendorLabel.label || vendorLabel.value) : '',
+    vendor: await vocabLabel(supply.vendor),
     warranty: '',
     url: supply.url || '',
     // `category` is the BILLING classification (how the line is charged), not a
@@ -870,8 +875,9 @@ exports.commitPart = catchAsync(async (req, res, next) => {
       return next(new AppError(`Supply "${part.name}" is not found or inactive`, 400));
     }
     if (supply.quantityOnHand < part.quantity) {
+      const unit = await vocabLabel(supply.stockUnit);
       return next(new AppError(
-        `Insufficient stock for "${part.name}": ${supply.quantityOnHand} available, ${part.quantity} needed`, 400
+        `Insufficient stock for "${part.name}": ${supply.quantityOnHand}${unit ? ` ${unit}` : ''} available, ${part.quantity} needed`, 400
       ));
     }
 
@@ -892,7 +898,7 @@ exports.commitPart = catchAsync(async (req, res, next) => {
       resultingQoh: deducted.quantityOnHand,
       sourceModel: 'WorkOrder',
       sourceId: workOrder._id,
-      note: `Used on work order`,
+      note: `Used on WO #${workOrder._id}`,
       createdBy: req.user._id
     });
 
@@ -911,7 +917,7 @@ exports.commitPart = catchAsync(async (req, res, next) => {
       supplyResponse.lowStockWarning = {
         itemName: part.name,
         currentQoh: deducted.quantityOnHand,
-        unit: '',
+        unit: await vocabLabel(deducted.stockUnit),
         reorderPoint: deducted.reorderPoint
       };
     }
@@ -1115,7 +1121,7 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
       cost: supply.cost && supply.unitsPerPurchase
         ? parseFloat((supply.cost / supply.unitsPerPurchase).toFixed(4))
         : 0,
-      unit: ''
+      unit: await vocabLabel(supply.stockUnit)
     });
   }
 
@@ -1169,8 +1175,9 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
         return next(new AppError(`Supply "${item.name}" is not found or inactive`, 400));
       }
       if (supply.quantityOnHand < item.quantity) {
+        const unit = item.unit || await vocabLabel(supply.stockUnit);
         return next(new AppError(
-          `Insufficient stock for "${item.name}": ${supply.quantityOnHand} available, ${item.quantity} needed`, 400
+          `Insufficient stock for "${item.name}": ${supply.quantityOnHand}${unit ? ` ${unit}` : ''} available, ${item.quantity} needed`, 400
         ));
       }
     } else if (item.inventoryItemId) {
@@ -1217,7 +1224,9 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
         lowStockWarnings.push({
           itemName: item.name,
           currentQoh: updated.quantityOnHand,
-          unit: '',
+          // Prefer the unit snapshotted onto the line; fall back to the supply's
+          // current one for lines drafted before the snapshot was recorded.
+          unit: item.unit || await vocabLabel(updated.stockUnit),
           reorderPoint: updated.reorderPoint
         });
       }
@@ -2361,13 +2370,15 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
     return next(new AppError('No parts could be extracted from the receipt', 400));
   }
 
-  // Duplicate detection: check against WO parts and inventory
-  const inventoryItems = await InventoryItem.find({ isActive: true }).select('_id name partNumber').lean();
-
-  const allExisting = [
-    ...workOrder.parts.map(p => ({ _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || '' })),
-    ...inventoryItems.map(p => ({ _id: `inv:${p._id}`, name: p.name, partNumber: p.partNumber || '' }))
-  ];
+  // Duplicate detection against the parts already on this work order.
+  //
+  // The retired Shop Inventory table used to be a second source here. Matching
+  // against it now would only offer the user a merge target they can no longer
+  // write to, so it is deliberately gone. The `wo:` prefix stays — the client
+  // still branches on the source, and a supplies-side source may join it later.
+  const allExisting = workOrder.parts.map(p => (
+    { _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || '' }
+  ));
 
   let duplicates = [];
   if (allExisting.length > 0) {
@@ -2375,16 +2386,12 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
 
     const woById = {};
     workOrder.parts.forEach(p => { woById[p._id.toString()] = p; });
-    const invById = {};
-    inventoryItems.forEach(p => { invById[p._id.toString()] = p; });
 
     duplicates = rawMatches.map(m => {
       const colonIdx = m.existingId.indexOf(':');
       const source = m.existingId.substring(0, colonIdx);
       const rawId = m.existingId.substring(colonIdx + 1);
-      let existingName = '';
-      if (source === 'wo') existingName = woById[rawId]?.name || '';
-      else if (source === 'inv') existingName = invById[rawId]?.name || '';
+      const existingName = source === 'wo' ? (woById[rawId]?.name || '') : '';
       return { parsedIndex: m.parsedIndex, source, rawId, existingName, reason: m.reason };
     });
   }
@@ -2407,7 +2414,10 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   const Media = require('../models/Media');
 
   const workOrderId = req.params.id;
-  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, catalogActions, duplicateResolutions = {}, serviceId } = req.body;
+  // `catalogActions` is deliberately not read. It used to carry "also add this
+  // receipt line to Shop Inventory"; that table is retired, and honouring the
+  // field for a stale client would grow a table nothing surfaces.
+  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, duplicateResolutions = {}, serviceId } = req.body;
 
   if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
     return next(new AppError('No parts selected', 400));
@@ -2495,78 +2505,6 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   revertPartsReceivedIfIncomplete(workOrder);
 
   await workOrder.save();
-
-  // Add parts to inventory if requested (best-effort)
-  if (catalogActions && typeof catalogActions === 'object') {
-    for (const [indexStr, action] of Object.entries(catalogActions)) {
-      const i = parseInt(indexStr);
-      const part = partsWithReceipt[i];
-      if (!part || !action) continue;
-
-      const resolution = duplicateResolutions[i] || {};
-
-      try {
-        if (action === 'inventory') {
-          if (resolution.inventoryAction === 'add_to_existing' && resolution.inventoryMatchId) {
-            // Same item found in inventory — add to QOH and apply user-merged fields
-            const existing = await InventoryItem.findById(resolution.inventoryMatchId);
-            if (existing) {
-              const previousQty = existing.quantityOnHand;
-              const newQty = previousQty + (part.quantity || 1);
-              const merged = resolution.inventoryMergedFields || {};
-              const update = { quantityOnHand: newQty };
-              const pickField = (key, fallback) => {
-                if (Object.prototype.hasOwnProperty.call(merged, key)) return merged[key];
-                return fallback;
-              };
-              update.name = pickField('name', part.name);
-              update.cost = pickField('cost', part.cost || 0);
-              // If merge picked existing cost, keep existing price; otherwise update price from incoming.
-              if (Object.prototype.hasOwnProperty.call(merged, 'cost') && Number(merged.cost) !== Number(part.cost)) {
-                update.price = existing.price;
-              } else {
-                update.price = part.price || 0;
-              }
-              const vendorVal = pickField('vendor', part.vendor);
-              if (vendorVal !== undefined) update.vendor = vendorVal;
-              const partNumberVal = pickField('partNumber', part.partNumber);
-              if (partNumberVal !== undefined) update.partNumber = partNumberVal;
-              const brandVal = pickField('brand', undefined);
-              if (brandVal !== undefined) update.brand = brandVal;
-              const notesVal = pickField('notes', undefined);
-              if (notesVal !== undefined) update.notes = notesVal;
-              await InventoryItem.findByIdAndUpdate(resolution.inventoryMatchId, {
-                $set: update,
-                $push: {
-                  adjustmentLog: {
-                    adjustedBy: req.user._id,
-                    previousQty,
-                    newQty,
-                    reason: 'Restocked (receipt import)'
-                  }
-                }
-              });
-            }
-          } else {
-            await InventoryItem.findOneAndUpdate(
-              { name: part.name, partNumber: part.partNumber || '' },
-              {
-                name: part.name,
-                partNumber: part.partNumber || '',
-                vendor: part.vendor || '',
-                cost: part.cost || 0,
-                price: part.price || 0,
-                quantityOnHand: part.quantity || 1
-              },
-              { upsert: true, new: true, setDefaultsOnInsert: true }
-            );
-          }
-        }
-      } catch (catalogErr) {
-        console.error(`[Receipt] Failed to process part "${part.name}" for ${action}:`, catalogErr.message);
-      }
-    }
-  }
 
   // Update media doc notes with final count
   if (mediaId) {

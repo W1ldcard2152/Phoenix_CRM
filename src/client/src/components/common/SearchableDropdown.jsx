@@ -20,7 +20,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
  *
  * allowCreate is strictly additive: with it unset the component behaves exactly
  * as it did before the prop existed (select-only). It is shared with
- * VehicleForm, ReceiptImportModal and InventoryReceiptImportModal.
+ * VehicleForm and InventoryReceiptImportModal.
  *
  * The option panel is rendered with position:fixed so it escapes any ancestor
  * with `overflow:hidden|auto` (e.g. modal scroll containers). Position is

@@ -71,7 +71,31 @@ describe('PartRemovalModal', () => {
     expect(screen.getByRole('button', { name: /Remove & Don't Restock/i })).toBeInTheDocument();
   });
 
-  it('manual entry (no inventoryItemId) → 2-button layout regardless of committed value', () => {
+  it('committed + shopSupplyId → 3-button layout with restock options', () => {
+    const part = makePart({ inventoryItemId: undefined, shopSupplyId: 'sup-1', committed: true });
+
+    render(
+      <PartRemovalModal isOpen={true} part={part} onClose={() => {}} onConfirm={() => {}} />
+    );
+
+    expect(screen.getByRole('button', { name: /Remove & Restock/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove & Don't Restock/i })).toBeInTheDocument();
+    expect(screen.getByText(/has been pulled from inventory/i)).toBeInTheDocument();
+  });
+
+  it('draft + shopSupplyId → 2-button layout, yellow info box, no restock option', () => {
+    const part = makePart({ inventoryItemId: undefined, shopSupplyId: 'sup-1', committed: false });
+
+    render(
+      <PartRemovalModal isOpen={true} part={part} onClose={() => {}} onConfirm={() => {}} />
+    );
+
+    expect(screen.queryByRole('button', { name: /Remove & Restock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Remove Part/i })).toBeInTheDocument();
+    expect(screen.getByText(/has not been pulled from inventory/i)).toBeInTheDocument();
+  });
+
+  it('manual entry (no stock link) → 2-button layout regardless of committed value', () => {
     const part = makePart({ inventoryItemId: undefined, committed: true });
 
     render(

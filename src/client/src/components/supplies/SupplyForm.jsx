@@ -258,8 +258,21 @@ const SupplyForm = ({
       let photoFailed = false;
 
       if (isEditing) {
-        delete payload.quantityOnHand; // moves only through /adjust
+        // Quantity moves only through /adjust, so that the correction lands in
+        // the movement ledger instead of silently overwriting the level. The
+        // absolute figure goes over as-is; the server derives the delta from
+        // live stock, and treats "no change" as a no-op.
+        const correctedQoh = parseFloat(data.quantityOnHand);
+        delete payload.quantityOnHand;
         await SupplyService.update(initial._id, payload);
+
+        if (Number.isFinite(correctedQoh) && correctedQoh !== (initial.quantityOnHand ?? 0)) {
+          await SupplyService.adjustQuantity(initial._id, {
+            countedQuantity: correctedQoh,
+            type: 'adjust',
+            note: 'Corrected on edit'
+          });
+        }
       } else {
         const res = await SupplyService.create(payload);
         // The item exists now, so a photo pasted during entry has somewhere to
@@ -519,7 +532,7 @@ const SupplyForm = ({
                 onCreate={createVocab('location')}
               />
             </div>
-            {!isEditing && (
+            {!isEditing ? (
               <div>
                 <label className={label}>
                   Starting Qty <span className="font-normal text-gray-400">
@@ -538,6 +551,29 @@ const SupplyForm = ({
                     = <strong>
                       {data.packagesOnHand * upp} {stockWord(data.packagesOnHand * upp)}
                     </strong> in stock
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* In STOCK units, unlike Starting Qty above, which takes purchase
+                 units. Correcting a level means saying what is actually on the
+                 shelf, and what's on the shelf is 3 quarts left in an open jug
+                 — not a fraction of a jug. Saved via /adjust, not as a field. */
+              <div>
+                <label className={label}>
+                  Qty On Hand <span className="font-normal text-gray-400">in {stockWord(2)}</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={data.quantityOnHand}
+                  onChange={(e) => set('quantityOnHand', parseFloat(e.target.value) || 0)}
+                  className={field}
+                />
+                {Number(data.quantityOnHand) !== (initial?.quantityOnHand ?? 0) && (
+                  <p className="mt-1 text-[11px] text-blue-600">
+                    Logged as a correction from {initial?.quantityOnHand ?? 0}
                   </p>
                 )}
               </div>
