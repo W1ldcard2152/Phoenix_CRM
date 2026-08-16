@@ -608,13 +608,11 @@ const DocumentDetail = () => {
     if (!newInteraction.content.trim()) return;
     try {
       setAddingInteraction(true);
-      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newInteraction.content, noteType: 'interaction', isCustomerFacing: false })
+      await workOrderNotesService.createNote(id, {
+        content: newInteraction.content,
+        noteType: 'interaction',
+        isCustomerFacing: false
       });
-      if (!response.ok) throw new Error('Failed to add interaction');
       setNewInteraction({ content: '' });
       await fetchInteractionNotes();
     } catch (err) {
@@ -627,13 +625,7 @@ const DocumentDetail = () => {
 
   const handleUpdateInteraction = async (noteId, updateData) => {
     try {
-      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes/${noteId}`;
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updateData, noteType: 'interaction' })
-      });
-      if (!response.ok) throw new Error('Failed to update interaction');
+      await workOrderNotesService.updateNote(id, noteId, { ...updateData, noteType: 'interaction' });
       await fetchInteractionNotes();
       setEditingInteraction(null);
     } catch (err) {
@@ -645,9 +637,7 @@ const DocumentDetail = () => {
   const handleDeleteInteraction = async (noteId) => {
     if (!window.confirm('Are you sure you want to delete this interaction note?')) return;
     try {
-      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/workorders/${id}/notes/${noteId}`;
-      const response = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
-      if (!response.ok) throw new Error('Failed to delete interaction');
+      await workOrderNotesService.deleteNote(id, noteId);
       await fetchInteractionNotes();
     } catch (err) {
       console.error('Error deleting interaction:', err);

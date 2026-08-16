@@ -2,6 +2,11 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-08-16
+
+### Fixed
+- **Customer interaction notes on a work order can be added, edited and deleted again.** All three actions were pointed at a hard-coded `localhost` address, so outside a developer's own machine they silently failed — and because they also skipped the login cookie, they were rejected even when the address happened to be right. Reading existing interaction notes was never affected.
+
 ## 2026-08-14
 
 ### Added
