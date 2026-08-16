@@ -123,13 +123,21 @@ The graph records the commit it was built from (see `graphify-out/GRAPH_REPORT.m
 
 ## Environment Variables
 
+[`.env.example`](../.env.example) is the authoritative list — it is kept in sync with the code, and every name below was verified against a `process.env` read.
+
 Required in `.env`:
-- `MONGODB_URI`, `JWT_SECRET`, `JWT_EXPIRES_IN`
+- `MONGODB_URI`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `JWT_COOKIE_EXPIRES_IN`
+- `CLIENT_URL` (OAuth redirects, CORS)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION`
-- `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`
+- `SENDGRID_API_KEY`, `EMAIL_FROM`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
 - `GEMINI_API_KEY` (optional `GEMINI_MODEL`, defaults to `gemini-2.5-flash` for dup-detection/registration; optional `GEMINI_EXTRACT_MODEL` defaults to `gemini-2.5-flash` for receipt + offer-screenshot extraction; `extractFromUrl` hardcodes `gemini-2.5-pro`)
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` (must match the deployment's own origin)
+
+Optional, but per-deployment:
+- `TIMEZONE` (server) and `REACT_APP_TIMEZONE` (client) — both default to `America/New_York`. A shop in another timezone needs **both**, and `REACT_APP_*` vars are baked in at build time, so the client one must be set before `npm run build`.
+
+Degrade-gracefully services: Twilio, SendGrid, and S3 each gate their own init and throw a 503 at the call site when unconfigured, so a deployment boots without them. Google OAuth only warns — an absent `GOOGLE_CLIENT_ID`/`SECRET` looks like a broken login button, not an error.
 
 ## Naming Conventions
 

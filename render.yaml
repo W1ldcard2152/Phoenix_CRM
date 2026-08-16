@@ -1,35 +1,103 @@
+# Phoenix CRM — per-tenant deployment blueprint.
+#
+# The SaaS model is one deployment + one database per tenant (see docs/saas-roadmap.md),
+# so this file is a template: every tenant gets its own Render service created from it.
+# Standing up a tenant is a checklist — follow docs/provisioning-runbook.md.
+#
+# BEFORE THE FIRST DEPLOY OF A NEW TENANT, change the service name in BOTH places
+# marked "TENANT NAME" below. They must match each other. Render rejects the blueprint
+# if the `fromService` reference doesn't resolve, so a missed rename fails loudly at
+# deploy time rather than silently misconfiguring the tenant.
+
 services:
   - type: web
-    name: phoenix-crm
+    name: phoenix-crm # TENANT NAME (1 of 2)
     env: node
-    nodeVersion: "18" # Specify Node.js version
-    region: oregon # You can change this to your preferred region
-    plan: free # Or your preferred plan
-    branch: main # Or your default deployment branch
-    healthCheckPath: / # Or your API health check endpoint like /api
+    nodeVersion: "22" # package.json requires >=18; 18 is EOL, 22 is current LTS
+    region: oregon
+    plan: free # A paying tenant wants `starter` — free instances spin down when idle
+    branch: main
+    healthCheckPath: / # In production this serves the React index.html (app.js:187)
     buildCommand: npm run install:all && npm run build
     startCommand: npm start
     envVars:
+      # ── Core ──────────────────────────────────────────────────────────────────
       - key: NODE_ENV
         value: production
       - key: MONGODB_URI
-        sync: false # Set this in the Render dashboard
+        sync: false # Per-tenant Atlas cluster. Never share one across tenants.
       - key: JWT_SECRET
-        generateValue: true # Render can generate a secure secret
+        generateValue: true # Render generates a unique secret per service
+      - key: JWT_EXPIRES_IN
+        value: 90d
+      - key: JWT_COOKIE_EXPIRES_IN
+        value: 90
+
+      # ── This deployment's own URL ─────────────────────────────────────────────
+      # The server serves the client build from the same origin, so CLIENT_URL is
+      # simply this service's external URL. Used for OAuth redirects and CORS.
       - key: CLIENT_URL
         fromService:
           type: web
-          name: phoenix-crm # Refers to this service itself
+          name: phoenix-crm # TENANT NAME (2 of 2) — refers to this service itself
           envVarKey: RENDER_EXTERNAL_URL
-      - key: TWILIO_ACCOUNT_SID
-        sync: false # Set this in the Render dashboard if you use Twilio
-      - key: TWILIO_AUTH_TOKEN
-        sync: false # Set this in the Render dashboard if you use Twilio
-      - key: TWILIO_PHONE_NUMBER
-        sync: false # Set this in the Render dashboard if you use Twilio
+
+      # ── Timezone ──────────────────────────────────────────────────────────────
+      # Both default to America/New_York in code. Set both for a shop in another
+      # zone. REACT_APP_TIMEZONE is read by the React build, and Render exposes
+      # service env vars to the build command, so it is baked in at build time —
+      # changing it later requires a rebuild, not just a restart.
+      - key: TIMEZONE
+        value: America/New_York
+      - key: REACT_APP_TIMEZONE
+        value: America/New_York
+
+      # ── AWS S3 (media uploads) ────────────────────────────────────────────────
+      # Unset: S3 init is gated and every upload throws a 503. App still boots.
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false # Per-tenant bucket, or a per-tenant prefix in a shared bucket
+
+      # ── SendGrid (email) ──────────────────────────────────────────────────────
+      # Both are required together — emailService gates on SENDGRID_API_KEY starting
+      # with "SG." AND EMAIL_FROM being set. EMAIL_FROM needs a verified sender
+      # identity in SendGrid or delivery silently fails.
       - key: SENDGRID_API_KEY
-        sync: false # Set this in the Render dashboard
-      # Add any other necessary environment variables here
-      # For example, if you have specific API keys for other services:
-      # - key: SOME_API_KEY
-      #   sync: false
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+
+      # ── Twilio (SMS reminders) ────────────────────────────────────────────────
+      # Unset: SMS is disabled and each send throws a 503. App still boots.
+      # US SMS also needs A2P 10DLC brand + campaign registration per tenant.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+
+      # ── Google Gemini (AI extraction + duplicate detection) ───────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Google OAuth (sign-in) ────────────────────────────────────────────────
+      # WARNING: passport only *warns* when CLIENT_ID/SECRET are missing, so a
+      # misconfigured tenant looks like a broken login button, not an error.
+      # GOOGLE_CALLBACK_URL must be this deployment's own origin + the callback
+      # path, and the identical URL must be registered in the Google Cloud console
+      # as an authorized redirect URI. It is `sync: false` rather than derived from
+      # RENDER_EXTERNAL_URL because the path suffix can't be appended in a
+      # fromService block — set it by hand after the first deploy.
+      #   https://<tenant>.onrender.com/api/auth/google/callback
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
