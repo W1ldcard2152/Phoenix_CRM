@@ -50,6 +50,7 @@ router.post('/:id/parts', authController.restrictTo('admin', 'management', 'serv
 
 // Inventory-pulled parts on work orders (draft → commit → remove)
 router.post('/:id/parts/from-inventory', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addPartFromInventory);
+router.post('/:id/parts/from-supply', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.addPartFromSupply);
 router.post('/:id/commit-part', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.commitPart);
 router.post('/:id/remove-part', authController.restrictTo('admin', 'management', 'service-writer'), workOrderController.removePart);
 

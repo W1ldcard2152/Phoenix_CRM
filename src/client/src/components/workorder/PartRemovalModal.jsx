@@ -1,13 +1,14 @@
 import React from 'react';
 import { formatCurrency } from '../../utils/formatters';
+import { isStockLinked, isStockPulled } from '../../utils/stockLinks';
 
 const PartRemovalModal = ({ isOpen, onClose, onConfirm, part }) => {
   if (!isOpen || !part) return null;
 
-  // Restock option applies whenever stock was actually deducted: the part is linked to
-  // an inventory item AND is not an uncommitted draft. (Treats pre-migration parts
-  // without a `committed` field as committed, since stock was deducted at add-time.)
-  const canRestock = !!part.inventoryItemId && part.committed !== false;
+  // Restock applies whenever stock was actually deducted: the part is linked to
+  // stock — a shop supply now, or an inventory item for parts pulled before the
+  // switch — AND is not an uncommitted draft.
+  const canRestock = isStockPulled(part);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -59,7 +60,7 @@ const PartRemovalModal = ({ isOpen, onClose, onConfirm, part }) => {
                   </div>
                 </div>
               </div>
-            ) : part.inventoryItemId ? (
+            ) : isStockLinked(part) ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-2">
                 <div className="flex items-start space-x-3">
                   <i className="fas fa-info-circle text-yellow-600 mt-0.5"></i>

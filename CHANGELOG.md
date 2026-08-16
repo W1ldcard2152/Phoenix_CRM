@@ -2,6 +2,50 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-08-14
+
+### Added
+- **Cycle counts.** Cut a count sheet over a slice of the shelves — by category, brand, vendor, location or measurement — and walk it with a phone. Entering counts is open to everyone; deciding what gets counted and posting the results stays with admin and management. Counts are entered the way stock actually sits on a shelf: whole packages plus loose units, so two full jugs and three loose quarts is entered as 2 and 3.
+- **Posting a count applies the variance, not the counted figure.** If a technician pulls stock from a shelf while the count is in progress, that consumption survives posting instead of being erased — and the line is flagged so you can see it happened. Counts entered but not yet posted never touch stock, so a half-finished sheet is harmless.
+- **Saved count scopes** — name a slice ("Monday: Fluids", "Quarterly: Stock Room 2") and re-run it. A scope stores the filter rather than the items, so re-running it next quarter picks up everything bought since.
+- **Edit quantity on hand inline** from the supplies list, without opening the item.
+
+### Changed
+- **Location filtering follows the shelf hierarchy.** Picking "Stock Room 1" now includes everything on its columns and shelves, rather than only items filed at that exact code.
+- **Shop Supplies is now "Inventory & Shop Supplies" — the single source of truth for stock.** Shop Inventory is retired and gone from the sidebar. Nothing writes to it any more, so there is one place to look for what's on the shelf.
+- **Parts pulled from supplies now behave like inventory parts always did on a work order.** They show a **Draft** badge until pulled and a **Pulled** badge after, they have a **Pull** button on the line, and they appear in the warning that comes up when you generate an invoice with items still un-pulled. Previously none of that appeared for a supply-backed part, so the only way to spot one was to remember adding it.
+- Stock quantities now read with their unit throughout the pull flow — "2 quarts available" rather than "2 available" — in the pull confirmation, the low-stock alert and the not-enough-stock message.
+- A supply's history now names the work order that consumed it, instead of recording a bare "used on work order".
+- The vendor directory in Settings labels stock vendors **Inventory & Supplies** rather than Shop Inventory.
+
+### Fixed
+- **Removing a pulled supply part no longer loses the stock.** The removal prompt offered "Remove & Restock", but for supply-backed parts the choice was ignored and the units were never returned. Inventory-backed parts were unaffected.
+- Generating an invoice no longer skips past supply-backed parts that haven't been pulled. They were invisible to the pre-invoice check, so a work order could be invoiced with stock never deducted.
+
+### Removed
+- **"+ Shop Inventory" is gone from the work order receipt importer**, along with its inventory-match column — it added items to the retired table, which nothing surfaces any more. Receipt lines still match and merge against parts already on the work order. Adding stock from a receipt is, for now, only possible on the retired Shop Inventory page; the supplies-side replacement is still to come.
+
+## 2026-08-09
+
+### Added
+- **Shop Supplies** — a new stocking module alongside Shop Inventory, reachable from the sidebar. Supplies are filed against a 100-node tag tree organised by job phase (Chemicals & Fluids, Refinish & Body, Consumable Hardware, Shop & Safety, Service Parts), and filtering by a tag includes everything beneath it, so picking "Chemicals & Fluids" finds the brake cleaner filed under Shop Chemicals. Untagged items are counted separately so nothing gets lost after an import.
+- **Measurements per category.** Tag an item Engine Oil and a Viscosity dropdown appears; tag it Abrasives → Discs and you get Grit and Diameter. Nineteen measurements are defined across the tree, most as fixed lists so 5W-30 can't also be stored as "5w30" and go missing from a filter. Filter by them once you've picked a tag.
+- **Item names are built from what you record**, not typed. Brand, part number, measurements and the tag combine into "Bosch 3330 Oil Filter" or "Mobil 1 5W-30 Engine Oil (High Mileage, Full Synthetic)". You type only the qualifier — the part that isn't derivable. Rename a brand and every item's name follows.
+- **Import from product photos.** Drop in a stack of label photos and work them one at a time; each offers a one-click AI read of the label into brand, part number, measurements and package size, and the photo becomes that item's picture. The suggested category is never applied on its own — accept it or the item saves untagged, ready for triage.
+- **Item photos** on any supply: paste a screenshot with Ctrl+V, drop a file, or upload one. Thumbnails show in the list, which is usually faster than a name for matching something on a shelf.
+- **Click a supply for a detail card** — photo, tags, measurements, stock and pricing at a glance, plus the full history of every quantity change with who made it and what it left behind.
+- **Vendor sales tax folds into cost.** Tick "vendor charged tax" and the shop tax rate is applied, because tax you pay a vendor is part of what the item cost. The answer is remembered per vendor from the product URL, so the next Walmart item defaults the same way.
+- **Product URL fills in the rest.** Paste a listing URL and the vendor is recognised from the shop's vendor directory; the existing AI extraction can also pull brand, part number and cost from the page.
+
+### Changed
+- **Work orders pull parts from Shop Supplies.** "Add from inventory" is now a proper search — type to find, filter by category (which includes everything beneath it) or shelf location, sort by name, stock or price, and see a photo, stock level and price on every row. If something came in this morning and isn't entered yet, **add it without leaving the work order**: the full supply form opens right there and the new item is selected when you save. Parts still go on as drafts, so stock only moves when you commit, and removing a committed part offers to put it back.
+- **Service packages now draw from Shop Supplies.** A package line names a *kind* of supply — "5 of something tagged Engine Oil" — and when you add the package to a work order you pick from whatever is tagged there, including sub-categories. Committing deducts from supplies and records the work order against that item's history. Existing packages were converted automatically; work orders already committed still show exactly what they consumed.
+- Package requirements are chosen from the supply tag tree rather than the separate tag list in Settings, which is no longer used.
+
+### Fixed
+- Brands appeared several times in the supplies dropdowns after adding the same one from several import cards. Only ever one was stored; the list on screen was miscounting.
+- Filtering supplies by vendor could return nothing for a vendor you clearly buy from, because the shop's directory and the old inventory spelled some vendors differently ("Rock Auto" vs "RockAuto"). The duplicates are merged and filters now offer only values something actually uses, with a count.
+
 ## 2026-06-24
 
 ### Added

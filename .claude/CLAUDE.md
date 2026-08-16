@@ -125,7 +125,7 @@ The graph records the commit it was built from (see `graphify-out/GRAPH_REPORT.m
 
 Required in `.env`:
 - `MONGODB_URI`, `JWT_SECRET`, `JWT_EXPIRES_IN`
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME`, `AWS_REGION`
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION`
 - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
 - `GEMINI_API_KEY` (optional `GEMINI_MODEL`, defaults to `gemini-2.5-flash` for dup-detection/registration; optional `GEMINI_EXTRACT_MODEL` defaults to `gemini-2.5-flash` for receipt + offer-screenshot extraction; `extractFromUrl` hardcodes `gemini-2.5-pro`)

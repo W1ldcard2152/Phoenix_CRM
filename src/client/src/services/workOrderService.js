@@ -90,6 +90,16 @@ const WorkOrderService = {
   },
 
   // Add part from inventory as a draft (no inventory deduction yet)
+  addPartFromSupply: async (id, data) => {
+    try {
+      const response = await API.post(`/workorders/${id}/parts/from-supply`, data);
+      return response.data;
+    } catch (error) {
+      console.error('Error adding part from shop supplies:', error);
+      throw error;
+    }
+  },
+
   addPartFromInventory: async (id, data) => {
     try {
       const response = await API.post(`/workorders/${id}/parts/from-inventory`, data);

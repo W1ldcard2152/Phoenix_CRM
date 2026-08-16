@@ -108,7 +108,12 @@ const PartSchema = new Schema({
     type: String,
     trim: true
   },
-  inventoryItemId: { // Link to inventory item this part was pulled from
+  // The shop supply this part was pulled from. Written for every new pull.
+  shopSupplyId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ShopSupply'
+  },
+  inventoryItemId: { // Legacy: the old inventory item this part was pulled from
     type: Schema.Types.ObjectId,
     ref: 'InventoryItem'
   },
@@ -210,7 +215,20 @@ const LaborSchema = new Schema({
 });
 
 const ServicePackageItemSchema = new Schema({
+  // What the package actually drew. Written for every new line.
+  shopSupplyId: { type: Schema.Types.ObjectId, ref: 'ShopSupply' },
+
+  /**
+   * Legacy link to the old inventory table.
+   *
+   * NOT removed: ten committed package lines across twelve work orders record
+   * consumption against it, and a work order is a historical document — the
+   * stock it drew came from there and rewriting that would be a lie. Commit and
+   * removal branch on which id is present, so old draft lines still deduct from
+   * the old table while new ones use shop supplies.
+   */
   inventoryItemId: { type: Schema.Types.ObjectId, ref: 'InventoryItem' },
+
   name: { type: String, required: true, trim: true },
   partNumber: { type: String, trim: true },
   brand: { type: String, trim: true },

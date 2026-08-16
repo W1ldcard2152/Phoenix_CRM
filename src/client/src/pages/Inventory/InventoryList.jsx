@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import InventoryService from '../../services/inventoryService';
 import SettingsService from '../../services/settingsService';
 import { useAuth } from '../../contexts/AuthContext';
@@ -449,12 +450,35 @@ const InventoryList = () => {
 
   return (
     <div className="container mx-auto">
+      {/* Retired-page notice. This page is unlinked from the nav and nothing
+          writes to its table any more; it stays reachable so the work orders
+          that drew stock from it remain legible. */}
+      <div className="mx-4 mt-3 mb-1 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <i className="fas fa-archive text-amber-600 mt-0.5"></i>
+          <div className="flex-1">
+            <div className="font-semibold text-amber-900">Shop Inventory is retired</div>
+            <p className="text-sm text-amber-800 mt-1">
+              Inventory &amp; Shop Supplies is now the single source of truth for stock.
+              This page is kept only so historical records stay viewable — new items
+              added here will not appear anywhere else.
+            </p>
+          </div>
+          <Link
+            to="/supplies"
+            className="shrink-0 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700"
+          >
+            Go to Supplies <i className="fas fa-arrow-right ml-1 text-xs"></i>
+          </Link>
+        </div>
+      </div>
+
       {/* Sticky Header */}
       <div className="bg-white shadow-sm sticky top-0 z-10">
         <div className="px-4 py-3">
           {/* Title row */}
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-gray-800">Shop Inventory</h1>
+            <h1 className="text-xl font-bold text-gray-800">Shop Inventory (retired)</h1>
             <div className="flex items-center gap-2">
               <button
                 onClick={openShoppingList}

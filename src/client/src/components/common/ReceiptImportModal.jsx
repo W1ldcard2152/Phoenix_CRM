@@ -1,28 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import Button from './Button';
-import SearchableDropdown from './SearchableDropdown';
 import API from '../../services/api';
-import InventoryService from '../../services/inventoryService';
 import { formatCurrency } from '../../utils/formatters';
 
 const STEPS = { UPLOAD: 'upload', TYPE: 'type', REVIEW: 'review', MERGE: 'merge' };
 
 // Fields shown in the side-by-side merge UI for a WO match.
+//
+// A receipt line used to be matchable against the old Shop Inventory table too,
+// which needed a second field set; that table is retired and nothing writes to
+// it, so a receipt now only ever merges against a part already on this work
+// order. See docs/shop-supplies-backlog.md item 2f for the supplies-side
+// receipt import that will eventually replace the dropped capability.
+//
 // Each entry: { key: incomingKey, existingKey, label, type }
 const WO_MERGE_FIELDS = [
   { key: 'name',        existingKey: 'name',        label: 'Name' },
   { key: 'partNumber',  existingKey: 'partNumber',  label: 'Part #' },
   { key: 'vendor',      existingKey: 'vendor',      label: 'Vendor' },
   { key: 'supplier',    existingKey: 'supplier',    label: 'Supplier' },
-  { key: 'price',       existingKey: 'cost',        label: 'Cost',     type: 'currency', inputType: 'number' },
-  { key: 'notes',       existingKey: 'notes',       label: 'Notes' },
-];
-
-const INV_MERGE_FIELDS = [
-  { key: 'name',        existingKey: 'name',        label: 'Name' },
-  { key: 'partNumber',  existingKey: 'partNumber',  label: 'Part #' },
-  { key: 'brand',       existingKey: 'brand',       label: 'Brand' },
-  { key: 'vendor',      existingKey: 'vendor',      label: 'Vendor' },
   { key: 'price',       existingKey: 'cost',        label: 'Cost',     type: 'currency', inputType: 'number' },
   { key: 'notes',       existingKey: 'notes',       label: 'Notes' },
 ];
@@ -64,15 +60,10 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   const [mediaId, setMediaId] = useState(null);
   const [mediaS3Key, setMediaS3Key] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [catalogActions, setCatalogActions] = useState({}); // { [parsedIndex]: 'inventory' | null }
   const [confirming, setConfirming] = useState(false);
 
   // Manual match overrides — null means "no match (add new)"; undefined means "use AI default"
   const [woMatchOverrides, setWoMatchOverrides] = useState({});  // { [parsedIndex]: woPartId | null }
-  const [invMatchOverrides, setInvMatchOverrides] = useState({}); // { [parsedIndex]: inventoryItemId | null }
-
-  // Inventory items loaded for searchable dropdown + side-by-side comparison
-  const [inventoryItems, setInventoryItems] = useState([]);
 
   // Per-field merge selections: { [`${parsedIndex}:${source}`]: { [fieldKey]: 'incoming' | 'existing' | 'custom' } }
   const [mergeSelections, setMergeSelections] = useState({});
@@ -93,10 +84,8 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     setMediaId(null);
     setMediaS3Key(null);
     setSelected([]);
-    setCatalogActions({});
     setConfirming(false);
     setWoMatchOverrides({});
-    setInvMatchOverrides({});
     setMergeSelections({});
     setCustomValues({});
   };
@@ -105,23 +94,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     resetAll();
     onClose();
   };
-
-  // Load inventory items once when modal opens (used by both inventory match dropdown and merge UI)
-  useEffect(() => {
-    if (!isOpen || inventoryItems.length > 0) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await InventoryService.getAllItems({ limit: 5000, isActive: true });
-        const items = resp?.data?.items || resp?.data || [];
-        if (!cancelled) setInventoryItems(Array.isArray(items) ? items : []);
-      } catch (e) {
-        // Non-fatal — manual override and merge will still work for WO matches
-        console.error('Failed to load inventory items for receipt import modal:', e);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isOpen, inventoryItems.length]);
 
   const handleNext = () => {
     if (!receiptFile && !receiptText.trim()) {
@@ -174,13 +146,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
     return ai ? ai.rawId : null;
   };
 
-  const getInvMatchId = (parsedIndex) => {
-    const override = invMatchOverrides[parsedIndex];
-    if (override !== undefined) return override;
-    const ai = aiDuplicates.find(d => d.parsedIndex === parsedIndex && d.source === 'inv');
-    return ai ? ai.rawId : null;
-  };
-
   // Build the list of matches that need the merge UI (selected rows with a resolved match)
   const getActiveMatches = () => {
     if (!extractedParts) return [];
@@ -190,13 +155,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
       if (woMatch) {
         const existing = existingParts.find(p => String(p._id) === String(woMatch));
         if (existing) matches.push({ parsedIndex, source: 'wo', existingId: woMatch, existing });
-      }
-      if (catalogActions[parsedIndex] === 'inventory') {
-        const invMatch = getInvMatchId(parsedIndex);
-        if (invMatch) {
-          const existing = inventoryItems.find(i => String(i._id) === String(invMatch));
-          if (existing) matches.push({ parsedIndex, source: 'inv', existingId: invMatch, existing });
-        }
       }
     });
     return matches;
@@ -215,22 +173,14 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
       return;
     }
 
-    // Initialize merge selections — preference depends on context:
-    //   WO source: imported > existing > empty (the receipt is fresh authoritative data)
-    //   INV source: existing > imported > empty (catalog data is curated; receipt fills gaps)
+    // Initialize merge selections — imported > existing > empty, since the
+    // receipt is fresh authoritative data.
     const initSel = {};
     matches.forEach(m => {
-      const fields = m.source === 'wo' ? WO_MERGE_FIELDS : INV_MERGE_FIELDS;
       const part = extractedParts[m.parsedIndex];
       const rowSel = {};
-      fields.forEach(f => {
-        const incomingVal = part?.[f.key];
-        const existingVal = m.existing?.[f.existingKey];
-        if (m.source === 'wo') {
-          rowSel[f.key] = !isBlank(incomingVal) ? 'incoming' : 'existing';
-        } else {
-          rowSel[f.key] = !isBlank(existingVal) ? 'existing' : 'incoming';
-        }
+      WO_MERGE_FIELDS.forEach(f => {
+        rowSel[f.key] = !isBlank(part?.[f.key]) ? 'incoming' : 'existing';
       });
       initSel[`${m.parsedIndex}:${m.source}`] = rowSel;
     });
@@ -246,11 +196,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
       setError(null);
 
       const selectedPartData = selected.map(i => extractedParts[i]);
-
-      const mappedCatalogActions = {};
-      selected.forEach((origIndex, newIndex) => {
-        if (catalogActions[origIndex]) mappedCatalogActions[newIndex] = catalogActions[origIndex];
-      });
 
       // Resolve a single field's merged value given the user's choice
       const resolveField = (f, choice, part, existing, customRowVals) => {
@@ -288,29 +233,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           row.woAction = 'add_new';
         }
 
-        // Inventory match (only when "+ Shop Inventory" was selected)
-        if (catalogActions[origIndex] === 'inventory') {
-          const invMatchId = getInvMatchId(origIndex);
-          if (invMatchId) {
-            row.inventoryAction = 'add_to_existing';
-            row.inventoryMatchId = invMatchId;
-            const existing = inventoryItems.find(i => String(i._id) === String(invMatchId));
-            if (existing) {
-              const part = extractedParts[origIndex];
-              const rowSel = sel[`${origIndex}:inv`] || {};
-              const customRowVals = customValues[`${origIndex}:inv`] || {};
-              const merged = {};
-              INV_MERGE_FIELDS.forEach(f => {
-                const choice = rowSel[f.key] || 'incoming';
-                merged[f.existingKey] = resolveField(f, choice, part, existing, customRowVals);
-              });
-              row.inventoryMergedFields = merged;
-            }
-          } else {
-            row.inventoryAction = 'add_new';
-          }
-        }
-
         if (Object.keys(row).length > 0) duplicateResolutions[newIndex] = row;
       });
 
@@ -323,7 +245,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           isOrder,
           mediaId,
           mediaS3Key,
-          catalogActions: mappedCatalogActions,
           duplicateResolutions,
           serviceId
         },
@@ -360,14 +281,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
   const totalAllUnits = (extractedParts || []).reduce((sum, p) => sum + (p.quantity || 1), 0);
   const shippingPerItem = totalAllUnits > 0 ? shippingTotal / totalAllUnits : 0;
 
-  // Options for inventory match dropdown
-  const invOptions = useMemo(() => inventoryItems.map(i => ({
-    value: String(i._id),
-    label: i.name,
-    sublabel: [i.brand, i.partNumber, `QOH ${i.quantityOnHand ?? 0}`].filter(Boolean).join(' · '),
-    keywords: [i.partNumber, i.brand, i.vendor].filter(Boolean).join(' '),
-  })), [inventoryItems]);
-
   if (!isOpen) return null;
 
   // ──── Step 4: Field-by-field merge ────
@@ -385,9 +298,7 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
           <div className="space-y-4">
             {matches.map(m => {
               const part = extractedParts[m.parsedIndex];
-              const fields = m.source === 'wo' ? WO_MERGE_FIELDS : INV_MERGE_FIELDS;
-              const sourceLabel = m.source === 'wo' ? 'In this WO' : 'Shop Inventory';
-              const sourceColor = m.source === 'wo' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700';
+              const fields = WO_MERGE_FIELDS;
               const rowSel = mergeSelections[`${m.parsedIndex}:${m.source}`] || {};
 
               return (
@@ -399,8 +310,8 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                         Matching against: <span className="font-medium text-gray-700">{m.existing?.name}</span>
                       </div>
                     </div>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sourceColor}`}>
-                      {sourceLabel}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                      In this WO
                     </span>
                   </div>
 
@@ -484,16 +395,9 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                     </tbody>
                   </table>
 
-                  {m.source === 'wo' && (
-                    <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
-                      Quantity stays at <strong>{m.existing?.quantity}</strong> (existing). Receipt qty {part?.quantity} is discarded.
-                    </div>
-                  )}
-                  {m.source === 'inv' && (
-                    <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
-                      QOH increases by <strong>{part?.quantity || 1}</strong> (added to existing stock).
-                    </div>
-                  )}
+                  <div className="bg-blue-50 px-4 py-1.5 text-xs text-blue-800 border-t">
+                    Quantity stays at <strong>{m.existing?.quantity}</strong> (existing). Receipt qty {part?.quantity} is discarded.
+                  </div>
                 </div>
               );
             })}
@@ -551,23 +455,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
             <span className="text-gray-400">÷ {totalAllUnits} unit{totalAllUnits !== 1 ? 's' : ''} = {shippingTotal > 0 ? `$${(shippingTotal / totalAllUnits).toFixed(2)}/unit` : '$0.00/unit'}</span>
           </div>
 
-          {/* Bulk action for catalog/inventory */}
-          <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
-            <span>Add all selected to:</span>
-            <select
-              onChange={(e) => {
-                const action = e.target.value || null;
-                const newActions = {};
-                selected.forEach(i => { newActions[i] = action; });
-                setCatalogActions(newActions);
-              }}
-              className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
-              <option value="">WO Only</option>
-              <option value="inventory">+ Shop Inventory</option>
-            </select>
-          </div>
-
           {/* Parts table */}
           <div className="overflow-x-auto border rounded-md mt-3">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -587,8 +474,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+ Ship</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price ({markupPercentage}%)</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Match in WO</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Also Add To</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Inventory Match</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -599,8 +484,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
 
                   const woMatchId = getWoMatchId(index);
                   const aiWoMatch = aiDuplicates.find(d => d.parsedIndex === index && d.source === 'wo');
-                  const aiInvMatch = aiDuplicates.find(d => d.parsedIndex === index && d.source === 'inv');
-                  const invMatchId = catalogActions[index] === 'inventory' ? getInvMatchId(index) : null;
 
                   return (
                     <tr key={index} className={isSelected ? 'bg-blue-50' : 'bg-white hover:bg-gray-50 opacity-50'}>
@@ -660,43 +543,6 @@ const ReceiptImportModal = ({ isOpen, onClose, entityId, onSuccess, markupPercen
                             </select>
                             {aiWoMatch && woMatchId === aiWoMatch.rawId && (
                               <div className="text-[10px] text-orange-600 mt-0.5" title={aiWoMatch.reason}>
-                                <i className="fas fa-robot mr-0.5"></i> AI suggested
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        {isSelected && (
-                          <select
-                            value={catalogActions[index] || ''}
-                            onChange={(e) => setCatalogActions(prev => ({
-                              ...prev,
-                              [index]: e.target.value || null
-                            }))}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs border border-gray-300 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                          >
-                            <option value="">WO Only</option>
-                            <option value="inventory">+ Shop Inventory</option>
-                          </select>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-top w-56">
-                        {isSelected && catalogActions[index] === 'inventory' ? (
-                          <div>
-                            <SearchableDropdown
-                              options={invOptions}
-                              value={invMatchId}
-                              onChange={(v) => setInvMatchOverrides(prev => ({ ...prev, [index]: v }))}
-                              placeholder="— New item —"
-                              allowClear
-                              clearLabel="— New item —"
-                            />
-                            {aiInvMatch && invMatchId === aiInvMatch.rawId && (
-                              <div className="text-[10px] text-teal-600 mt-0.5" title={aiInvMatch.reason}>
                                 <i className="fas fa-robot mr-0.5"></i> AI suggested
                               </div>
                             )}

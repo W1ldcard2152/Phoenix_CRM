@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ServicePackageService from '../../services/servicePackageService';
-import SettingsService from '../../services/settingsService';
+import SupplyService from '../../services/supplyService';
+import SearchableDropdown from '../../components/common/SearchableDropdown';
+import { buildTree, indexTags, tagPath, idOf, treeLabel } from '../../components/supplies/tagTree';
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -12,21 +14,49 @@ const ServicePackageList = () => {
   const [editingPkg, setEditingPkg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [packageTags, setPackageTags] = useState([]);
+  // A package line names a KIND of supply, not a product: it points at a node
+  // in the shop-supply tag tree, and anything tagged at or beneath that node
+  // can satisfy it. Replaces the old free-text Settings.packageTags list.
+  const [supplyTags, setSupplyTags] = useState([]);
 
   // Form state
   const [formData, setFormData] = useState({ name: '', description: '', price: 0 });
   const [includedItems, setIncludedItems] = useState([]);
 
+  const tagsById = React.useMemo(() => indexTags(supplyTags), [supplyTags]);
+  const tagName = (id) => tagsById[idOf(id)]?.name || '';
+
+  /**
+   * The tree flattened for a dropdown, indented by depth. A package line is
+   * usually satisfied by a leaf ("Engine Oil"), but interior nodes are offered
+   * too — tagging a line "Service Fluids" lets any fluid beneath it satisfy it.
+   */
+  const tagOptions = React.useMemo(() => {
+    const out = [];
+    const walk = (nodes, depth) => {
+      nodes.forEach((n) => {
+        out.push({
+          value: idOf(n._id),
+          label: treeLabel(n.name, depth),
+          keywords: n.name,
+          sublabel: n.noun && n.noun !== n.name ? n.noun : undefined
+        });
+        walk(n.children, depth + 1);
+      });
+    };
+    walk(buildTree(supplyTags), 0);
+    return out;
+  }, [supplyTags]);
+
   const fetchPackages = useCallback(async () => {
     setLoading(true);
     try {
-      const [pkgRes, settingsRes] = await Promise.all([
+      const [pkgRes, tagRes] = await Promise.all([
         ServicePackageService.getAllPackages(),
-        SettingsService.getSettings()
+        SupplyService.getTags()
       ]);
       setPackages(pkgRes.data?.packages || []);
-      setPackageTags(settingsRes.data?.settings?.packageTags || []);
+      setSupplyTags(tagRes.data?.tags || []);
     } catch (err) {
       console.error('Error fetching packages:', err);
     } finally {
@@ -47,7 +77,7 @@ const ServicePackageList = () => {
     setEditingPkg(pkg);
     setFormData({ name: pkg.name, description: pkg.description || '', price: pkg.price });
     setIncludedItems(pkg.includedItems.map(item => ({
-      packageTag: item.packageTag,
+      supplyTag: idOf(item.supplyTag),
       label: item.label,
       quantity: item.quantity
     })));
@@ -57,9 +87,9 @@ const ServicePackageList = () => {
   const handleSave = async () => {
     if (!formData.name || formData.price < 0) return;
     // Validate all items have a tag selected
-    const invalid = includedItems.some(item => !item.packageTag);
+    const invalid = includedItems.some(item => !item.supplyTag);
     if (invalid) {
-      setError('All included items must have a package tag selected');
+      setError('Every included item needs a supply tag');
       return;
     }
     setSaving(true);
@@ -68,8 +98,8 @@ const ServicePackageList = () => {
       const payload = {
         ...formData,
         includedItems: includedItems.map(item => ({
-          packageTag: item.packageTag,
-          label: item.label || item.packageTag,
+          supplyTag: item.supplyTag,
+          label: item.label || tagName(item.supplyTag),
           quantity: item.quantity
         }))
       };
@@ -99,20 +129,16 @@ const ServicePackageList = () => {
   };
 
   const addIncludedItem = () => {
-    setIncludedItems(prev => [...prev, {
-      packageTag: packageTags[0] || '',
-      label: packageTags[0] || '',
-      quantity: 1
-    }]);
+    setIncludedItems(prev => [...prev, { supplyTag: '', label: '', quantity: 1 }]);
   };
 
   const updateIncludedItem = (index, field, value) => {
     setIncludedItems(prev => prev.map((item, i) => {
       if (i !== index) return item;
       const updated = { ...item, [field]: value };
-      // Auto-set label when tag changes (if label matches old tag or is empty)
-      if (field === 'packageTag' && (!item.label || item.label === item.packageTag)) {
-        updated.label = value;
+      // Name the line after the tag unless the user has typed their own label.
+      if (field === 'supplyTag' && (!item.label || item.label === tagName(item.supplyTag))) {
+        updated.label = tagName(value);
       }
       return updated;
     }));
@@ -171,7 +197,9 @@ const ServicePackageList = () => {
                       {pkg.includedItems.map((item, idx) => (
                         <span key={idx} className="inline-flex items-center px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full border border-purple-200">
                           {item.quantity}x {item.label}
-                          <span className="ml-1 text-purple-400">({item.packageTag})</span>
+                          <span className="ml-1 text-purple-400">
+                            ({item.supplyTag ? tagPath(item.supplyTag, tagsById) : item.packageTag || 'untagged'})
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -254,17 +282,17 @@ const ServicePackageList = () => {
                   <label className="text-sm font-medium text-gray-700">Included Items</label>
                   <button
                     onClick={addIncludedItem}
-                    disabled={packageTags.length === 0}
+                    disabled={supplyTags.length === 0}
                     className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 disabled:opacity-50"
                   >
                     <i className="fas fa-plus mr-1"></i>Add Requirement
                   </button>
                 </div>
 
-                {packageTags.length === 0 && (
+                {supplyTags.length === 0 && (
                   <p className="text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2">
                     <i className="fas fa-exclamation-triangle mr-1"></i>
-                    No package tags configured. Add tags in Company Settings first.
+                    No supply tags found. Run the shop-supplies seed first.
                   </p>
                 )}
 
@@ -278,16 +306,13 @@ const ServicePackageList = () => {
                     {includedItems.map((item, idx) => (
                       <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
                         <div className="flex-1 min-w-0">
-                          <select
-                            value={item.packageTag}
-                            onChange={(e) => updateIncludedItem(idx, 'packageTag', e.target.value)}
-                            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
-                          >
-                            <option value="">-- Select Tag --</option>
-                            {packageTags.map(tag => (
-                              <option key={tag} value={tag}>{tag}</option>
-                            ))}
-                          </select>
+                          <SearchableDropdown
+                            size="md"
+                            options={tagOptions}
+                            value={item.supplyTag || null}
+                            onChange={(v) => updateIncludedItem(idx, 'supplyTag', v || '')}
+                            placeholder="-- Select supply tag --"
+                          />
                         </div>
                         <div className="w-20">
                           <input

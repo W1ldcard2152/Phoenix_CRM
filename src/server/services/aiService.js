@@ -564,6 +564,140 @@ Return a single JSON object with exactly these keys: name, brand, partNumber, pr
 };
 
 /**
+ * Read a photo of a shop-supply product LABEL into a structured draft.
+ *
+ * Distinct from parseReceipt on purpose. A receipt answers "what did I buy?" —
+ * line items, quantities, prices. A label answers "what IS this?" — brand, part
+ * number, and above all the MEASUREMENTS printed on it (5W-30, 220 grit, DOT 4).
+ * Those measurements are the fields the supply registry exists for, and a
+ * receipt line almost never carries them reliably.
+ *
+ * The tag tree and field registry are passed IN and rendered into the prompt,
+ * so the model chooses from the shop's actual vocabulary rather than inventing
+ * its own. Nothing it returns is trusted: the caller validates every slug and
+ * key against the real thing and drops what doesn't match.
+ *
+ * @param {Buffer} imageBuffer
+ * @param {String} mimeType
+ * @param {Object} vocabulary - { tags: [{slug, path}], fields: [{key,label,type,options}] }
+ * @returns {Promise<Object>} raw draft, still untrusted
+ */
+exports.parseSupplyLabel = async (imageBuffer, mimeType = 'image/png', vocabulary = {}) => {
+  try {
+    const model = getModel(EXTRACT_MODEL);
+
+    const tagLines = (vocabulary.tags || [])
+      .map((t) => `  ${t.slug} = ${t.path}`)
+      .join('\n');
+
+    const fieldLines = (vocabulary.fields || [])
+      .map((f) => {
+        const opts = f.options && f.options.length
+          ? ` — one of: ${f.options.join(' | ')}`
+          : (f.unit ? ` — number, in ${f.unit}` : ' — free text');
+        return `  ${f.key} (${f.label})${opts}`;
+      })
+      .join('\n');
+
+    const prompt = `You are reading a photograph of a product in an auto repair shop — a bottle, can, box, or bag — and recording what it IS so it can be stocked. Read the LABEL. Extract details for ONE product.
+
+If several products are visible, describe the single most prominent one.
+
+Extract these fields:
+1. brand - The manufacturer ONLY, exactly as printed ("Mobil 1", "Valvoline", "Bosch", "3M"). NEVER include the part number or product type. Empty string if not visible.
+2. partNumber - The manufacturer part number / SKU / model ONLY ("3330", "OX387D"). NEVER include the brand. Empty string if not printed.
+3. productType - A short generic noun for what this is ("engine oil", "oil filter", "masking tape"). No brand, no marketing words.
+4. qualifier - The product VARIANT, in Title Case. At most three short terms, comma-separated.
+
+   The test: would this distinguish two otherwise-identical products from the same brand? A shop stocking two Mobil 1 5W-30 oils tells them apart by "High Mileage" vs "Extended Performance" — those are variants. Everything else on the bottle is advertising.
+
+   KEEP: product-line variants ("High Mileage", "Extended Performance", "Heavy Duty"), base chemistry ("Full Synthetic", "Synthetic Blend", "Conventional"), formal specs and certifications printed as codes ("dexos1", "API SN", "ILSAC GF-6") — leave codes in their printed form rather than re-casing them, and functional notes about how it is supplied ("Pre-Filled With Oil", "With Friction Modifier").
+
+   DROP: intensifiers and superlatives ("Advanced", "Ultimate", "Premium", "Maximum", "Pro"); restatements of something already captured elsewhere ("For Engines Over 75,000 Miles" merely repeats High Mileage; "5W-30" is already a measurement); compatibility and application claims ("Suitable For Hybrids", "For Gasoline Engines", "Fits Most Vehicles"); performance and benefit claims ("Cleans Sludge", "Extends Engine Life", "Superior Protection"); volume or count ("5 Quart") — that is packageQuantity.
+
+   Worked example. Label reads: "high mileage, advanced full synthetic, for engines over 75,000 miles, suitable for hybrids". Correct answer: "High Mileage, Full Synthetic". "Advanced" is an intensifier, "for engines over 75,000 miles" restates High Mileage, and "suitable for hybrids" is an application claim.
+
+   Empty string if nothing survives those rules. Most labels yield one or two terms; a long qualifier means advertising has been let in.
+5. tagSlug - Where this belongs, chosen from the CATEGORIES list below. Use the slug EXACTLY as written there. Choose the most specific category you are confident in. If you are not reasonably sure, return an empty string — a wrong category is much worse than none.
+6. confidence - "high", "medium" or "low": how sure you are about tagSlug.
+7. attributes - An object of measurements printed on the label. Use ONLY the keys from the MEASUREMENTS list below, and only ones that apply to this product. For a key that lists allowed values, return one of those values EXACTLY as written. Omit any measurement not printed on the label. Return {} if none apply.
+8. form - One of exactly: "aerosol", "liquid", "solid", "paste", "gel", "powder". Empty string if unclear.
+9. contentQuantity - How many usage units are INSIDE this package, as a number. A 5 quart jug is 5. A 1 quart bottle is 1. A 12 pack of shop towels is 12. A single aerosol can is 1. null if not printed.
+10. contentUnit - What those contents are measured in, singular and lowercase: "quart", "gallon", "ounce", "ft", "sheet", "lb", or "each" for countable items. This is the unit the shop USES the product in, not the container. A 5 quart jug has contentUnit "quart".
+11. containerType - What the package itself is, singular and lowercase: "jug", "bottle", "can", "box", "case", "roll", "tube", "bag", "pair", "kit". This is what you would order one of. A 5 quart jug has containerType "jug". Empty string if the product is sold loose or the container is unclear.
+
+    Worked examples for 9-11: a 5-quart jug of oil is contentQuantity 5, contentUnit "quart", containerType "jug". A 1-quart bottle is 1, "quart", "bottle". A single can of brake cleaner is 1, "each", "can". A box of 100 gloves is 100, "each", "box".
+
+CATEGORIES (use the slug on the left, exactly):
+${tagLines}
+
+MEASUREMENTS (use the key on the left, exactly):
+${fieldLines}
+
+Rules:
+- Brand and part number are ALWAYS separate — never merge them.
+- Read values EXACTLY as printed. Do not convert, round, normalise or infer.
+- Do NOT guess anything that is not visible on the label. Empty string, null, or omit the key.
+- Prefer returning nothing over returning something plausible-but-unverified. An empty field is easy to fill in; a wrong one looks correct and never gets checked.
+
+Return a single JSON object with exactly these keys: brand, partNumber, productType, qualifier, tagSlug, confidence, attributes, form, contentQuantity, contentUnit, containerType.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [
+        { text: prompt },
+        { inlineData: { mimeType, data: imageBuffer.toString('base64') } }
+      ] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.1, maxOutputTokens: 8192 }
+    });
+
+    const responseText = (result.response.text() || '').trim();
+    let parsed;
+    try {
+      if (!responseText) throw new Error('empty response');
+      parsed = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Gemini label response:', JSON.stringify(responseText));
+      throw new Error('AI returned no readable data for this photo — try a clearer, closer shot of the label.');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid response format: expected a product object');
+    }
+
+    const Settings = require('../models/Settings');
+    const settings = await Settings.getSettings();
+    const overridesMap = {};
+    (settings.brandOverrides || []).forEach(b => { overridesMap[b.toLowerCase()] = b; });
+
+    return {
+      brand: formatBrandName(parsed.brand || '', overridesMap),
+      partNumber: String(parsed.partNumber || '').trim(),
+      productType: String(parsed.productType || '').trim(),
+      // Belt and braces on the three-term rule — models drift back toward the
+      // marketing copy on the bottle. Terms are NOT re-cased here: the prompt
+      // deliberately keeps spec codes as printed ("dexos1", "API SN"), and
+      // title-casing would mangle them.
+      qualifier: String(parsed.qualifier || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', '),
+      tagSlug: String(parsed.tagSlug || '').trim().toLowerCase(),
+      confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
+      attributes: (parsed.attributes && typeof parsed.attributes === 'object' && !Array.isArray(parsed.attributes))
+        ? parsed.attributes : {},
+      form: String(parsed.form || '').trim().toLowerCase(),
+      contentQuantity: parsed.contentQuantity == null ? null : (parseFloat(parsed.contentQuantity) || null),
+      contentUnit: String(parsed.contentUnit || '').trim().toLowerCase(),
+      containerType: String(parsed.containerType || '').trim().toLowerCase()
+    };
+  } catch (error) {
+    console.error('Error reading supply label with Gemini:', error);
+    throw new AppError(`Label read failed: ${error.message}`, 502);
+  }
+};
+
+/**
  * Find duplicate matches between parsed receipt items and existing inventory/parts items.
  * Uses AI to recognize same physical products despite name variations.
  *

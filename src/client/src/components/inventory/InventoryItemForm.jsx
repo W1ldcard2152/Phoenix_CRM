@@ -4,7 +4,9 @@ import UrlExtractButton from '../common/UrlExtractButton';
 import { WARRANTY_OPTIONS } from '../../utils/warrantyOptions';
 
 /**
- * Shared inventory item form used by both InventoryList and InventoryPickerModal.
+ * Item form for the retired Shop Inventory page. Its only remaining caller is
+ * InventoryList; the work order picker that used to share it drew from this
+ * table and went away with it.
  *
  * Props:
  *  - formData / onChange(updatedFormData) — controlled form state

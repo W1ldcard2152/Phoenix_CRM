@@ -40,6 +40,7 @@ const workOrderNotesRoutes = require('./routes/workOrderNotesRoutes'); // Import
 const settingsRoutes = require('./routes/settingsRoutes');
 const scheduleBlockRoutes = require('./routes/scheduleBlockRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
+const supplyRoutes = require('./routes/supplyRoutes');
 const servicePackageRoutes = require('./routes/servicePackageRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 
@@ -171,6 +172,7 @@ app.use('/api/workorder-notes', workOrderNotesRoutes); // Use work order notes r
 app.use('/api/settings', settingsRoutes);
 app.use('/api/schedule-blocks', scheduleBlockRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/supplies', supplyRoutes);
 app.use('/api/service-packages', servicePackageRoutes);
 app.use('/api/ai', aiRoutes);
 const followUpRoutes = require('./routes/followUpRoutes');

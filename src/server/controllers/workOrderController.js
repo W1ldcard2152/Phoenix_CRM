@@ -5,6 +5,11 @@ const Customer = require('../models/Customer');
 const Appointment = require('../models/Appointment');
 const WorkOrderNote = require('../models/WorkOrderNote');
 const InventoryItem = require('../models/InventoryItem');
+const ShopSupply = require('../models/ShopSupply');
+const SupplyMovement = require('../models/SupplyMovement');
+const SupplyVocab = require('../models/SupplyVocab');
+const supplyService = require('../services/supplyService');
+const supplyTagService = require('../services/supplyTagService');
 const ServicePackage = require('../models/ServicePackage');
 const Settings = require('../models/Settings');
 const catchAsync = require('../utils/catchAsync');
@@ -66,6 +71,15 @@ const revertPartsReceivedIfIncomplete = (workOrder) => {
   ) {
     workOrder.status = 'Parts Ordered';
   }
+};
+
+// A supply's vendor/unit are SupplyVocab references, where the old inventory table
+// stored plain strings. Work order lines snapshot the label, so both sources render
+// the same way once a part or package item is on the work order.
+const vocabLabel = async (vocabId) => {
+  if (!vocabId) return '';
+  const vocab = await SupplyVocab.findById(vocabId).lean();
+  return vocab ? (vocab.label || vocab.value || '') : '';
 };
 
 // Get all work orders
@@ -770,6 +784,70 @@ exports.addPartFromInventory = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * Add a part pulled from shop supplies, as an uncommitted draft.
+ *
+ * Sibling of addPartFromInventory rather than a replacement: the old endpoint
+ * still serves the old inventory page, and six historical parts were created
+ * through it. Stock moves only on commit, same as before.
+ */
+exports.addPartFromSupply = catchAsync(async (req, res, next) => {
+  const { shopSupplyId, quantity, serviceId } = req.body;
+  if (!shopSupplyId || !quantity || quantity < 1) {
+    return next(new AppError('shopSupplyId and quantity (>= 1) are required', 400));
+  }
+
+  const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
+  const supply = await supplyService.getSupply(shopSupplyId);
+  if (!supply || !supply.isActive) {
+    return next(new AppError('Supply not found or inactive', 404));
+  }
+
+  // `price` is already per stock unit and respects a manual override; `cost` is
+  // per PURCHASE unit, so it has to be divided to match.
+  const unitsPerPurchase = supply.unitsPerPurchase || 1;
+  const unitCost = parseFloat(((supply.cost || 0) / unitsPerPurchase).toFixed(4));
+  const settings = await Settings.getSettings();
+  const markup = settings.partMarkupPercentage || 30;
+  const price = supply.price > 0
+    ? supply.price
+    : parseFloat((unitCost * (1 + markup / 100)).toFixed(2));
+
+  workOrder.parts.push({
+    name: supply.displayName,
+    partNumber: supply.partNumber || '',
+    quantity,
+    price,
+    cost: unitCost,
+    vendor: await vocabLabel(supply.vendor),
+    warranty: '',
+    url: supply.url || '',
+    // `category` is the BILLING classification (how the line is charged), not a
+    // description of the thing — deliberately not derived from the supply's
+    // tags. Left for the writer to set.
+    category: '',
+    shopSupplyId: supply._id,
+    committed: false,
+    ordered: true,
+    received: true,
+    serviceId: serviceId || null
+  });
+
+  workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
+  await workOrder.save();
+
+  const populatedWorkOrder = await applyPopulation(
+    WorkOrder.findById(req.params.id),
+    'workOrder',
+    'detailed'
+  );
+
+  cacheService.invalidateAllWorkOrders();
+  cacheService.invalidateServiceWritersCorner();
+
+  res.status(200).json({ status: 'success', data: { workOrder: populatedWorkOrder } });
+});
+
 // Commit an inventory-pulled part — atomically deduct stock and mark committed.
 exports.commitPart = catchAsync(async (req, res, next) => {
   const workOrder = await validateEntityExists(WorkOrder, req.params.id, 'Work order');
@@ -780,13 +858,70 @@ exports.commitPart = catchAsync(async (req, res, next) => {
   }
 
   const part = workOrder.parts[partIndex];
-  if (!part.inventoryItemId) {
+  if (!part.inventoryItemId && !part.shopSupplyId) {
     return next(new AppError('This part is not linked to an inventory item', 400));
   }
   // committed !== false rejects pre-migration parts whose stock was deducted at add-time;
   // re-committing them would double-deduct.
   if (part.committed !== false) {
     return next(new AppError('This part is already committed', 400));
+  }
+
+  // Shop supplies first; the inventory path below is only for parts pulled
+  // before the switch.
+  if (part.shopSupplyId) {
+    const supply = await supplyService.getSupply(part.shopSupplyId);
+    if (!supply || !supply.isActive) {
+      return next(new AppError(`Supply "${part.name}" is not found or inactive`, 400));
+    }
+    if (supply.quantityOnHand < part.quantity) {
+      const unit = await vocabLabel(supply.stockUnit);
+      return next(new AppError(
+        `Insufficient stock for "${part.name}": ${supply.quantityOnHand}${unit ? ` ${unit}` : ''} available, ${part.quantity} needed`, 400
+      ));
+    }
+
+    const deducted = await ShopSupply.findOneAndUpdate(
+      { _id: supply._id, quantityOnHand: { $gte: part.quantity } },
+      { $inc: { quantityOnHand: -part.quantity } },
+      { new: true }
+    );
+    if (!deducted) {
+      return next(new AppError(`Failed to deduct stock for "${part.name}" (concurrent update)`, 409));
+    }
+
+    await SupplyMovement.create({
+      supply: deducted._id,
+      type: 'consume',
+      quantity: -part.quantity,
+      unit: deducted.stockUnit || null,
+      resultingQoh: deducted.quantityOnHand,
+      sourceModel: 'WorkOrder',
+      sourceId: workOrder._id,
+      note: `Used on WO #${workOrder._id}`,
+      createdBy: req.user._id
+    });
+
+    workOrder.parts[partIndex].committed = true;
+    workOrder.markModified('parts');
+    await workOrder.save();
+
+    const populated = await applyPopulation(
+      WorkOrder.findById(req.params.id), 'workOrder', 'detailed'
+    );
+    cacheService.invalidateAllWorkOrders();
+    cacheService.invalidateServiceWritersCorner();
+
+    const supplyResponse = { status: 'success', data: { workOrder: populated } };
+    if (deducted.quantityOnHand <= deducted.reorderPoint) {
+      supplyResponse.lowStockWarning = {
+        itemName: part.name,
+        currentQoh: deducted.quantityOnHand,
+        unit: await vocabLabel(deducted.stockUnit),
+        reorderPoint: deducted.reorderPoint
+      };
+    }
+    return res.status(200).json(supplyResponse);
   }
 
   const inv = await InventoryItem.findById(part.inventoryItemId);
@@ -859,9 +994,28 @@ exports.removePart = catchAsync(async (req, res, next) => {
 
   const removedPart = workOrder.parts[partIndex];
 
-  // Restock only if explicitly requested AND the part was committed AND linked to inventory.
+  // Restock only if explicitly requested AND the part was committed AND linked to stock.
   // committed !== false covers pre-migration parts that lack the field (stock was deducted at add-time).
-  if (returnToInventory && removedPart.inventoryItemId && removedPart.committed !== false) {
+  if (returnToInventory && removedPart.shopSupplyId && removedPart.committed !== false) {
+    const restocked = await ShopSupply.findByIdAndUpdate(
+      removedPart.shopSupplyId,
+      { $inc: { quantityOnHand: removedPart.quantity } },
+      { new: true }
+    );
+    if (restocked) {
+      await SupplyMovement.create({
+        supply: restocked._id,
+        type: 'return',
+        quantity: removedPart.quantity,
+        unit: restocked.stockUnit || null,
+        resultingQoh: restocked.quantityOnHand,
+        sourceModel: 'WorkOrder',
+        sourceId: workOrder._id,
+        note: 'Returned from removed part',
+        createdBy: req.user._id
+      });
+    }
+  } else if (returnToInventory && removedPart.inventoryItemId && removedPart.committed !== false) {
     const inv = await InventoryItem.findById(removedPart.inventoryItemId);
     if (inv) {
       const previousQty = inv.quantityOnHand;
@@ -913,43 +1067,62 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
     return next(new AppError('Service package not found or inactive', 404));
   }
 
-  // selections = [{ includedItemId, inventoryItemId }]
+  // selections = [{ includedItemId, shopSupplyId }]
   const selectionMap = {};
   if (selections && Array.isArray(selections)) {
     for (const sel of selections) {
-      selectionMap[sel.includedItemId] = sel.inventoryItemId;
+      selectionMap[sel.includedItemId] = sel.shopSupplyId || sel.supplyId;
     }
   }
 
-  // Validate selected items exist and match tags (but don't check QOH yet)
+  // Validate the chosen supplies satisfy their lines. Quantity on hand is NOT
+  // checked here — this is a draft, and stock only moves on commit.
   const packageIncludedItems = [];
   for (const included of pkg.includedItems) {
-    const inventoryItemId = selectionMap[included._id.toString()];
-    if (inventoryItemId) {
-      const inv = await InventoryItem.findById(inventoryItemId);
-      if (!inv || !inv.isActive) {
-        return next(new AppError(`Inventory item for "${included.label}" is not found or inactive`, 400));
-      }
-      if (inv.packageTag !== included.packageTag) {
-        return next(new AppError(`Selected item "${inv.name}" does not match required tag "${included.packageTag}"`, 400));
-      }
-      const invUnitCost = parseFloat((inv.cost / (inv.unitsPerPurchase || 1)).toFixed(4));
+    const shopSupplyId = selectionMap[included._id.toString()];
+
+    if (!shopSupplyId) {
+      // Nothing chosen: the line still appears on the work order so the writer
+      // can see what the package owes, it just isn't linked to stock.
       packageIncludedItems.push({
-        inventoryItemId: inv._id,
-        name: inv.name,
-        partNumber: inv.partNumber || '',
-        brand: inv.brand || '',
-        quantity: included.quantity,
-        cost: invUnitCost,
-        unit: inv.unit || ''
-      });
-    } else {
-      packageIncludedItems.push({
-        name: `${included.label} (${included.packageTag})`,
+        name: included.label,
         quantity: included.quantity,
         cost: 0
       });
+      continue;
     }
+
+    const supply = await supplyService.getSupply(shopSupplyId);
+    if (!supply || !supply.isActive) {
+      return next(new AppError(`Supply for "${included.label}" is not found or inactive`, 400));
+    }
+
+    // The line is satisfied by anything tagged at or BENEATH its tag, so a
+    // package asking for "Service Fluids" accepts an engine oil. Same
+    // descendant walk the supplies filter uses.
+    if (included.supplyTag) {
+      const allowed = await supplyTagService.getDescendantIds(included.supplyTag);
+      const supplyTags = (supply.tags || []).map(String);
+      if (!supplyTags.some((t) => allowed.includes(t))) {
+        return next(new AppError(
+          `"${supply.displayName}" isn't tagged for "${included.label}"`, 400
+        ));
+      }
+    }
+
+    packageIncludedItems.push({
+      shopSupplyId: supply._id,
+      // Snapshot: a work-order line records what was actually used, so later
+      // edits to the supply must not rewrite history.
+      name: supply.displayName,
+      partNumber: supply.partNumber || '',
+      brand: '',
+      quantity: included.quantity,
+      cost: supply.cost && supply.unitsPerPurchase
+        ? parseFloat((supply.cost / supply.unitsPerPurchase).toFixed(4))
+        : 0,
+      unit: await vocabLabel(supply.stockUnit)
+    });
   }
 
   // Add as uncommitted draft — no inventory deducted
@@ -993,9 +1166,21 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
     return next(new AppError('This service package is already committed', 400));
   }
 
-  // Pre-validate all inventory items have sufficient QOH
+  // Pre-validate stock across BOTH sources before moving any of it, so a
+  // package that can't be fully satisfied fails without half-deducting.
   for (const item of pkg.includedItems) {
-    if (item.inventoryItemId) {
+    if (item.shopSupplyId) {
+      const supply = await supplyService.getSupply(item.shopSupplyId);
+      if (!supply || !supply.isActive) {
+        return next(new AppError(`Supply "${item.name}" is not found or inactive`, 400));
+      }
+      if (supply.quantityOnHand < item.quantity) {
+        const unit = item.unit || await vocabLabel(supply.stockUnit);
+        return next(new AppError(
+          `Insufficient stock for "${item.name}": ${supply.quantityOnHand}${unit ? ` ${unit}` : ''} available, ${item.quantity} needed`, 400
+        ));
+      }
+    } else if (item.inventoryItemId) {
       const inv = await InventoryItem.findById(item.inventoryItemId);
       if (!inv || !inv.isActive) {
         return next(new AppError(`Inventory item "${item.name}" is not found or inactive`, 400));
@@ -1006,10 +1191,47 @@ exports.commitServicePackage = catchAsync(async (req, res, next) => {
     }
   }
 
-  // Deduct inventory
   const lowStockWarnings = [];
   for (const item of pkg.includedItems) {
-    if (item.inventoryItemId) {
+    if (item.shopSupplyId) {
+      // Atomic guard, same shape as the old table's: the $gte in the filter is
+      // what stops two writers double-spending the last unit.
+      const updated = await ShopSupply.findOneAndUpdate(
+        { _id: item.shopSupplyId, quantityOnHand: { $gte: item.quantity } },
+        { $inc: { quantityOnHand: -item.quantity } },
+        { new: true }
+      );
+      if (!updated) {
+        return next(new AppError(`Failed to deduct stock for "${item.name}" (concurrent update)`, 409));
+      }
+
+      // The movement's source FK has existed since the model was written and
+      // this is the first thing to populate it — a supply's history can now say
+      // which work order consumed it.
+      await SupplyMovement.create({
+        supply: updated._id,
+        type: 'consume',
+        quantity: -item.quantity,
+        unit: updated.stockUnit || null,
+        resultingQoh: updated.quantityOnHand,
+        sourceModel: 'WorkOrder',
+        sourceId: workOrder._id,
+        note: `Service "${pkg.name}"`,
+        createdBy: req.user._id
+      });
+
+      if (updated.quantityOnHand <= updated.reorderPoint) {
+        lowStockWarnings.push({
+          itemName: item.name,
+          currentQoh: updated.quantityOnHand,
+          // Prefer the unit snapshotted onto the line; fall back to the supply's
+          // current one for lines drafted before the snapshot was recorded.
+          unit: item.unit || await vocabLabel(updated.stockUnit),
+          reorderPoint: updated.reorderPoint
+        });
+      }
+    } else if (item.inventoryItemId) {
+      // Legacy path, kept for package lines drafted before the switch.
       const inv = await InventoryItem.findById(item.inventoryItemId);
       const previousQty = inv.quantityOnHand;
       const newQty = previousQty - item.quantity;
@@ -1081,9 +1303,32 @@ exports.removeServicePackage = catchAsync(async (req, res, next) => {
 
   const removedPkg = workOrder.servicePackages[packageIndex];
 
-  // Return items to inventory if requested
-  if (returnToInventory && removedPkg.includedItems) {
+  // Return stock if requested. Only a committed package took any — an
+  // uncommitted draft never moved stock, so returning it would invent units.
+  if (returnToInventory && removedPkg.committed && removedPkg.includedItems) {
     for (const item of removedPkg.includedItems) {
+      if (item.shopSupplyId) {
+        const updated = await ShopSupply.findByIdAndUpdate(
+          item.shopSupplyId,
+          { $inc: { quantityOnHand: item.quantity } },
+          { new: true }
+        );
+        if (updated) {
+          await SupplyMovement.create({
+            supply: updated._id,
+            type: 'return',
+            quantity: item.quantity,
+            unit: updated.stockUnit || null,
+            resultingQoh: updated.quantityOnHand,
+            sourceModel: 'WorkOrder',
+            sourceId: workOrder._id,
+            note: `Returned from removed service "${removedPkg.name}"`,
+            createdBy: req.user._id
+          });
+        }
+        continue;
+      }
+
       if (item.inventoryItemId) {
         const inv = await InventoryItem.findById(item.inventoryItemId);
         if (inv) {
@@ -2125,13 +2370,15 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
     return next(new AppError('No parts could be extracted from the receipt', 400));
   }
 
-  // Duplicate detection: check against WO parts and inventory
-  const inventoryItems = await InventoryItem.find({ isActive: true }).select('_id name partNumber').lean();
-
-  const allExisting = [
-    ...workOrder.parts.map(p => ({ _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || '' })),
-    ...inventoryItems.map(p => ({ _id: `inv:${p._id}`, name: p.name, partNumber: p.partNumber || '' }))
-  ];
+  // Duplicate detection against the parts already on this work order.
+  //
+  // The retired Shop Inventory table used to be a second source here. Matching
+  // against it now would only offer the user a merge target they can no longer
+  // write to, so it is deliberately gone. The `wo:` prefix stays — the client
+  // still branches on the source, and a supplies-side source may join it later.
+  const allExisting = workOrder.parts.map(p => (
+    { _id: `wo:${p._id}`, name: p.name, partNumber: p.partNumber || '' }
+  ));
 
   let duplicates = [];
   if (allExisting.length > 0) {
@@ -2139,16 +2386,12 @@ exports.extractReceipt = catchAsync(async (req, res, next) => {
 
     const woById = {};
     workOrder.parts.forEach(p => { woById[p._id.toString()] = p; });
-    const invById = {};
-    inventoryItems.forEach(p => { invById[p._id.toString()] = p; });
 
     duplicates = rawMatches.map(m => {
       const colonIdx = m.existingId.indexOf(':');
       const source = m.existingId.substring(0, colonIdx);
       const rawId = m.existingId.substring(colonIdx + 1);
-      let existingName = '';
-      if (source === 'wo') existingName = woById[rawId]?.name || '';
-      else if (source === 'inv') existingName = invById[rawId]?.name || '';
+      const existingName = source === 'wo' ? (woById[rawId]?.name || '') : '';
       return { parsedIndex: m.parsedIndex, source, rawId, existingName, reason: m.reason };
     });
   }
@@ -2171,7 +2414,10 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   const Media = require('../models/Media');
 
   const workOrderId = req.params.id;
-  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, catalogActions, duplicateResolutions = {}, serviceId } = req.body;
+  // `catalogActions` is deliberately not read. It used to carry "also add this
+  // receipt line to Shop Inventory"; that table is retired, and honouring the
+  // field for a stale client would grow a table nothing surfaces.
+  const { selectedParts, shippingTotal, totalAllUnits, isOrder, mediaId, mediaS3Key, duplicateResolutions = {}, serviceId } = req.body;
 
   if (!selectedParts || !Array.isArray(selectedParts) || selectedParts.length === 0) {
     return next(new AppError('No parts selected', 400));
@@ -2259,78 +2505,6 @@ exports.confirmReceiptParts = catchAsync(async (req, res, next) => {
   revertPartsReceivedIfIncomplete(workOrder);
 
   await workOrder.save();
-
-  // Add parts to inventory if requested (best-effort)
-  if (catalogActions && typeof catalogActions === 'object') {
-    for (const [indexStr, action] of Object.entries(catalogActions)) {
-      const i = parseInt(indexStr);
-      const part = partsWithReceipt[i];
-      if (!part || !action) continue;
-
-      const resolution = duplicateResolutions[i] || {};
-
-      try {
-        if (action === 'inventory') {
-          if (resolution.inventoryAction === 'add_to_existing' && resolution.inventoryMatchId) {
-            // Same item found in inventory — add to QOH and apply user-merged fields
-            const existing = await InventoryItem.findById(resolution.inventoryMatchId);
-            if (existing) {
-              const previousQty = existing.quantityOnHand;
-              const newQty = previousQty + (part.quantity || 1);
-              const merged = resolution.inventoryMergedFields || {};
-              const update = { quantityOnHand: newQty };
-              const pickField = (key, fallback) => {
-                if (Object.prototype.hasOwnProperty.call(merged, key)) return merged[key];
-                return fallback;
-              };
-              update.name = pickField('name', part.name);
-              update.cost = pickField('cost', part.cost || 0);
-              // If merge picked existing cost, keep existing price; otherwise update price from incoming.
-              if (Object.prototype.hasOwnProperty.call(merged, 'cost') && Number(merged.cost) !== Number(part.cost)) {
-                update.price = existing.price;
-              } else {
-                update.price = part.price || 0;
-              }
-              const vendorVal = pickField('vendor', part.vendor);
-              if (vendorVal !== undefined) update.vendor = vendorVal;
-              const partNumberVal = pickField('partNumber', part.partNumber);
-              if (partNumberVal !== undefined) update.partNumber = partNumberVal;
-              const brandVal = pickField('brand', undefined);
-              if (brandVal !== undefined) update.brand = brandVal;
-              const notesVal = pickField('notes', undefined);
-              if (notesVal !== undefined) update.notes = notesVal;
-              await InventoryItem.findByIdAndUpdate(resolution.inventoryMatchId, {
-                $set: update,
-                $push: {
-                  adjustmentLog: {
-                    adjustedBy: req.user._id,
-                    previousQty,
-                    newQty,
-                    reason: 'Restocked (receipt import)'
-                  }
-                }
-              });
-            }
-          } else {
-            await InventoryItem.findOneAndUpdate(
-              { name: part.name, partNumber: part.partNumber || '' },
-              {
-                name: part.name,
-                partNumber: part.partNumber || '',
-                vendor: part.vendor || '',
-                cost: part.cost || 0,
-                price: part.price || 0,
-                quantityOnHand: part.quantity || 1
-              },
-              { upsert: true, new: true, setDefaultsOnInsert: true }
-            );
-          }
-        }
-      } catch (catalogErr) {
-        console.error(`[Receipt] Failed to process part "${part.name}" for ${action}:`, catalogErr.message);
-      }
-    }
-  }
 
   // Update media doc notes with final count
   if (mediaId) {
