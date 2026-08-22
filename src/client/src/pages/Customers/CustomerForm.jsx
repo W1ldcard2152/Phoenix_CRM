@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Formik, Form, getIn } from 'formik';
 import * as Yup from 'yup';
@@ -10,6 +10,8 @@ import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal'; // Import the new Modal component
 import CustomerService from '../../services/customerService';
 import { capitalizeWords } from '../../utils/formatters'; // Import capitalizeWords
+import { useCapabilities } from '../../contexts/CompanyContext';
+import { filterCommunicationOptions, defaultCommunicationPreference } from '../../utils/communicationChannels';
 
 // Helper function to format phone number
 const formatPhoneNumber = (value) => {
@@ -53,6 +55,7 @@ const CustomerForm = () => {
   // Ref (not state) so the value is read synchronously inside handleSubmit on the same click
   // that sets it — avoids the race where a stale state value re-blocks the submit.
   const allowDuplicateRef = useRef(false);
+  const capabilities = useCapabilities();
   const [initialValues, setInitialValues] = useState({
     name: '',
     phone: '',
@@ -63,9 +66,23 @@ const CustomerForm = () => {
       state: '',
       zip: ''
     },
-    communicationPreference: 'SMS',
+    communicationPreference: '',
     notes: ''
   });
+
+  // New customers get pre-set to the best channel this deployment can actually
+  // send on. Capabilities arrive with the settings fetch, so this settles a beat
+  // after mount; returning `prev` unchanged keeps enableReinitialize from
+  // resetting a form the user has already started filling in.
+  useEffect(() => {
+    if (id) return;
+    const preferred = defaultCommunicationPreference(capabilities);
+    setInitialValues((prev) =>
+      prev.communicationPreference === preferred
+        ? prev
+        : { ...prev, communicationPreference: preferred }
+    );
+  }, [id, capabilities]);
 
   useEffect(() => {
     const fetchCustomer = async () => {
@@ -88,7 +105,9 @@ const CustomerForm = () => {
             state: customerData.address?.state || '',
             zip: customerData.address?.zip || ''
           },
-          communicationPreference: customerData.communicationPreference || 'SMS',
+          // No fallback: an existing record with no preference should make the
+          // user choose rather than be silently assigned a channel.
+          communicationPreference: customerData.communicationPreference || '',
           notes: customerData.notes || ''
         });
 
@@ -179,12 +198,14 @@ const CustomerForm = () => {
     }
   };
 
-  const communicationOptions = [
+  // SMS/Email only appear where the deployment has credentials for them; the
+  // customer's saved value is always kept so editing never rewrites it.
+  const communicationOptions = useMemo(() => filterCommunicationOptions([
     { value: 'SMS', label: 'SMS' },
     { value: 'Email', label: 'Email' },
     { value: 'Phone', label: 'Phone' },
     { value: 'None', label: 'None' }
-  ];
+  ], capabilities, initialValues.communicationPreference), [capabilities, initialValues.communicationPreference]);
 
   const usStates = [
     { value: '', label: 'Select State' },

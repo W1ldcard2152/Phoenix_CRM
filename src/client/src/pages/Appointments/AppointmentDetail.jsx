@@ -6,6 +6,7 @@ import Button from '../../components/common/Button';
 import AppointmentService from '../../services/appointmentService';
 import { formatDateTimeToET, TIMEZONE } from '../../utils/formatters';
 import FollowUpModal from '../../components/followups/FollowUpModal';
+import { useCapabilities, useCapabilitiesLoaded } from '../../contexts/CompanyContext';
 
 const AppointmentDetail = () => {
   const { id } = useParams();
@@ -17,6 +18,8 @@ const AppointmentDetail = () => {
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
   const [reminderSending, setReminderSending] = useState(false);
   const [workOrderCreating, setWorkOrderCreating] = useState(false);
+  const capabilities = useCapabilities();
+  const capabilitiesLoaded = useCapabilitiesLoaded();
 
   useEffect(() => {
     const fetchAppointment = async () => {
@@ -345,25 +348,32 @@ const AppointmentDetail = () => {
           )}
         </Card>
 
-        <Card title="Communication">
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm text-gray-500">Reminder Status</p>
-              <p className="font-medium">
-                {appointment.reminder?.sent ? 
-                  `Sent on ${formatDateTimeToET(appointment.reminder.sentAt, 'MMM D, YYYY, h:mm:ss A z')}` :
-                  'Not sent yet'}
-              </p>
+        {/* Reminders go out over SMS or email depending on the customer's
+            preference, so the whole card is pointless on a deployment with
+            neither configured — Send Reminder would only ever return a 503.
+            Requires capabilities to have loaded, so the card is hidden because
+            the server said so and not because the fetch is still in flight. */}
+        {capabilitiesLoaded && (capabilities.sms || capabilities.email) && (
+          <Card title="Communication">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-500">Reminder Status</p>
+                <p className="font-medium">
+                  {appointment.reminder?.sent ?
+                    `Sent on ${formatDateTimeToET(appointment.reminder.sentAt, 'MMM D, YYYY, h:mm:ss A z')}` :
+                    'Not sent yet'}
+                </p>
+              </div>
+              <Button
+                onClick={handleSendReminder}
+                variant="primary"
+                disabled={reminderSending || !appointment.customer}
+              >
+                {reminderSending ? 'Sending...' : 'Send Reminder'}
+              </Button>
             </div>
-            <Button
-              onClick={handleSendReminder}
-              variant="primary"
-              disabled={reminderSending || !appointment.customer}
-            >
-              {reminderSending ? 'Sending...' : 'Send Reminder'}
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}

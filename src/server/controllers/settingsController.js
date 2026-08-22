@@ -3,6 +3,7 @@ const WorkOrder = require('../models/WorkOrder');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const s3Service = require('../services/s3Service');
+const { getCapabilities } = require('../utils/capabilities');
 const multer = require('multer');
 
 // Accept image uploads only (company logo)
@@ -25,9 +26,12 @@ const toLaborTypeCase = (str) => (str || '').trim().replace(/\b\w/g, c => c.toUp
 
 exports.getSettings = catchAsync(async (req, res) => {
   const settings = await Settings.getSettings();
+  // Capabilities ride along on the settings payload the client already fetches
+  // once at login, so gating comms UI costs no extra request. They are env-derived
+  // rather than stored, so they are not part of the Settings document.
   res.status(200).json({
     status: 'success',
-    data: { settings }
+    data: { settings, capabilities: getCapabilities() }
   });
 });
 

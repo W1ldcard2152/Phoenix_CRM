@@ -6,6 +6,8 @@ import Button from '../../common/Button';
 import Input from '../../common/Input';
 import SelectInput from '../../common/SelectInput';
 import { capitalizeWords } from '../../../utils/formatters';
+import { useCapabilities } from '../../../contexts/CompanyContext';
+import { filterCommunicationOptions, defaultCommunicationPreference } from '../../../utils/communicationChannels';
 
 // Phone number formatter
 const formatPhoneNumber = (value) => {
@@ -37,6 +39,7 @@ const CustomerStep = ({ onCustomerSelect, onError, setLoading, loading }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const capabilities = useCapabilities();
 
   // Fetch all customers on component mount
   useEffect(() => {
@@ -134,12 +137,13 @@ const CustomerStep = ({ onCustomerSelect, onError, setLoading, loading }) => {
     }
   };
 
-  const communicationOptions = [
+  // SMS/Email only appear where the deployment has credentials for them.
+  const communicationOptions = filterCommunicationOptions([
     { value: 'SMS', label: 'SMS/Text' },
     { value: 'Email', label: 'Email' },
     { value: 'Phone', label: 'Phone Call' },
     { value: 'None', label: 'No Contact' }
-  ];
+  ], capabilities);
 
   if (isCreating) {
     return (
@@ -167,7 +171,7 @@ const CustomerStep = ({ onCustomerSelect, onError, setLoading, loading }) => {
             name: '',
             phone: '',
             email: '',
-            communicationPreference: 'SMS'
+            communicationPreference: defaultCommunicationPreference(capabilities)
           }}
           validationSchema={CustomerSchema}
           onSubmit={handleCreateCustomer}

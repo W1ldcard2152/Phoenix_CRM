@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { defaultCommunicationPreference } = require('../utils/capabilities');
 const Schema = mongoose.Schema;
 
 const CustomerSchema = new Schema(
@@ -32,7 +33,11 @@ const CustomerSchema = new Schema(
     communicationPreference: {
       type: String,
       enum: ['SMS', 'Email', 'Phone', 'None'],
-      default: 'SMS'
+      // Deployments without Twilio/SendGrid must not default customers onto a
+      // channel that cannot reach them — they fall back to 'Phone'. The enum
+      // keeps every value writable, so a shop that switches SMS on later can
+      // move existing customers over without a migration.
+      default: defaultCommunicationPreference
     },
     notes: {
       type: String,

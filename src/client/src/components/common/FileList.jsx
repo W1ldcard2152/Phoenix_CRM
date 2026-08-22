@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from './Button';
 import { formatDateTime } from '../../utils/formatters';
+import { useCapabilities } from '../../contexts/CompanyContext';
 
 const FileThumbnail = ({ file }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState(null);
@@ -90,6 +91,7 @@ const FileThumbnail = ({ file }) => {
 const FileList = ({ files, onDelete, onShare, onView, loading = false }) => {
   const [sharingFile, setSharingFile] = useState(null);
   const [shareEmail, setShareEmail] = useState('');
+  const capabilities = useCapabilities();
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
@@ -245,13 +247,17 @@ const FileList = ({ files, onDelete, onShare, onView, loading = false }) => {
               >
                 Download
               </Button>
-              <Button
-                onClick={() => setSharingFile(file._id)}
-                variant="outline"
-                size="sm"
-              >
-                Share
-              </Button>
+              {/* Sharing emails the recipient a link, so it needs SendGrid.
+                  Without it the modal only ever ends in "Failed to share file". */}
+              {onShare && capabilities.email && (
+                <Button
+                  onClick={() => setSharingFile(file._id)}
+                  variant="outline"
+                  size="sm"
+                >
+                  Share
+                </Button>
+              )}
               {onDelete && (
                 <Button
                   onClick={() => {

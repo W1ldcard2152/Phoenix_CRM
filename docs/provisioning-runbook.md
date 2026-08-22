@@ -27,6 +27,14 @@ before you touch any infrastructure, or you will finish the deploy and then wait
 The deployment works without all three — Twilio and SendGrid are gated and fail per-call
 with a 503 rather than at boot. You just ship with SMS and email dark until they clear.
 
+**A dark channel hides itself.** The server reports which channels have credentials, and
+the client removes the UI that depends on them: SMS and Email drop out of the customer
+Communication Preference dropdown (new customers default to Phone instead), the
+appointment Communication card disappears, and file Share buttons disappear. Nothing is
+greyed out and nothing 503s in the user's face — the shop simply never sees a feature it
+cannot use. Switching a channel on later is env vars plus a restart, no code change and no
+rebuild; the UI reappears on the next page load.
+
 ---
 
 ## Step 1 — MongoDB Atlas
@@ -165,9 +173,14 @@ Work through this before handing the shop the keys.
 - [ ] Send a test email — exercises SendGrid and the sender identity.
 - [ ] Send a test SMS — exercises Twilio and A2P registration.
 - [ ] Create a customer → vehicle → work order → invoice end to end.
+- [ ] Confirm the comms UI matches the credentials you actually set: open a customer form
+      and check the Communication Preference options, and an appointment for the
+      Communication card. A configured channel that stays hidden means the credential is
+      malformed — the gates check shape (`AC…` / `SG.…`), not mere presence.
 
-Anything gated on Step 0 approvals will 503 until those clear. That's expected, not a
-misconfiguration — but confirm it's a 503 from the gate and not a silent failure.
+Anything gated on Step 0 approvals is hidden rather than broken. A channel you *have*
+configured that still 503s is a real misconfiguration; a channel you have not configured
+should show no UI at all.
 
 ---
 

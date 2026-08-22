@@ -1,6 +1,7 @@
 const twilio = require('twilio');
 const AppError = require('../utils/appError');
 const { formatDate, formatTime } = require('../config/timezone');
+const { smsEnabled } = require('../utils/capabilities');
 
 // SMS is optional per deployment. The Twilio SDK throws at construction when the
 // credentials are missing or malformed, and this module is required at boot by
@@ -11,15 +12,15 @@ const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 
-// Twilio account SIDs always start with "AC"; placeholder values throw the same
-// way missing ones do, so check the shape rather than mere presence.
-const smsEnabled = Boolean(accountSid && authToken && accountSid.startsWith('AC'));
-
 if (!smsEnabled) {
   console.warn('Twilio credentials are not set or invalid. SMS/MMS operations will be disabled.');
 }
 
 const client = smsEnabled ? twilio(accountSid, authToken) : null;
+
+// Re-exported so callers that already depend on this service can ask whether
+// SMS is live without reaching for the capabilities util themselves.
+exports.smsEnabled = smsEnabled;
 
 /**
  * Send an SMS message

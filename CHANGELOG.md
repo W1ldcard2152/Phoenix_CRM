@@ -2,6 +2,12 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-08-21
+
+### Changed
+- **Communication features now hide themselves on a shop that isn't set up to send.** SMS and Email are offered as customer contact preferences only where the shop actually has credentials for them, the appointment Communication card is hidden when neither channel is live, and a file's **Share** button appears only where email works. Previously all of it was on offer regardless and failed at the point of use. Nothing changes for a shop with both configured, and switching a channel on later brings its features back on the next page load — no update needed.
+- **New customers default to a contact method the shop can actually reach them on** — Phone, rather than SMS, at a shop without text messaging. An existing customer's saved preference is always left alone and stays selectable, even if that channel is currently switched off, so editing someone's details never quietly moves them to a different one.
+
 ## 2026-08-16
 
 ### Fixed

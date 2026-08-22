@@ -1,6 +1,7 @@
 const sgMail = require('@sendgrid/mail');
 const AppError = require('../utils/appError');
 const { formatDate, formatTime } = require('../config/timezone');
+const { emailEnabled } = require('../utils/capabilities');
 
 // Email is optional per deployment. Unlike Twilio, setApiKey does not throw on a
 // missing key — it logs and lets every later send fail with an opaque error — so
@@ -8,14 +9,15 @@ const { formatDate, formatTime } = require('../config/timezone');
 const apiKey = process.env.SENDGRID_API_KEY;
 const fromEmail = process.env.EMAIL_FROM;
 
-// SendGrid API keys always start with "SG."; placeholders are as useless as absence.
-const emailEnabled = Boolean(apiKey && apiKey.startsWith('SG.') && fromEmail);
-
 if (emailEnabled) {
   sgMail.setApiKey(apiKey);
 } else {
   console.warn('SENDGRID_API_KEY / EMAIL_FROM are not set or invalid. Email operations will be disabled.');
 }
+
+// Re-exported so callers that already depend on this service can ask whether
+// email is live without reaching for the capabilities util themselves.
+exports.emailEnabled = emailEnabled;
 
 /**
  * Send an email

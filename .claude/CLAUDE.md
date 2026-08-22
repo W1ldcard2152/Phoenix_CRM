@@ -139,6 +139,14 @@ Optional, but per-deployment:
 
 Degrade-gracefully services: Twilio, SendGrid, and S3 each gate their own init and throw a 503 at the call site when unconfigured, so a deployment boots without them. Google OAuth only warns — an absent `GOOGLE_CLIENT_ID`/`SECRET` looks like a broken login button, not an error.
 
+### Communication capabilities
+
+`src/server/utils/capabilities.js` is the single source of truth for whether SMS and email are live on a deployment, derived from credential *shape* (`TWILIO_ACCOUNT_SID` starts with `AC`, `SENDGRID_API_KEY` starts with `SG.`) so placeholders count as absent. `twilioService`/`emailService` import their gates from it rather than re-deriving them.
+
+The flags ride along on `GET /api/settings` as `data.capabilities: { sms, email }` — the client already fetches that once at login, so gating costs no extra request. On the client, `useCapabilities()` / `useCapabilitiesLoaded()` (`contexts/CompanyContext`) expose them, and `utils/communicationChannels.js` filters preference dropdowns.
+
+The same build serves every tenant, so this must stay capability-driven — **never a build-time flag and never a static removal**. Surfaces that depend on a channel are *hidden*, not disabled: the customer Communication Preference options, the appointment Communication card, and file Share buttons. A customer's already-saved preference is always kept in the dropdown so editing them never silently rewrites it.
+
 ## Naming Conventions
 
 - Models: PascalCase singular (`WorkOrder`, not `WorkOrders`)
