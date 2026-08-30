@@ -113,7 +113,10 @@
       "PowerShell($p='src/server/services/supplyService.js'; \\(Get-Content $p -Raw\\) -replace 's3Service\\\\.uploadFile','s3\\(\\).uploadFile' -replace 's3Service\\\\.deleteFile','s3\\(\\).deleteFile' -replace 's3Service\\\\.getFileStream','s3\\(\\).getFileStream' | Set-Content $p -Encoding utf8 -NoNewline; Select-String -Path $p -Pattern \"s3\\\\\\(\\\\\\)\\\\.\" | ForEach-Object { \"$\\($_.LineNumber\\): $\\($_.Line.Trim\\(\\)\\)\" })",
       "PowerShell(Write-Output \"=== git-related permission rules anywhere ===\"; Select-String -Path \"c:\\\\Users\\\\Wildc\\\\Programming\\\\Phoenix_CRM\\\\.claude\\\\settings.local.json\",\"C:\\\\Users\\\\Wildc\\\\.claude\\\\settings.json\" -Pattern \"push|defaultMode|bypass\" | ForEach-Object { \"$\\($_.Filename\\): $\\($_.Line.Trim\\(\\)\\)\" })",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,1\\)\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).engines\\)\\)\")",
+      "Bash(git add *)"
     ],
     "deny": [
       "Bash(git push)",

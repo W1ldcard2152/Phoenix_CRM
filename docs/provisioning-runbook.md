@@ -163,7 +163,10 @@ From the admin panel, create the rest of the users with appropriate roles: `admi
 
 ## Verification checklist
 
-Work through this before handing the shop the keys.
+A quick smoke pass. **The real gate is
+[`onboarding-acceptance-test.md`](onboarding-acceptance-test.md)** — run that in full
+before handing the shop the keys. It covers tenant isolation, lock-out risk, backup
+restore and the capability gates, none of which this list proves.
 
 - [ ] Service boots; `/` loads the app.
 - [ ] Google sign-in completes and lands logged in.
