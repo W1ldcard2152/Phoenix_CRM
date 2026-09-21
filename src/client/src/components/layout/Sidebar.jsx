@@ -98,10 +98,12 @@ const Sidebar = () => {
     // The old Shop Inventory page is retired and deliberately absent here. Its
     // route still resolves so historical stock records stay viewable — see the
     // banner on InventoryList.
+    // Cycle counts deliberately have no nav entry of their own — they are a task
+    // you start from the supplies list, not a place you go. The header of
+    // SupplyList links to /supplies/counts, which stays open to every role
+    // (entering counts is worth handing to whoever is holding the phone;
+    // creating and posting are gated on the server).
     { name: 'Inventory & Shop Supplies', path: '/supplies', icon: 'fas fa-boxes-stacked', roles: null },
-    // Open to every role: entering counts is the part worth handing to whoever
-    // is holding the phone. Creating and posting are gated on the server.
-    { name: 'Cycle Counts', path: '/supplies/counts', icon: 'fas fa-clipboard-check', roles: null },
     { name: 'Service Packages', path: '/service-packages', icon: 'fas fa-box-open', roles: ['admin', 'management'] },
     { name: 'Invoices', path: '/invoices', icon: 'fas fa-file-invoice-dollar', roles: ['admin', 'management', 'service-writer'] },
   ];
@@ -122,9 +124,9 @@ const Sidebar = () => {
    * Which single nav item is highlighted for the current URL.
    *
    * Longest matching path wins. A plain `startsWith` test per item lights up
-   * every ancestor as well, so on /supplies/counts both "Inventory & Shop
-   * Supplies" and "Cycle Counts" would appear selected at once. Resolving it
-   * once here also means the four render sites can't drift from each other.
+   * every ancestor as well, so any nested pair in the lists above would appear
+   * selected at once. No such pair exists today, but keeping the rule here means
+   * adding one is harmless — and that the four render sites can't drift apart.
    */
   const activePath = [...allPrimaryItems, ...allSecondaryItems]
     .map((item) => item.path)

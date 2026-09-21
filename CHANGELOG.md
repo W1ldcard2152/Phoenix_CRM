@@ -9,6 +9,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 
 ### Changed
 - In the tag picker, choosing a tag now shows its parent categories ticked in grey, so you can see at a glance which branch an item lives on. Ticking one of those grey boxes still tags that level explicitly.
+- Cycle Counts no longer has its own sidebar entry; reach it from the Inventory & Shop Supplies page header.
 
 ### Fixed
 - Location and tag chips in the cycle count scope builder now show the full path. Previously they showed only the last segment of the dropdown label, so several shelves picked off the same row all read "└ 1" with no way to tell them apart.
