@@ -116,7 +116,10 @@
       "Skill(update-config:*)",
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,1\\)\\)\")",
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).engines\\)\\)\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(xargs -0 cat)",
+      "Bash(awk -F/ '{print $2\"/\"$3\"/\"$4}')",
+      "Bash(npx eslint *)"
     ],
     "deny": [
       "Bash(git push)",

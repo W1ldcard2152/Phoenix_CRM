@@ -105,22 +105,6 @@ npm run dev:client   # Client only
 npm run build        # Build client for production
 ```
 
-## Codebase Knowledge Graph (Graphify)
-
-[Graphify](https://github.com/safishamsi/graphify) is installed (PyPI package `graphifyy`; CLI at `C:\Users\Wildc\AppData\Roaming\Python\Python312\Scripts\graphify.exe`, also available as the `/graphify` skill). A pre-built graph of this codebase lives in `graphify-out/` (gitignored).
-
-Use it to answer architecture/relationship questions before grepping:
-
-```bash
-graphify query "<question>"          # BFS context retrieval from the graph
-graphify explain "<symbol or file>"  # node + its callers/callees (function nodes use "name()" form)
-graphify path "A" "B"                # shortest path between two symbols
-graphify affected "<symbol>"         # reverse impact analysis
-graphify update .                    # rebuild after code changes (local AST only, no API calls)
-```
-
-The graph records the commit it was built from (see `graphify-out/GRAPH_REPORT.md`) — run `graphify update .` if it's stale.
-
 ## Environment Variables
 
 [`.env.example`](../.env.example) is the authoritative list — it is kept in sync with the code, and every name below was verified against a `process.env` read.
