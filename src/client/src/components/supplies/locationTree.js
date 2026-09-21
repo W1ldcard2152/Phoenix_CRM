@@ -106,6 +106,11 @@ export const locationOptions = (entries = [], { usedOnly = false } = {}) => {
         out.push({
           value: isLeaf && node.id ? `id:${node.id}` : `prefix:${node.prefix}`,
           label: treeLabel(node.label, depth),
+          // In the list the row sits under its parent, so the bare segment is
+          // enough. Anywhere the option is shown ALONE — a chip, a summary — the
+          // segment is meaningless: four shelves picked off the bottom row all
+          // read "1". The full prefix is what identifies the place out of context.
+          chipLabel: node.prefix,
           sublabel: `${node.itemCount} item${node.itemCount === 1 ? '' : 's'}`,
           keywords: node.prefix
         });

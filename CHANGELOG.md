@@ -7,6 +7,12 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 ### Added
 - **Receive stock.** A new "Receive stock" button on Inventory & Shop Supplies opens a screen for getting a delivery onto the shelves: search for the item (or photograph its label and let the AI find the match), enter how many packages and loose units arrived, and confirm. Each item is added to stock the moment you confirm it, so what is left on the receiving table is always exactly what still needs entering.
 
+### Changed
+- In the tag picker, choosing a tag now shows its parent categories ticked in grey, so you can see at a glance which branch an item lives on. Ticking one of those grey boxes still tags that level explicitly.
+
+### Fixed
+- Location and tag chips in the cycle count scope builder now show the full path. Previously they showed only the last segment of the dropdown label, so several shelves picked off the same row all read "└ 1" with no way to tell them apart.
+
 ## 2026-08-21
 
 ### Changed

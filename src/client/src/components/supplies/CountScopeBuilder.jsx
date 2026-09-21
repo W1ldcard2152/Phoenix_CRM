@@ -25,7 +25,13 @@ import { locationOptions } from './locationTree';
 const MultiPicker = ({ label, hint, options, values, onChange, placeholder }) => {
   const selected = values || [];
   const available = options.filter((o) => !selected.includes(o.value));
-  const labelFor = (v) => options.find((o) => o.value === v)?.label?.trim() || v;
+  // Chips stand alone, so they use `chipLabel` where an option has one — the
+  // dropdown's own label carries tree indentation that means nothing once the
+  // row is lifted out of the list.
+  const labelFor = (v) => {
+    const o = options.find((x) => x.value === v);
+    return o?.chipLabel || o?.label?.trim() || v;
+  };
 
   return (
     <div>
@@ -102,17 +108,19 @@ const CountScopeBuilder = ({
 
   const tagOptions = useMemo(() => {
     const out = [];
-    const walk = (nodes, depth) => {
+    const walk = (nodes, depth, parentPath) => {
       nodes.forEach((n) => {
+        const path = parentPath ? `${parentPath} › ${n.name}` : n.name;
         out.push({
           value: idOf(n._id),
           label: treeLabel(n.name, depth),
+          chipLabel: path,
           keywords: n.name
         });
-        walk(n.children, depth + 1);
+        walk(n.children, depth + 1, path);
       });
     };
-    walk(buildTree(tags), 0);
+    walk(buildTree(tags), 0, '');
     return out;
   }, [tags]);
 

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
-import { buildTree, indexTags, tagPath, idOf } from './tagTree';
+import { buildTree, indexTags, tagPath, ancestorIds, idOf } from './tagTree';
 
 /**
  * Modal tree picker. Checkbox selects; the star marks which selection is the
@@ -16,10 +16,18 @@ import { buildTree, indexTags, tagPath, idOf } from './tagTree';
  * and the primary is what drives Phase 2's field set. The one exception is the
  * FIRST tag selected on an untagged item — there is only one candidate, so
  * making it primary is unambiguous rather than a guess.
+ *
+ * Ancestors of a selection render checked in a muted style. That state is
+ * DERIVED, never stored: rollups and filters already walk descendants, so
+ * writing the ancestors into the item's tags would be redundant data that can
+ * drift when a node is re-parented. The muted tick just says out loud what the
+ * tree already means — the item does live under Chemicals & Fluids. Clicking it
+ * still tags the ancestor explicitly, which is a different (and rarer) claim.
  */
-const TagRow = ({ node, depth, selected, primary, expanded, onToggleExpand, onToggle, onSetPrimary }) => {
+const TagRow = ({ node, depth, selected, implied, primary, expanded, onToggleExpand, onToggle, onSetPrimary }) => {
   const id = idOf(node._id);
   const isSelected = selected.includes(id);
+  const isImplied = !isSelected && implied.has(id);
   const isPrimary = primary === id;
   const hasChildren = node.children.length > 0;
   const isOpen = expanded.includes(id);
@@ -43,11 +51,16 @@ const TagRow = ({ node, depth, selected, primary, expanded, onToggleExpand, onTo
           <i className={`fas ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'}`}></i>
         </button>
 
+        {/* accent-color, not text-*: no forms plugin here, so these are native
+            checkboxes and only accent-color reaches the tick. */}
         <input
           type="checkbox"
-          checked={isSelected}
+          checked={isSelected || isImplied}
           onChange={() => onToggle(id)}
-          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          title={isImplied ? 'Covered by a tag below — check to tag this level too' : undefined}
+          className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${
+            isImplied ? 'accent-gray-400' : ''
+          }`}
         />
 
         <button
@@ -80,6 +93,7 @@ const TagRow = ({ node, depth, selected, primary, expanded, onToggleExpand, onTo
           node={child}
           depth={depth + 1}
           selected={selected}
+          implied={implied}
           primary={primary}
           expanded={expanded}
           onToggleExpand={onToggleExpand}
@@ -138,6 +152,15 @@ const TagPicker = ({ isOpen, onClose, tags = [], selectedTags = [], primaryTag =
     });
   };
 
+  // Ancestors of everything selected, for the derived tick. A selected tag that
+  // is itself an ancestor of another selection stays a real selection — the row
+  // checks `selected` first.
+  const implied = useMemo(() => {
+    const out = new Set();
+    selected.forEach((id) => ancestorIds(id, byId).forEach((a) => out.add(a)));
+    return out;
+  }, [selected, byId]);
+
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return null;
@@ -170,6 +193,7 @@ const TagPicker = ({ isOpen, onClose, tags = [], selectedTags = [], primaryTag =
               : matches.map((t) => {
                 const id = idOf(t._id);
                 const isSelected = selected.includes(id);
+                const isImplied = !isSelected && implied.has(id);
                 return (
                   <div
                     key={id}
@@ -177,9 +201,12 @@ const TagPicker = ({ isOpen, onClose, tags = [], selectedTags = [], primaryTag =
                   >
                     <input
                       type="checkbox"
-                      checked={isSelected}
+                      checked={isSelected || isImplied}
                       onChange={() => toggle(id)}
-                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      title={isImplied ? 'Covered by a tag below — check to tag this level too' : undefined}
+                      className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${
+                        isImplied ? 'accent-gray-400' : ''
+                      }`}
                     />
                     <button
                       type="button"
@@ -200,6 +227,7 @@ const TagPicker = ({ isOpen, onClose, tags = [], selectedTags = [], primaryTag =
                 node={node}
                 depth={0}
                 selected={selected}
+                implied={implied}
                 primary={primary}
                 expanded={expanded}
                 onToggleExpand={toggleExpand}

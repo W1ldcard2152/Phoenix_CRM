@@ -70,8 +70,8 @@ export const treeLabel = (name, depth) => {
   return `${BAR.repeat(depth - 1)}${ELBOW}${name}`;
 };
 
-/** Ancestors nearest-last, e.g. ['Refinish & Body', 'Masking'] for Tape. */
-export const ancestorNames = (tagId, byId) => {
+/** Ancestor ids nearest-last, outermost first. Cycle-safe. */
+export const ancestorIds = (tagId, byId) => {
   const out = [];
   let current = byId[idOf(tagId)];
   const seen = new Set();
@@ -81,11 +81,16 @@ export const ancestorNames = (tagId, byId) => {
     seen.add(parentId);
     const parent = byId[parentId];
     if (!parent) break;
-    out.unshift(parent.name);
+    out.unshift(parentId);
     current = parent;
   }
   return out;
 };
+
+/** Ancestors nearest-last, e.g. ['Refinish & Body', 'Masking'] for Tape. */
+export const ancestorNames = (tagId, byId) => (
+  ancestorIds(tagId, byId).map((id) => byId[id].name)
+);
 
 /** "Refinish & Body › Masking › Tape" — the path is what disambiguates a leaf. */
 export const tagPath = (tagId, byId) => {

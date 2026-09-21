@@ -280,3 +280,33 @@ _Observations:_
   the retired page, which is the only remaining way to add stock from a receipt —
   supplies-side receipt import (item 2f) is still unbuilt, and building it is
   what would let `/inventory` be deleted outright.
+
+### W7. Does a cycle count survive a real sweep?
+
+Added after the fact — counts were built after §10 was written, so this question
+had no home. The count pipeline is the first part of the module where a mistake
+is expensive rather than annoying: it writes stock for many items at once, from
+a sheet filled in away from the desk, and the person posting it is trusting
+figures they can no longer see the shelf for.
+
+_Observations:_
+
+- **2026-08-25 — 60 items counted end to end, posted clean, no defects.** First
+  run at a size that would actually expose the design: scope builder → sheet →
+  variance review → post. Nothing reported wrong with the counting, the
+  variance handling, or the write-back.
+- What that does and doesn't settle: the mechanism is proven at 60 items on one
+  operator's own sweep. Untested are a second person's sheet, a count left open
+  across days, and concurrent consumption during a large count — the
+  during-count movement logic exists and is unit-tested (`countRules.js`) but
+  has not been exercised by a real technician pulling stock mid-count.
+- **Real use surfaced two display bugs, both fixed inline rather than parked**
+  (they were one-line label bugs, not design questions): tree-indented dropdown
+  labels were being reused as standalone chips, so four shelves picked off the
+  bottom row all read `└ 1` with no letter — options now carry a separate
+  `chipLabel` holding the full path. Same fix applied to tag chips. Separately,
+  selecting a leaf tag now shows its ancestors ticked in a muted style, so the
+  branch an item lives on reads at a glance.
+- **Bearing on W1:** still no evidence either way. The count scopes exercised so
+  far are location-shaped ("the bottom row of Stock Room 1"), which never
+  consults `primaryTag`. W1 needs a tag-shaped sweep to say anything.
