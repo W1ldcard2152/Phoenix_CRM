@@ -51,6 +51,7 @@ import InventoryList from './pages/Inventory/InventoryList';
 import SupplyList from './pages/Supplies/SupplyList';
 import CountList from './pages/Supplies/CountList';
 import CountSheet from './pages/Supplies/CountSheet';
+import ReceiveStock from './pages/Supplies/ReceiveStock';
 import ServicePackageList from './pages/ServicePackages/ServicePackageList';
 
 // Technician Portal Pages
@@ -175,6 +176,9 @@ const App = () => {
                           creating and posting are gated server-side. */}
                       <Route path="/supplies/counts" element={<CountList />} />
                       <Route path="/supplies/counts/:id" element={<CountSheet />} />
+                      {/* Receiving a delivery onto the shelves. Office staff, to
+                          match the /adjust route it writes through. */}
+                      <Route path="/supplies/receive" element={<ReceiveStock />} />
                       {/* Retired Shop Inventory. Unlinked from the nav and no
                           longer written to, but still routed: work order lines
                           created before the switch reference these records. */}

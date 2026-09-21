@@ -128,6 +128,30 @@ Also unbuilt: importing a photo against an EXISTING supply to top up quantity.
 Today a duplicate is flagged with "possibly already stocked" and the user is
 told to skip and adjust manually.
 
+**2026-09-09 — the top-up half is now built, and the receipt half is in
+question.** `/supplies/receive` (`ReceiveStock.jsx`) turns a label photo into a
+quantity added to the matching existing supply: `extractLabel` → `findSimilar`
+→ `adjustQuantity(+delta, type:'receive')`. It reuses the existing endpoint
+unchanged, so this was pure client work. The dead end in `SupplyImportModal`
+("skip and adjust manually") is still there for the create-an-item flow, which
+is the right place for it — that modal's job is identity, not stock.
+
+The open half is no longer obviously wanted. **The user's reason for not
+building a supplies receipt scanner: ordering a supply and having it are
+different events**, so a receipt/PO is a record of what was *bought*, and the
+thing that needs entering is what physically arrived on the receiving table.
+Receiving is therefore stateless — no `Receipt`/`PO` document, `sourceModel`/
+`sourceId` left null. If that holds, the remaining scope of 2f is only *cost
+capture* (labels carry no prices), not receipt import at all — which would make
+W6's "build the supplies-side receipt importer to delete `/inventory`" the wrong
+trigger. Worth deciding explicitly before anyone builds to W6's framing.
+
+Cost capture is deliberately absent from the receive screen: a per-line cost
+field on a screen whose whole purpose is speed would slow the loop it exists to
+make fast, and silently rewriting an item's `cost` (and the `price` derived from
+it) on receipt is a behavioural change nobody asked for. Unresolved, not
+overlooked.
+
 ### 2g. `[resolved-ish]` Live Gemini calls intermittently unreachable from the sandbox
 
 Outbound HTTPS to `generativelanguage.googleapis.com` failed from Claude's

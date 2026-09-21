@@ -363,6 +363,9 @@ const SupplyList = () => {
           </Button>
         {isOfficeStaff && (
           <>
+            <Button variant="outline" onClick={() => navigate('/supplies/receive')}>
+              <i className="fas fa-dolly mr-2"></i>Receive stock
+            </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <i className="fas fa-camera mr-2"></i>Import from photos
             </Button>

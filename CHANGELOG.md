@@ -2,6 +2,11 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-09-21
+
+### Added
+- **Receive stock.** A new "Receive stock" button on Inventory & Shop Supplies opens a screen for getting a delivery onto the shelves: search for the item (or photograph its label and let the AI find the match), enter how many packages and loose units arrived, and confirm. Each item is added to stock the moment you confirm it, so what is left on the receiving table is always exactly what still needs entering.
+
 ## 2026-08-21
 
 ### Changed
