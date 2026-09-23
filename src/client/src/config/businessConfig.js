@@ -1,15 +1,18 @@
-// Centralized business configuration
-// Update this single file to change business info across all printed documents
+// Empty company profile — the shape CompanyContext and the PDF generator fall
+// back to before Settings has loaded, or when a field was never set.
+//
+// Deliberately blank. Company identity is per-tenant data in Settings; any
+// value here would be shown to every shop that hasn't filled theirs in yet.
 
 export const businessConfig = {
-  name: 'Phoenix Automotive Group, Inc.',
-  addressLine1: '201 Ford St',
-  addressLine2: 'Newark NY 14513',
-  phone: '315-830-0008',
-  email: 'phxautosalvage@gmail.com',
-  website: 'www.phxautogroup.com',
-  logo: '/phxLogo.svg',
-  logoPng: '/phxLogo.png'  // PNG version for PDF generation (html2canvas has issues with SVG)
+  name: '',
+  addressLine1: '',
+  addressLine2: '',
+  phone: '',
+  email: '',
+  website: '',
+  logo: '',
+  logoPng: ''
 };
 
 export default businessConfig;

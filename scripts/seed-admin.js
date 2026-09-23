@@ -135,9 +135,9 @@ async function main() {
     console.log(`  1. Have ${user.email} sign in with Google at the deployment URL.`);
     console.log('     The account activates automatically on first sign-in.');
   }
-  console.log('  2. Go to Settings and set the company identity. A new deployment');
-  console.log('     defaults to Phoenix Automotive Group branding — name, address,');
-  console.log('     and phone — which appears on screen and on printed invoices.');
+  console.log('  2. Go to Settings and set the company identity. A new deployment starts');
+  console.log('     blank, and the name and address print on every invoice and quote.');
+  console.log('     (scripts/provision-tenant.js does this — and more — for you.)');
   console.log('  3. Invite the rest of the staff from the admin panel.');
   console.log('');
 

@@ -50,6 +50,17 @@ const app = express();
 // Trust proxy - this is important for rate limiting behind proxies
 app.set('trust proxy', 1);
 
+// The browser loads media straight from S3 via presigned URLs (thumbnails, the
+// image/PDF viewer), so the CSP must allow this deployment's own bucket. Derived
+// from the same env vars s3Service reads — each tenant has its own bucket, and a
+// hardcoded host would silently block every other tenant's images.
+const s3Origins = process.env.S3_BUCKET_NAME && process.env.AWS_REGION
+  ? [
+      `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com`,
+      `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com`,
+    ]
+  : [];
+
 // Set security HTTP headers
 app.use(
   helmet({
@@ -73,19 +84,17 @@ app.use(
           'data:',
           'blob:',
           'https://*.googleusercontent.com',
-          'https://phoenixautocrm.s3.us-east-2.amazonaws.com',
-          'https://phoenixautocrm.s3.amazonaws.com',
+          ...s3Origins,
         ],
         connectSrc: [
           "'self'",
           'https://accounts.google.com',
           'https://vpic.nhtsa.dot.gov',
-          'https://phoenixautocrm.s3.us-east-2.amazonaws.com',
-          'https://phoenixautocrm.s3.amazonaws.com',
+          ...s3Origins,
           'https://cdnjs.cloudflare.com',
           'https://*.googleusercontent.com',
         ],
-        frameSrc: ["'self'", 'https://accounts.google.com'],
+        frameSrc: ["'self'", 'https://accounts.google.com', ...s3Origins],
         objectSrc: ["'none'"],
         upgradeInsecureRequests: [],
       },

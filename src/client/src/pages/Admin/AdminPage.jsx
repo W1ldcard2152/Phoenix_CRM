@@ -43,6 +43,10 @@ const AdminPage = () => {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
+  // Password link modal state
+  const [passwordLink, setPasswordLink] = useState(null); // { user, url, expiresAt, error }
+  const [linkCopied, setLinkCopied] = useState(false);
+
   // Settings state
   const [showServiceAdvisorOnInvoice, setShowServiceAdvisorOnInvoice] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -83,7 +87,9 @@ const AdminPage = () => {
         role: inviteRole,
         technician: inviteTechnician || undefined
       });
-      setInviteSuccess(`User ${inviteEmail} has been pre-authorized.`);
+      setInviteSuccess(
+        `${inviteEmail} can now sign in with Google. To use a password instead, give them a Password link from the list below.`
+      );
       setInviteEmail('');
       setInviteRole('technician');
       setInviteTechnician('');
@@ -92,6 +98,29 @@ const AdminPage = () => {
       setInviteError(err.response?.data?.message || 'Failed to invite user.');
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  // One-time link to set a password: for a forgotten password (this shop may
+  // not send email) or a newly invited user who won't use Google. The admin
+  // hands it over — text it, or open it on the person's own device.
+  const handlePasswordLink = async (user) => {
+    setLinkCopied(false);
+    setPasswordLink({ user, url: null, expiresAt: null, error: null });
+    try {
+      const res = await API.post(`/admin/users/${user._id}/password-link`);
+      setPasswordLink({ user, ...res.data.data, error: null });
+    } catch (err) {
+      setPasswordLink({ user, url: null, expiresAt: null, error: err.response?.data?.message || 'Could not create a link.' });
+    }
+  };
+
+  const copyPasswordLink = async () => {
+    try {
+      await navigator.clipboard.writeText(passwordLink.url);
+      setLinkCopied(true);
+    } catch {
+      // Clipboard blocked (http, or permissions) — the field is selectable instead.
     }
   };
 
@@ -351,12 +380,20 @@ const AdminPage = () => {
                         Reactivate
                       </button>
                     ) : (
-                      <button
-                        onClick={() => handleDeactivate(user._id)}
-                        className="text-red-600 hover:text-red-800 font-medium"
-                      >
-                        Deactivate
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handlePasswordLink(user)}
+                          className="text-primary-600 hover:text-primary-800 font-medium"
+                        >
+                          Password link
+                        </button>
+                        <button
+                          onClick={() => handleDeactivate(user._id)}
+                          className="text-red-600 hover:text-red-800 font-medium"
+                        >
+                          Deactivate
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
@@ -423,6 +460,48 @@ const AdminPage = () => {
               onChange={(e) => setEditTechnician(e.target.value)}
             />
           </div>
+        </Modal>
+      )}
+
+      {/* Password Link Modal */}
+      {passwordLink && (
+        <Modal
+          isOpen={!!passwordLink}
+          onClose={() => setPasswordLink(null)}
+          title={`Password link: ${passwordLink.user.name}`}
+          size="md"
+          actions={[
+            { label: 'Done', onClick: () => setPasswordLink(null), variant: 'primary' }
+          ]}
+        >
+          {passwordLink.error ? (
+            <div className="text-red-600 text-sm">{passwordLink.error}</div>
+          ) : !passwordLink.url ? (
+            <div className="text-sm text-gray-500">Creating link…</div>
+          ) : (
+            <div className="space-y-4 text-sm text-gray-700">
+              <p>
+                Send this to <strong>{passwordLink.user.email}</strong> — a text message is fine.
+                Opening it lets them choose a new password and signs them in.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={passwordLink.url}
+                  onFocus={(e) => e.target.select()}
+                  className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs font-mono"
+                />
+                <Button size="sm" variant="outline" onClick={copyPasswordLink}>
+                  {linkCopied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+              <p className="text-gray-500">
+                Works once, until {formatDate(passwordLink.expiresAt, 'MMM D, h:mm A')}. Their current
+                password keeps working until they use it. Anyone holding the link can set this
+                account's password, so send it only to them.
+              </p>
+            </div>
+          )}
         </Modal>
       )}
     </div>

@@ -31,6 +31,8 @@ import InvoiceDetail from './pages/Invoices/InvoiceDetail'; // Added InvoiceDeta
 import InvoiceList from './pages/Invoices/InvoiceList';
 import Login from './pages/Auth/Login';
 import OAuthCallback from './pages/Auth/OAuthCallback';
+import ForgotPassword from './pages/Auth/ForgotPassword';
+import ResetPassword from './pages/Auth/ResetPassword';
 
 
 // New Pages for Sidebar
@@ -98,6 +100,8 @@ const App = () => {
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<OAuthCallback />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
 
           {/* Parts Purchase Worksheet — chrome-free standalone route, designed to
               open in a narrow window (window.open) split-screen beside a browser.

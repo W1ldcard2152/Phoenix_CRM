@@ -50,11 +50,15 @@ const Navbar = ({ onMobileMenuToggle }) => {
             {/* Logo */}
             <div className="flex-shrink-0">
               <Link to="/" className="text-xl font-bold text-primary-600">
-                <img
-                  src={company.logo}
-                  alt={company.name}
-                  className="h-8 sm:h-12 lg:h-14"
-                />
+                {company.logo ? (
+                  <img
+                    src={company.logo}
+                    alt={company.name}
+                    className="h-8 sm:h-12 lg:h-14"
+                  />
+                ) : (
+                  company.name
+                )}
               </Link>
             </div>
 

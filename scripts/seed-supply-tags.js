@@ -12,8 +12,13 @@
  * brand vocabularies, and neither is modified.
  *
  * Usage:
- *   node scripts/seed-supply-tags.js              # dry run (default)
- *   node scripts/seed-supply-tags.js --execute    # write changes
+ *   node scripts/seed-supply-tags.js                          # dry run (default)
+ *   node scripts/seed-supply-tags.js --execute                # write changes
+ *   node scripts/seed-supply-tags.js --uri "mongodb+srv://…"  # a specific tenant
+ *
+ * Without --uri it falls back to MONGODB_URI in your local .env — which is your
+ * own production database. scripts/provision-tenant.js calls seedSupplyTags()
+ * directly on its own connection, so a new tenant never needs this CLI.
  */
 
 const path = require('path');
@@ -22,20 +27,13 @@ const mongoose = require('mongoose');
 const moment = require('moment');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
-
 const SupplyTag = require('../src/server/models/SupplyTag');
 const SupplyVocab = require('../src/server/models/SupplyVocab');
 const SupplyField = require('../src/server/models/SupplyField');
 const { indexById, validateSubtreePlacement } = require('../src/server/utils/supplyRules');
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const DRY_RUN = !process.argv.includes('--execute');
-
-if (!MONGODB_URI) {
-  console.error('ERROR: MONGODB_URI not found in .env');
-  process.exit(1);
-}
+// Set by main() from argv, or by seedSupplyTags() when required as a module.
+let DRY_RUN = true;
 
 // ───────────────────────────────────────────────────────────────────────────
 // The tree (docs/shop-supplies-module.md §4)
@@ -684,28 +682,22 @@ const applyValidator = async (report) => {
   }
 };
 
-async function main() {
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('  Shop Supplies — Tag Tree & Vocabulary Seed');
-  console.log(`  Mode: ${DRY_RUN ? 'DRY RUN (no changes)' : 'EXECUTE'}`);
-  console.log('═══════════════════════════════════════════════════════════\n');
+/**
+ * Seed fields, tags, vocabulary and the validator on the CURRENT mongoose
+ * connection. Throws if the tree literal is invalid, before writing anything.
+ * Returns the report. The caller owns connecting and disconnecting.
+ */
+async function seedSupplyTags({ dryRun = true } = {}) {
+  DRY_RUN = dryRun;
 
   const flat = flattenTree(TREE);
-
   const literalErrors = validateTreeLiteral(flat);
   if (literalErrors.length > 0) {
-    console.error('✗ The tree literal in this script is invalid — nothing was written:\n');
-    literalErrors.forEach((e) => console.error(`  ${e}`));
-    process.exit(1);
+    throw new Error(`The tag tree literal is invalid — nothing was written:\n  ${literalErrors.join('\n  ')}`);
   }
-  console.log(`Tree literal OK: ${flat.length} nodes, `
-    + `${flat.filter((n) => !n.parentSlug).length} top-level phases, `
-    + `${FIELDS.length} measurement fields.\n`);
-
-  await mongoose.connect(MONGODB_URI);
-  console.log('Connected to MongoDB.\n');
 
   const report = {
+    nodeCount: flat.length,
     fieldsCreated: [], fieldsUnchanged: [],
     tagsCreated: [], tagsUpdated: [], tagsUnchanged: [], tagsOrphaned: [],
     vocabCreated: [], vocabUnchanged: [], vocabRelabelled: [], validator: null
@@ -715,6 +707,33 @@ async function main() {
   await seedTags(flat, report, fieldIdByKey);
   await seedVocab(report);
   await applyValidator(report);
+  return report;
+}
+
+async function main() {
+  dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
+  const uriIdx = process.argv.indexOf('--uri');
+  const MONGODB_URI = uriIdx !== -1 ? process.argv[uriIdx + 1] : process.env.MONGODB_URI;
+  if (!MONGODB_URI) {
+    console.error('ERROR: no database URI. Pass --uri or set MONGODB_URI in .env');
+    process.exit(1);
+  }
+  const dryRun = !process.argv.includes('--execute');
+
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('  Shop Supplies — Tag Tree & Vocabulary Seed');
+  console.log(`  Mode: ${dryRun ? 'DRY RUN (no changes)' : 'EXECUTE'}`);
+  console.log('═══════════════════════════════════════════════════════════\n');
+
+  const flat = flattenTree(TREE);
+  console.log(`Tree literal: ${flat.length} nodes, `
+    + `${flat.filter((n) => !n.parentSlug).length} top-level phases, `
+    + `${FIELDS.length} measurement fields.\n`);
+
+  await mongoose.connect(MONGODB_URI);
+  console.log(`Connected to ${mongoose.connection.host} / ${mongoose.connection.name}.\n`);
+
+  const report = await seedSupplyTags({ dryRun });
 
   console.log('─── Measurement fields ───');
   console.log(`  create:    ${report.fieldsCreated.length}`);
@@ -777,7 +796,11 @@ async function main() {
   await mongoose.disconnect();
 }
 
-main().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { seedSupplyTags };

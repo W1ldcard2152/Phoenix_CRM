@@ -12,6 +12,7 @@
     "prod": "npm run build && npm start",
     "install:client": "cd src/client && npm install",
     "install:all": "npm install && npm run install:client",
+    "provision": "node scripts/provision-tenant.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint ."

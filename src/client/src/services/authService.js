@@ -56,6 +56,12 @@ const AuthService = {
     }
   },
 
+  // 'email' when this shop can email a reset link, 'admin' when it can't
+  getPasswordResetMethod: async () => {
+    const response = await API.get('/users/password-reset-method');
+    return response.data.data.method;
+  },
+
   // Forgot password
   forgotPassword: async (email) => {
     try {

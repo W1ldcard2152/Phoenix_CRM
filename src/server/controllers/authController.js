@@ -5,6 +5,12 @@ const User = require('../models/User');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const emailService = require('../services/emailService');
+const {
+  SELF_SERVICE_MINUTES,
+  appBaseUrl,
+  issuePasswordLink,
+  clearPasswordLink
+} = require('../utils/passwordLink');
 
 // Create JWT token
 const signToken = id => {
@@ -143,8 +149,25 @@ exports.restrictTo = (...roles) => {
   };
 };
 
-// Forgot password
+// How a signed-out user can recover their password on this deployment. Public:
+// the forgot-password page asks before showing a form, so a shop without email
+// is told to ask their admin instead of waiting for a message that never comes.
+exports.getPasswordResetMethod = (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    data: { method: emailService.emailEnabled ? 'email' : 'admin' }
+  });
+};
+
+// Forgot password — emails a one-time link to the reset page
 exports.forgotPassword = catchAsync(async (req, res, next) => {
+  if (!emailService.emailEnabled) {
+    return next(new AppError(
+      "This shop can't send email yet. Ask your administrator for a password link.",
+      503
+    ));
+  }
+
   // Always return the same response whether or not the email exists, to avoid
   // account enumeration.
   const genericResponse = () =>
@@ -153,73 +176,70 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
       message: 'If an account with that email exists, a reset link has been sent.'
     });
 
-  // 1) Get user based on posted email
-  const user = await User.findOne({ email: req.body.email });
-  if (!user) {
+  const email = String(req.body.email || '').toLowerCase().trim();
+  const user = email && await User.findOne({ email });
+  if (!user || user.status === 'disabled') {
     return genericResponse();
   }
 
-  // 2) Generate random reset token
-  const resetToken = user.createPasswordResetToken();
-  await user.save({ validateBeforeSave: false });
-
-  // 3) Send to user's email
-  const resetURL = `${req.protocol}://${req.get(
-    'host'
-  )}/api/v1/users/resetPassword/${resetToken}`;
-
-  const message = `Forgot your password? Submit a PATCH request with your new password and passwordConfirm to: ${resetURL}.\nIf you didn't forget your password, please ignore this email.`;
+  const { url } = await issuePasswordLink(user, {
+    ttlMinutes: SELF_SERVICE_MINUTES,
+    baseUrl: appBaseUrl(req)
+  });
 
   try {
     await emailService.sendEmail({
       to: user.email,
-      subject: 'Your password reset token (valid for 10 minutes)',
-      text: message
+      subject: 'Reset your password',
+      text: `Someone asked to reset the password for ${user.email}.\n\n`
+        + `Choose a new password here (the link works once, for ${SELF_SERVICE_MINUTES} minutes):\n${url}\n\n`
+        + "If that wasn't you, ignore this email — your password hasn't changed.",
+      html: `<p>Someone asked to reset the password for <strong>${user.email}</strong>.</p>`
+        + `<p><a href="${url}">Choose a new password</a></p>`
+        + `<p>The link works once, for ${SELF_SERVICE_MINUTES} minutes.</p>`
+        + "<p>If that wasn't you, ignore this email — your password hasn't changed.</p>"
     });
 
     return genericResponse();
   } catch (err) {
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-
-    return next(
-      new AppError(
-        'There was an error sending the email. Try again later.',
-        500
-      )
-    );
+    await clearPasswordLink(user);
+    return next(new AppError('There was an error sending the email. Try again later.', 500));
   }
 });
 
-// Reset password
+// Reset password — consumes a one-time link from forgotPassword, an admin, or
+// scripts/password-link.js, sets the password, and signs the user in.
 exports.resetPassword = catchAsync(async (req, res, next) => {
-  // 1) Get user based on the token
   const hashedToken = crypto
     .createHash('sha256')
     .update(req.params.token)
     .digest('hex');
-  
+
   const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() }
   });
-  
-  // 2) If token has not expired, and there is a user, set the new password
+
   if (!user) {
-    return next(new AppError('Token is invalid or has expired', 400));
+    return next(new AppError('This link is invalid or has expired. Ask for a new one.', 400));
   }
-  
+  if (user.status === 'disabled') {
+    return next(new AppError('Your account has been disabled. Contact your administrator.', 403));
+  }
+  if (!req.body.password || !req.body.passwordConfirm) {
+    return next(new AppError('Enter your new password twice.', 400));
+  }
+
   user.password = req.body.password;
   user.passwordConfirm = req.body.passwordConfirm;
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
-  await user.save();
-  
-  // 3) Update changedPasswordAt property for the user
-  // Done in pre-save middleware
-  
-  // 4) Log the user in, send JWT
+  // An invited user who has never signed in is `pending` until their first
+  // Google sign-in. Setting a password through a link is an equally good
+  // first sign-in, and is the only one available at a shop without Google.
+  if (user.status === 'pending') user.status = 'active';
+  await user.save(); // pre-save hashes it and stamps passwordChangedAt
+
   createSendToken(user, 200, res);
 });
 

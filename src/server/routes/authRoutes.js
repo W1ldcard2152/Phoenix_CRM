@@ -9,6 +9,7 @@ const router = express.Router();
 // or provisioned via Google OAuth against a pre-authorized email.
 router.post('/login', authController.login);
 router.get('/logout', authController.logout);
+router.get('/password-reset-method', authController.getPasswordResetMethod);
 router.post('/forgotPassword', authController.forgotPassword);
 router.patch('/resetPassword/:token', authController.resetPassword);
 

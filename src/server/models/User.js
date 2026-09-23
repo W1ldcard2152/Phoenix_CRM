@@ -122,16 +122,19 @@ UserSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
 };
 
 // Generate password reset token
-UserSchema.methods.createPasswordResetToken = function() {
+// Single-use: only the hash is stored, and a successful reset clears it.
+// 10 minutes for a self-service email link; an admin-issued link lives longer
+// because it travels by hand (text message) and may not be opened right away.
+UserSchema.methods.createPasswordResetToken = function(ttlMinutes = 10) {
   const resetToken = crypto.randomBytes(32).toString('hex');
-  
+
   this.passwordResetToken = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-    
-  this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-  
+
+  this.passwordResetExpires = Date.now() + ttlMinutes * 60 * 1000;
+
   return resetToken;
 };
 

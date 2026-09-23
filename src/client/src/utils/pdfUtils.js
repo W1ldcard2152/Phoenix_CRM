@@ -349,7 +349,9 @@ export const generateDocumentHtml = (type, data) => {
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         <tr>
           <td style="vertical-align: top;">
-            <img src="${window.location.origin}${co.logoPng || co.logo}" alt="${co.name}" style="height: 64px; width: auto; margin-bottom: 8px;" onerror="this.style.display='none'"/>
+            ${(co.logoPng || co.logo)
+              ? `<img src="${window.location.origin}${co.logoPng || co.logo}" alt="${co.name}" style="height: 64px; width: auto; margin-bottom: 8px;" onerror="this.style.display='none'"/>`
+              : `<p style="margin: 0 0 8px 0; font-size: 20px; font-weight: bold;">${co.name}</p>`}
             <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.addressLine1}</p>
             <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.addressLine2}</p>
             <p style="margin: 0; font-size: 13px; line-height: 1.4;">${co.phone}</p>
@@ -506,7 +508,7 @@ export const generateDocumentHtml = (type, data) => {
       <!-- Footer -->
       <div style="text-align: center; font-size: 12px; color: #4b5563; margin-top: 32px; border-top: 1px solid #d1d5db; padding-top: 16px; text-decoration: none;">
         <p style="margin: 0 0 2px 0; text-decoration: none;">Thank you for your business!</p>
-        <p style="margin: 0; text-decoration: none;">${co.name} | ${co.phone} | ${co.website}</p>
+        <p style="margin: 0; text-decoration: none;">${[co.name, co.phone, co.website].filter(Boolean).join(' | ')}</p>
       </div>
     </div>
   `;

@@ -625,14 +625,16 @@ exports.uploadCompanyLogo = catchAsync(async (req, res, next) => {
 exports.getCompanyLogo = catchAsync(async (req, res) => {
   const settings = await Settings.getSettings();
 
-  // No uploaded logo → fall back to the bundled default public asset
+  // No uploaded logo → 404. There is deliberately no bundled fallback image:
+  // any default would be some other shop's branding. Callers render the
+  // company name instead when companyLogoUrl is empty.
   if (!settings.companyLogoKey) {
-    return res.redirect('/phxLogo.png');
+    return res.status(404).end();
   }
 
   const file = await s3Service.getFileStream(settings.companyLogoKey);
   if (!file || !file.body) {
-    return res.redirect('/phxLogo.png');
+    return res.status(404).end();
   }
 
   res.set('Content-Type', file.contentType || 'image/png');

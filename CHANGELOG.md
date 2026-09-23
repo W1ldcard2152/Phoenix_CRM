@@ -2,6 +2,19 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-09-23
+
+### Added
+- **"Forgot your password?" works.** On a shop that can send email, it emails a link to choose a new password (works once, for 10 minutes). On a shop without email, it tells the person to ask their administrator instead of promising an email that never arrives.
+- **Admins can give anyone a password link** — the new **Password link** button in Administration makes a one-time link (good for 24 hours) to text to a staff member. It covers a forgotten password on a shop without email, and it's how to add staff who won't sign in with Google: invite them, then send them a link. Setting a password this way activates an invited user.
+
+### Changed
+- **A new shop starts with a blank company profile** rather than Phoenix Automotive Group's name, address, phone and logo. Until a logo is uploaded, the shop's name appears in the header and at the top of invoices and quotes, and blank contact details are left off the printed footer instead of leaving stray separators.
+
+### Fixed
+- **Photo thumbnails and the file viewer work on every shop.** The browser's security rules only allowed Phoenix's own storage, so on any other shop the pictures and previews were blocked even though uploads succeeded. PDF previews in the file viewer were blocked on every shop, Phoenix included, and now open.
+- **Password reset emails pointed at a page that didn't exist**, with instructions meant for developers. The link now opens a page to choose a new password and signs you straight in.
+
 ## 2026-09-21
 
 ### Added

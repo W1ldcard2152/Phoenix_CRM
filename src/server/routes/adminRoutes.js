@@ -16,4 +16,6 @@ router.route('/users/:id')
   .patch(adminController.updateUser)
   .delete(adminController.deactivateUser);
 
+router.post('/users/:id/password-link', adminController.createPasswordLink);
+
 module.exports = router;

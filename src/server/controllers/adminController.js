@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Technician = require('../models/Technician');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
+const { ADMIN_ISSUED_MINUTES, appBaseUrl, issuePasswordLink } = require('../utils/passwordLink');
 
 const VALID_ROLES =
   User.schema?.path('role')?.enumValues ||
@@ -155,5 +156,30 @@ exports.deactivateUser = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     data: { user }
+  });
+});
+
+// Issue a one-time "set your password" link for a user, for the admin to hand
+// over (text, in person). Covers a forgotten password on a shop without email,
+// and gives a newly invited user a way in without Google. Issuing a new link
+// replaces any earlier one; the user's current password keeps working until
+// the link is used.
+exports.createPasswordLink = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return next(new AppError('No user found with that ID', 404));
+  }
+  if (user.status === 'disabled') {
+    return next(new AppError('Reactivate this user before giving them a password link.', 400));
+  }
+
+  const { url, expiresAt } = await issuePasswordLink(user, {
+    ttlMinutes: ADMIN_ISSUED_MINUTES,
+    baseUrl: appBaseUrl(req)
+  });
+
+  res.status(200).json({
+    status: 'success',
+    data: { url, expiresAt }
   });
 });

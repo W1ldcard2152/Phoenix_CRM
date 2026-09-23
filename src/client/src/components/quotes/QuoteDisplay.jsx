@@ -51,12 +51,14 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div className="flex flex-col">
-          {businessSettings.businessLogo && (
+          {businessSettings.businessLogo ? (
             <img
               src={businessSettings.businessLogo}
               alt={businessSettings.businessName}
               className="h-16 mb-2"
             />
+          ) : (
+            <p className="text-xl font-bold mb-2">{businessSettings.businessName}</p>
           )}
           <p className="text-sm leading-tight">{businessSettings.businessAddressLine1}</p>
           <p className="text-sm leading-tight">{businessSettings.businessAddressLine2}</p>
@@ -159,7 +161,7 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
       {/* Footer */}
       <div className="text-center text-xs text-gray-600 mt-8 border-t border-gray-300 pt-4">
         <p>Thank you for your business!</p>
-        <p>{businessSettings.businessName} | {businessSettings.businessPhone} | {businessSettings.businessWebsite}</p>
+        <p>{[businessSettings.businessName, businessSettings.businessPhone, businessSettings.businessWebsite].filter(Boolean).join(' | ')}</p>
       </div>
     </div>
   );
