@@ -1,126 +1,112 @@
 /**
- * Database Backup Script
+ * Operator backup & restore — any tenant, from your own machine.
  *
- * Exports all collections from the MongoDB Atlas database to timestamped JSON files.
- * Uses the existing mongoose/mongodb driver — no additional tools required.
+ * Shop admins back up and restore from Administration → Backups. This is for
+ * you: a tenant whose app is down, a database moving to a new cluster, or a
+ * restore from a file a shop sent you.
  *
  * Usage:
- *   node scripts/backup-database.js
+ *   node scripts/backup-database.js --uri "mongodb+srv://…/shop"                   # back up
+ *   node scripts/backup-database.js --uri "…" --out D:\backups                     # …to a folder
+ *   node scripts/backup-database.js --uri "…" --inspect file.cvbackup              # check a file
+ *   node scripts/backup-database.js --uri "…" --restore file.cvbackup              # dry run
+ *   node scripts/backup-database.js --uri "…" --restore file.cvbackup --execute    # restore
  *
- * Backups are saved to: backups/YYYY-MM-DD_HH-MM-SS/
+ * --uri is always required — there is deliberately no fallback to .env, which
+ * points at your own production shop. A restore takes a safety backup of the
+ * current data into --out (default ./backups) first, and refuses a file from a
+ * different database unless --allow-other-database is passed (e.g. moving a
+ * shop to a new cluster under a new database name).
  *
- * To restore a specific collection:
- *   node scripts/backup-database.js --restore backups/2026-02-15_14-30-00/customers.json
+ * Files use the .cvbackup format shared with the app (src/server/utils/
+ * backupFormat.js), so a file downloaded from a shop's Backups page restores
+ * here and vice versa. The folders of per-collection .json files this script
+ * used to write are NOT restorable — that format lost every ObjectId and date.
  */
 
 const path = require('path');
 const fs = require('fs');
-const dotenv = require('dotenv');
 const mongoose = require('mongoose');
+const moment = require('moment');
+const { writeBackup, inspectBackup, restoreBackup } = require('../src/server/utils/backupFormat');
 
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+const argValue = (flag) => {
+  const idx = process.argv.indexOf(flag);
+  return idx !== -1 ? process.argv[idx + 1] : undefined;
+};
 
-const BACKUP_DIR = path.resolve(__dirname, '../backups');
+const URI = argValue('--uri');
+const OUT_DIR = path.resolve(argValue('--out') || path.join(__dirname, '../backups'));
+const RESTORE_FILE = argValue('--restore');
+const INSPECT_FILE = argValue('--inspect');
+const EXECUTE = process.argv.includes('--execute');
+const ALLOW_OTHER_DB = process.argv.includes('--allow-other-database');
 
-async function connectToDatabase() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    console.error('ERROR: MONGODB_URI not found in .env');
-    process.exit(1);
+const printCounts = (counts) => {
+  Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([name, n]) => console.log(`  ${String(n).padStart(7)}  ${name}`));
+};
+
+const backupTo = async (db, reason) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const file = path.join(OUT_DIR, `cvrepair-${db.databaseName}-${moment().format('YYYY-MM-DD-HHmmss')}-${reason}.cvbackup`);
+  const { total } = await writeBackup(db, fs.createWriteStream(file), { kind: reason, takenBy: 'operator CLI' });
+  await inspectBackup(file);
+  return { file, total };
+};
+
+async function main() {
+  if (INSPECT_FILE) {
+    const { header, counts, total } = await inspectBackup(INSPECT_FILE);
+    console.log(`\n  Valid backup of "${header.database}", taken ${header.createdAt.toISOString()} (${header.kind || 'unknown kind'})`);
+    console.log(`  ${total} records:\n`);
+    printCounts(counts);
+    return;
   }
 
-  console.log('Connecting to MongoDB...');
-  await mongoose.connect(uri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  });
-  console.log('Connected successfully.');
-  return mongoose.connection.db;
-}
-
-async function backupAll() {
-  const db = await connectToDatabase();
-
-  // Create timestamped backup directory
-  const now = new Date();
-  const timestamp = now.toISOString()
-    .replace(/T/, '_')
-    .replace(/:/g, '-')
-    .replace(/\..+/, '');
-  const backupPath = path.join(BACKUP_DIR, timestamp);
-  fs.mkdirSync(backupPath, { recursive: true });
-
-  // Get all collection names
-  const collections = await db.listCollections().toArray();
-  const collectionNames = collections.map(c => c.name);
-
-  console.log(`\nFound ${collectionNames.length} collections to back up:`);
-  console.log(collectionNames.map(n => `  - ${n}`).join('\n'));
-  console.log('');
-
-  let totalDocs = 0;
-
-  for (const name of collectionNames) {
-    const collection = db.collection(name);
-    const docs = await collection.find({}).toArray();
-    const filePath = path.join(backupPath, `${name}.json`);
-
-    fs.writeFileSync(filePath, JSON.stringify(docs, null, 2));
-    console.log(`  ${name}: ${docs.length} documents`);
-    totalDocs += docs.length;
+  if (!URI) {
+    console.error('ERROR: --uri is required (no fallback to .env — that is your production shop).');
+    console.error('  node scripts/backup-database.js --uri "mongodb+srv://…/shop" [--restore file.cvbackup [--execute]]');
+    process.exitCode = 1;
+    return;
   }
 
-  console.log(`\nBackup complete: ${totalDocs} total documents across ${collectionNames.length} collections`);
-  console.log(`Saved to: ${backupPath}\n`);
+  await mongoose.connect(URI);
+  const db = mongoose.connection.db;
+  console.log(`\n  Database: ${db.databaseName} on ${mongoose.connection.host}`);
 
-  await mongoose.disconnect();
-  return backupPath;
-}
-
-async function restoreCollection(filePath) {
-  if (!fs.existsSync(filePath)) {
-    console.error(`ERROR: File not found: ${filePath}`);
-    process.exit(1);
+  if (!RESTORE_FILE) {
+    const { file, total } = await backupTo(db, 'operator');
+    console.log(`  Backed up ${total} records → ${file}\n`);
+    return;
   }
 
-  const db = await connectToDatabase();
-  const collectionName = path.basename(filePath, '.json');
-  const docs = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  const { header, counts, total } = await inspectBackup(RESTORE_FILE);
+  console.log(`  Backup:   "${header.database}", taken ${header.createdAt.toISOString()}, ${total} records`);
+  if (header.database !== db.databaseName && !ALLOW_OTHER_DB) {
+    throw new Error(`That backup is from "${header.database}", not "${db.databaseName}". `
+      + 'Pass --allow-other-database only if you are deliberately moving a shop between databases.');
+  }
+  console.log('\n  Restoring replaces ALL data in this database with:\n');
+  printCounts(counts);
 
-  console.log(`\nWARNING: This will DROP and recreate the "${collectionName}" collection.`);
-  console.log(`The collection will be replaced with ${docs.length} documents from the backup.`);
-  console.log('Press Ctrl+C within 5 seconds to cancel...\n');
-
-  await new Promise(resolve => setTimeout(resolve, 5000));
-
-  const collection = db.collection(collectionName);
-  await collection.drop().catch(() => {}); // Ignore error if collection doesn't exist
-  if (docs.length > 0) {
-    await collection.insertMany(docs);
+  if (!EXECUTE) {
+    console.log('\n  Dry run — nothing changed. Add --execute to restore.\n');
+    return;
   }
 
-  console.log(`Restored ${docs.length} documents to "${collectionName}"`);
-
-  await mongoose.disconnect();
+  const safety = await backupTo(db, 'pre-restore');
+  console.log(`\n  Safety backup of current data: ${safety.file}`);
+  const result = await restoreBackup(db, RESTORE_FILE, { allowOtherDatabase: ALLOW_OTHER_DB });
+  console.log(`  Restored ${result.total} records.`);
+  console.log('\n  RESTART the app service now — it caches data in memory. To undo, restore the');
+  console.log('  safety backup above the same way.\n');
 }
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-
-if (args[0] === '--restore' && args[1]) {
-  restoreCollection(args[1]).catch(err => {
-    console.error('Restore failed:', err.message);
-    process.exit(1);
-  });
-} else if (args.length === 0) {
-  backupAll().catch(err => {
-    console.error('Backup failed:', err.message);
-    process.exit(1);
-  });
-} else {
-  console.log('Usage:');
-  console.log('  Backup:   node scripts/backup-database.js');
-  console.log('  Restore:  node scripts/backup-database.js --restore backups/<timestamp>/<collection>.json');
-  process.exit(1);
-}
+main()
+  .catch((err) => {
+    console.error(`\n  ✗ ${err.message}\n`);
+    process.exitCode = 1;
+  })
+  .finally(() => mongoose.disconnect().catch(() => {}));

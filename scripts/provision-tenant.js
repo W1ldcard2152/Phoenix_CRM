@@ -144,6 +144,27 @@ async function collect() {
   }
   console.log('  Empty — good.');
 
+  // Restores swap collections in with $out, under this same database user.
+  // Prove that works now, on scratch collections, rather than on the day a
+  // shop needs its data back.
+  process.stdout.write('  Checking restores will work… ');
+  const probeSrc = db.collection('__restore_probe_src');
+  const probeDst = db.collection('__restore_probe_dst');
+  try {
+    await probeDst.createIndex({ k: 1 }, { unique: true, name: 'k_1' });
+    await probeSrc.insertMany([{ k: 1 }, { k: 2 }]);
+    await probeSrc.aggregate([{ $out: '__restore_probe_dst' }]).toArray();
+    const indexKept = (await probeDst.indexes()).some((i) => i.name === 'k_1');
+    if ((await probeDst.countDocuments()) !== 2 || !indexKept) throw new Error('unexpected result');
+    console.log('yes.');
+  } catch (err) {
+    throw new Error(`This database user can't run a restore (${err.codeName || err.message}). `
+      + 'Give it the "Read and write to any database" role in Atlas → Database Access, then re-run.');
+  } finally {
+    await probeSrc.drop().catch(() => {});
+    await probeDst.drop().catch(() => {});
+  }
+
   heading('2 of 6 · The shop');
   console.log('  Printed on every invoice and quote. Leave optional lines blank to omit them.');
   a.companyName = await ask('Business name', { required: true });

@@ -19,6 +19,11 @@ const s3Client = region ? new S3Client({
   }
 }) : null;
 
+// For services that need S3 operations beyond this file's (backupService).
+// Null client = S3 not configured on this deployment.
+exports.client = s3Client;
+exports.bucketName = bucketName;
+
 /**
  * Upload a file to S3
  * @param {Buffer} fileBuffer - The file data

@@ -83,6 +83,13 @@ Use `src/server/utils/calculationHelpers.js` for all pricing:
 - **Atomic deduction**: Uses `findOneAndUpdate` with `quantityOnHand: { $gte: qty }` guard to prevent race conditions.
 - **Package tags managed in Settings**: `Settings.packageTags` array, admin-managed via `/api/settings/package-tags`.
 
+### Backups
+- **One format everywhere**: `src/server/utils/backupFormat.js` — gzipped, line-per-record canonical Extended JSON (`.cvbackup`) with a header (database name) and a footer (counts). Used by the server and by `scripts/backup-database.js`. Plain JSON is not a backup format here: it turns ObjectIds and Dates into strings.
+- **EJSON comes from `require('mongoose').mongo.BSON`**, never the top-level `mongodb` package — mongoose bundles its own driver/bson, and each bson rejects the other's ObjectIds.
+- **Restore** loads into `__restore_*` scratch collections, verifies every count, then swaps each collection in with `$out` (keeps indexes). It refuses another database's backup and always keeps the admin running it.
+- **`backuplogs` is never backed up or restored** — it indexes the S3 backups, including the pre-restore safety backup that undoes a restore.
+- `services/backupService.js`: nightly/monthly/manual/pre-restore backups to the tenant's own S3 bucket under `backups/`, 30-day Object Lock (GOVERNANCE) when the bucket has it, pruning by delete marker. Every restore takes a safety backup first, and `app.js` refuses API writes while one runs. Scheduler runs in production only.
+
 ### API Response Format
 ```javascript
 { status: 'success', data: { ... }, message: '...' }

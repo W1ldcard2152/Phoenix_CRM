@@ -111,6 +111,7 @@ const Sidebar = () => {
   const allSecondaryItems = [
     { name: 'Technicians', path: '/technicians', icon: 'fas fa-hard-hat', roles: ['admin', 'management', 'service-writer'] },
     { name: 'Administration', path: '/admin', icon: 'fas fa-shield-alt', roles: ['admin'] },
+    { name: 'Backups', path: '/backups', icon: 'fas fa-database', roles: ['admin'] },
     { name: 'Settings', path: '/settings', icon: 'fas fa-sliders-h', roles: null },
   ];
 

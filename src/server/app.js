@@ -160,9 +160,27 @@ app.use(cors({
 // Compression middleware
 app.use(compression());
 
+// While a restore replaces the database, refuse every write: anything saved
+// mid-restore would land in a collection that is about to be swapped out, and
+// silently vanish. Reads, sign-in and the Backups page itself keep working.
+const backupService = require('./services/backupService');
+app.use('/api', (req, res, next) => {
+  if (
+    backupService.isRestoring() &&
+    req.method !== 'GET' &&
+    !req.path.startsWith('/backups') &&
+    req.path !== '/users/login'
+  ) {
+    return next(new AppError('A restore is in progress. Wait a minute, then try again.', 503));
+  }
+  next();
+});
+
 // API routes
 const adminRoutes = require('./routes/adminRoutes');
+const backupRoutes = require('./routes/backupRoutes');
 app.use('/api/auth', oauthRoutes);
+app.use('/api/backups', backupRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', authRoutes);
 app.use('/api/customers', customerRoutes);

@@ -37,6 +37,7 @@ mongoose
     // Start scheduled jobs
     const { startScheduler } = require('./src/server/jobs/appointmentCompleteJob');
     startScheduler();
+    require('./src/server/services/backupService').startBackupScheduler();
 
     // Handle unhandled promise rejections - close server gracefully
     process.on('unhandledRejection', (err) => {

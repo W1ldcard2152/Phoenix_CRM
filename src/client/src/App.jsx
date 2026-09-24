@@ -38,6 +38,7 @@ import ResetPassword from './pages/Auth/ResetPassword';
 // New Pages for Sidebar
 import TechniciansPage from './pages/Technicians/TechniciansPage';
 import AdminPage from './pages/Admin/AdminPage';
+import BackupsPage from './pages/Admin/BackupsPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import FeedbackAdminPage from './pages/Feedback/FeedbackAdminPage'; // Import new FeedbackAdminPage
 import IntakePage from './pages/Intake/IntakePage';
@@ -170,6 +171,7 @@ const App = () => {
                       
                       {/* Admin Routes */}
                       <Route path="/admin" element={<RoleRoute roles={['admin']}><AdminPage /></RoleRoute>} />
+                      <Route path="/backups" element={<RoleRoute roles={['admin']}><BackupsPage /></RoleRoute>} />
 
                       {/* Feedback Admin Route (admin only) */}
                       <Route path="/feedback" element={<RoleRoute roles={['admin']}><FeedbackAdminPage /></RoleRoute>} />
