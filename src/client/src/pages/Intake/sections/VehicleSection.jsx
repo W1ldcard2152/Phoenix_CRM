@@ -4,10 +4,11 @@ import * as Yup from 'yup';
 import CustomerService from '../../../services/customerService';
 import VehicleService from '../../../services/vehicleService';
 import vinService from '../../../services/vinService';
-import RegistrationScanner from '../../../components/vehicles/RegistrationScanner';
+import VehicleScanner from '../../../components/vehicles/VehicleScanner';
 import Button from '../../../components/common/Button';
 import Input from '../../../components/common/Input';
 import SelectInput from '../../../components/common/SelectInput';
+import moment from 'moment';
 
 const VehicleSchema = Yup.object().shape({
   year: Yup.number()
@@ -18,10 +19,31 @@ const VehicleSchema = Yup.object().shape({
   model: Yup.string().required('Model is required'),
   vin: Yup.string(),
   licensePlate: Yup.string(),
+  licensePlateState: Yup.string().max(2, 'Use the 2-letter state abbreviation'),
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
     .nullable(),
 });
+
+// Scanner values this compact form has no inputs for — listed so the user knows
+// they'll be saved with the vehicle.
+// Scanned dates are plain 'YYYY-MM-DD' / 'YYYY-MM' strings, not UTC instants.
+const ScannedExtras = ({ values }) => {
+  const items = [
+    values.registrationExpiration && `Registration expires ${moment(values.registrationExpiration, 'YYYY-MM-DD').format('MM/DD/YYYY')}`,
+    values.inspectionExpiration && `Inspection expires ${moment(values.inspectionExpiration, 'YYYY-MM-DD').format('MM/DD/YYYY')}`,
+    values.buildDate && `Built ${moment(values.buildDate, 'YYYY-MM').format('MM/YYYY')}`,
+    values.paintCode && `Paint ${values.paintCode}`,
+    values.tireSize && `Tires ${values.tireSize}`,
+    values.mileageHistory.length > 0 && `${values.mileageHistory.length} mileage ${values.mileageHistory.length === 1 ? 'record' : 'records'}`
+  ].filter(Boolean);
+  if (items.length === 0) return null;
+  return (
+    <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+      <span className="font-medium">Also saved from the scan:</span> {items.join(' · ')}
+    </div>
+  );
+};
 
 const VehicleSection = ({ customer, onSaved, onError }) => {
   const [vehicles, setVehicles] = useState([]);
@@ -138,7 +160,15 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
             model: '',
             vin: '',
             licensePlate: '',
-            currentMileage: ''
+            licensePlateState: '',
+            currentMileage: '',
+            // Filled only by the scanner; no inputs here, but saved with the vehicle.
+            registrationExpiration: '',
+            inspectionExpiration: '',
+            buildDate: '',
+            paintCode: '',
+            tireSize: '',
+            mileageHistory: []
           }}
           validationSchema={VehicleSchema}
           onSubmit={handleCreateVehicle}
@@ -157,15 +187,15 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
                 </button>
                 {showScanner && (
                   <div className="mt-3">
-                    <RegistrationScanner
-                      onDataExtracted={(data) => {
-                        if (data.vin) {
-                          setFieldValue('vin', data.vin);
-                          handleVinDecode(data.vin, setFieldValue);
+                    <VehicleScanner
+                      currentValues={values}
+                      onApply={({ fields, mileageRecords }) => {
+                        Object.entries(fields).forEach(([field, value]) => setFieldValue(field, value));
+                        if (fields.vin) setVinError(null);
+                        if (mileageRecords.length > 0) {
+                          setFieldValue('mileageHistory', [...values.mileageHistory, ...mileageRecords]);
                         }
-                        if (data.licensePlate) setFieldValue('licensePlate', data.licensePlate);
                       }}
-                      onError={(msg) => setVinError(msg)}
                     />
                   </div>
                 )}
@@ -253,16 +283,31 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
                   )}
                 </div>
 
-                <Input
-                  label="License Plate"
-                  name="licensePlate"
-                  value={values.licensePlate}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  error={errors.licensePlate}
-                  touched={touched.licensePlate}
-                  placeholder="ABC-1234"
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <Input
+                      label="License Plate"
+                      name="licensePlate"
+                      value={values.licensePlate}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={errors.licensePlate}
+                      touched={touched.licensePlate}
+                      placeholder="ABC1234"
+                    />
+                  </div>
+                  <Input
+                    label="State"
+                    name="licensePlateState"
+                    value={values.licensePlateState}
+                    onChange={(e) => setFieldValue('licensePlateState', e.target.value.toUpperCase())}
+                    onBlur={handleBlur}
+                    error={errors.licensePlateState}
+                    touched={touched.licensePlateState}
+                    placeholder="NY"
+                    maxLength={2}
+                  />
+                </div>
               </div>
 
               <Input
@@ -277,6 +322,8 @@ const VehicleSection = ({ customer, onSaved, onError }) => {
                 touched={touched.currentMileage}
                 placeholder="Enter current odometer reading"
               />
+
+              <ScannedExtras values={values} />
 
               <div className="flex justify-end pt-2">
                 <Button

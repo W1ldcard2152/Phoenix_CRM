@@ -2,6 +2,22 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-09-24
+
+### Added
+- **Scan Vehicle reads much more than the VIN.** Photograph the windshield stickers (or registration card), the odometer, and the door jamb label — each photo optional — and it fills in the VIN, year/make/model, plate and state, registration and inspection expiry dates, current mileage, build date, tire size and paint code. Everything is shown for review first, with a checkbox per value; anything doubtful starts unchecked, as does anything that would overwrite a VIN, year, make or model already on file.
+- **Inspection stickers become mileage history.** The mileage printed on a NY inspection sticker is added as a record dated the last day of the month the inspection was done (12 months before the sticker's expiry), noted as an estimate. An odometer photo adds today's reading.
+- **Vehicles now track registration and inspection expiry, build date, paint code and tire size.** They can be edited on the vehicle form, and the vehicle page flags an expiry that has passed or is due within 30 days.
+
+### Changed
+- **VIN misreads are caught.** Every scanned VIN is checked against its check digit and against the other stickers. A single misread character is offered as a suggested fix to confirm rather than filled in, stickers that disagree ask you to choose, and a VIN that decodes to a different year or make than the registration shows a warning.
+
+### Fixed
+- **Scanning a NY registration no longer puts the document number in the License Plate field.** The number in the sticker's top-left corner was being read as the plate on most scans; the plate is now read from its line in the printed block, and a document number is never accepted as a plate.
+- **Take Photo works on phones.** It opens the phone's own camera instead of grabbing an instant frame, often from the front camera or before the camera was ready.
+- Scanning a VIN on the vehicle form now warns when that VIN already belongs to another vehicle, as typing it does.
+- The intake form's new-vehicle step now has a plate state field; a scanned state was being dropped.
+
 ## 2026-09-23
 
 ### Added

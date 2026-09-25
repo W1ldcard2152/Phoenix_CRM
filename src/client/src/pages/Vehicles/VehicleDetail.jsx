@@ -4,11 +4,24 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import VehicleService from '../../services/vehicleService';
 import AppointmentService from '../../services/appointmentService';
+import moment from 'moment';
 import { getTodayForInput, formatDate } from '../../utils/formatters';
 import { useAuth } from '../../contexts/AuthContext';
 import { permissions } from '../../utils/permissions';
 import FollowUpModal from '../../components/followups/FollowUpModal';
 import RelatedRecordsTabs from '../../components/common/RelatedRecordsTabs';
+
+// Expired / due within 30 days, for registration and inspection dates.
+const ExpirationBadge = ({ date }) => {
+  const daysLeft = moment(date).diff(moment(), 'days', true);
+  if (daysLeft < 0) {
+    return <span className="ml-2 inline-block px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-800 font-medium">Expired</span>;
+  }
+  if (daysLeft <= 30) {
+    return <span className="ml-2 inline-block px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-800 font-medium">Due soon</span>;
+  }
+  return null;
+};
 
 const VehicleDetail = () => {
   const { currentUser } = useAuth();
@@ -216,7 +229,54 @@ const VehicleDetail = () => {
             {vehicle.licensePlate && (
               <div>
                 <p className="text-sm text-gray-500">License Plate</p>
-                <p className="font-medium">{vehicle.licensePlate}</p>
+                <p className="font-medium">
+                  {vehicle.licensePlate}
+                  {vehicle.licensePlateState && <span className="text-gray-500 font-normal"> ({vehicle.licensePlateState})</span>}
+                </p>
+              </div>
+            )}
+            {(vehicle.registrationExpiration || vehicle.inspectionExpiration) && (
+              <div className="grid grid-cols-2 gap-2">
+                {vehicle.registrationExpiration && (
+                  <div>
+                    <p className="text-sm text-gray-500">Registration Expires</p>
+                    <p className="font-medium">
+                      {formatDate(vehicle.registrationExpiration, 'MM/DD/YYYY')}
+                      <ExpirationBadge date={vehicle.registrationExpiration} />
+                    </p>
+                  </div>
+                )}
+                {vehicle.inspectionExpiration && (
+                  <div>
+                    <p className="text-sm text-gray-500">Inspection Expires</p>
+                    <p className="font-medium">
+                      {formatDate(vehicle.inspectionExpiration, 'MM/YYYY')}
+                      <ExpirationBadge date={vehicle.inspectionExpiration} />
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            {(vehicle.buildDate || vehicle.paintCode || vehicle.tireSize) && (
+              <div className="grid grid-cols-2 gap-2">
+                {vehicle.buildDate && (
+                  <div>
+                    <p className="text-sm text-gray-500">Build Date</p>
+                    <p className="font-medium">{moment(vehicle.buildDate, 'YYYY-MM').format('MM/YYYY')}</p>
+                  </div>
+                )}
+                {vehicle.paintCode && (
+                  <div>
+                    <p className="text-sm text-gray-500">Paint Code</p>
+                    <p className="font-medium">{vehicle.paintCode}</p>
+                  </div>
+                )}
+                {vehicle.tireSize && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-gray-500">Tire Size</p>
+                    <p className="font-medium">{vehicle.tireSize}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

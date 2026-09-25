@@ -1,5 +1,5 @@
 const express = require('express');
-const { upload, scanRegistration } = require('../controllers/registrationController');
+const { scanUpload, scanVehicle } = require('../controllers/registrationController');
 const authController = require('../controllers/authController');
 
 const router = express.Router();
@@ -9,11 +9,13 @@ router.use(authController.protect);
 
 /**
  * POST /api/registration/scan
- * Scan a registration image to extract vehicle information
- * 
- * @body {File} registration - The registration image file
- * @returns {Object} Extracted vehicle data (VIN, license plate, etc.)
+ * Scan vehicle photos to extract registration, inspection, odometer and door-jamb data.
+ *
+ * @body {File} [registration] - registration card or windshield stickers
+ * @body {File} [odometer]     - instrument cluster
+ * @body {File} [doorJamb]     - door-jamb certification / tire label
+ * @returns {Object} { vin, fields, mileageRecords, warnings, found, notes }
  */
-router.post('/scan', authController.restrictTo('admin', 'management', 'service-writer'), upload.single('registration'), scanRegistration);
+router.post('/scan', authController.restrictTo('admin', 'management', 'service-writer'), scanUpload, scanVehicle);
 
 module.exports = router;
