@@ -16,6 +16,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 ### Changed
 - **Cycle counts are listed in shelf order** (Stock Room 1-A-1, 1-A-2 … 1-B-1), so a count can be walked shelf by shelf and anything left uncounted on a shelf stands out. Items with no location come last. Applies to newly started counts.
 - **The supplies list can filter to "Low or out of stock"**, and it combines with the tag, vendor and location filters, so "what am I low on from this vendor" is one list rather than two to cross-reference. An item sitting exactly on its reorder point now counts as low everywhere it is shown — a reorder point is the level you buy at.
+- **Scan photos are prepared as they are taken** instead of when Read photos is pressed, so the page no longer pauses after the camera hands a picture back and reading starts as soon as you ask for it. (The wait between pressing the shutter and the phone's own accept/retake prompt is the phone's camera, not the app.)
 
 ### Fixed
 - **Changing a vehicle's owner now moves it between customers properly.** Previously the vehicle kept showing up on the old owner's record and not the new one's.
@@ -23,6 +24,7 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - **Booking an appointment during a technician's scheduled task now warns about the conflict.** Tasks were being skipped by the "already scheduled" check.
 - Parts and labor subtotals on the work order page no longer show rounding noise (2.2 + 0.6 hours showed as 2.8000000000000003).
 - **Attached PDFs display in the work order's document viewer** in Chrome and Edge. They were blank unless opened in a new tab.
+- **Scanning a vehicle no longer adds a second copy of a car already on file without a VIN.** A vehicle entered before anyone had the VIN — booked over the phone, say — was invisible to the scan's VIN check, so scanning its registration filed the repair against a brand new duplicate. The scan now offers any vehicle of the same year, make and model that has no VIN on it yet and fills the VIN in on the one you pick. Candidates are listed by owner first, with their phone, plate, mileage and when the vehicle was added, since several placeholder cars of the same model are otherwise identical; one whose plate matches the scanned plate is flagged and listed first. A vehicle that already has a VIN is never offered, so a customer who genuinely owns two of the same model is never asked to merge them.
 
 ## 2026-09-24
 

@@ -29,6 +29,9 @@ router.patch('/check-ins/:id', checkInController.resolveCheckIn);
 // Check if VIN exists
 router.get('/check-vin', vehicleController.checkVinExists);
 
+// Vehicles matching year/make/model that have no VIN yet — merge candidates for a scan
+router.get('/vinless-matches', vehicleController.findVinlessMatches);
+
 // Search vehicles
 router.get('/search', vehicleController.searchVehicles);
 

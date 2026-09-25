@@ -70,6 +70,19 @@ const VehicleService = {
   checkVinExists: async (vin) => {
     const response = await API.get(`/vehicles/check-vin?vin=${encodeURIComponent(vin)}`);
     return response.data;
+  },
+
+  // Vehicles on file with this year/make/model and no VIN — the ones a scanned
+  // VIN can legitimately belong to. Returns [] rather than throwing, because a
+  // failed merge check should fall through to adding the vehicle, not block it.
+  findVinlessMatches: async ({ year, make, model }) => {
+    const params = new URLSearchParams({ year: String(year), make, model });
+    try {
+      const response = await API.get(`/vehicles/vinless-matches?${params}`);
+      return response.data.data.vehicles || [];
+    } catch {
+      return [];
+    }
   }
 };
 

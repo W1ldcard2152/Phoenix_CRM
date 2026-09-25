@@ -505,3 +505,61 @@ exports.checkVinExists = catchAsync(async (req, res, next) => {
     }
   });
 });
+
+/**
+ * GET /api/vehicles/vinless-matches?year=&make=&model=
+ *
+ * Vehicles on file that look like this one but carry no VIN.
+ *
+ * A vehicle is often added to a customer's garage before anyone has the VIN —
+ * booked over the phone, say. Scanning that car's registration later finds no
+ * VIN match and would add a second copy of it. These are the candidates the
+ * scan offers to fill in instead.
+ *
+ * Deliberately only VIN-less rows. A customer who genuinely owns two of the
+ * same year/make/model has a VIN on each, and those must never be offered as
+ * the same vehicle — a VIN already on file is a settled identity, and the only
+ * thing that can match it is an equal VIN (that is checkVinExists' job).
+ *
+ * Not scoped to a customer: the scan resolves the vehicle before it knows the
+ * owner, so the owner rides along on each candidate for the user to confirm.
+ */
+exports.findVinlessMatches = catchAsync(async (req, res, next) => {
+  const { year, make, model } = req.query;
+
+  // All three are needed to claim a match; anything less is too weak to offer.
+  const yearNum = Number(year);
+  if (!Number.isInteger(yearNum) || !make || !model) {
+    return res.status(200).json({ status: 'success', data: { vehicles: [] } });
+  }
+
+  const exact = (value) => ({
+    $regex: new RegExp(`^${escapeRegex(String(value).trim().slice(0, 100))}$`, 'i')
+  });
+
+  const vehicles = await Vehicle.find({
+    year: yearNum,
+    make: exact(make),
+    model: exact(model),
+    // "No VIN" as stored by every path that can leave one blank. The model
+    // uppercases and trims, so 'n/a' is already 'N/A' by the time it lands.
+    $or: [
+      { vin: { $exists: false } },
+      { vin: null },
+      { vin: '' },
+      { vin: 'N/A' }
+    ]
+  })
+    .populate('customer', 'name phone email')
+    .sort({ updatedAt: -1 })
+    .limit(10)
+    // createdAt included deliberately: when several candidates are identical
+    // cars, when each was added is often what tells them apart.
+    .select('year make model vin licensePlate licensePlateState currentMileage customer createdAt');
+
+  res.status(200).json({
+    status: 'success',
+    results: vehicles.length,
+    data: { vehicles }
+  });
+});

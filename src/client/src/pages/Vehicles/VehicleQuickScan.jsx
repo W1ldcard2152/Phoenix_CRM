@@ -15,7 +15,7 @@ import vehicleCheckInService from '../../services/vehicleCheckInService';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 import moment from 'moment';
-import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
+import { formatDate, formatDateForInput, getTodayForInput } from '../../utils/formatters';
 import { useCapabilities } from '../../contexts/CompanyContext';
 import { defaultCommunicationPreference } from '../../utils/communicationChannels';
 
@@ -52,7 +52,7 @@ const VehicleQuickScan = () => {
   const [searchParams] = useSearchParams();
   const checkInId = searchParams.get('checkIn');
 
-  // capture → (looking) → confirmVin? → update | create → done
+  // capture → (looking) → confirmVin? → merge? → update | create → done
   const [phase, setPhase] = useState(checkInId ? 'looking' : 'capture');
   const [checkIn, setCheckIn] = useState(null);     // technician check-in being resolved
   const [error, setError] = useState(null);
@@ -70,7 +70,12 @@ const VehicleQuickScan = () => {
 
   // Update mode
   const [vehicle, setVehicle] = useState(null);     // vehicle on file
-  const [matchedBy, setMatchedBy] = useState(null); // 'vin' | 'plate'
+  const [matchedBy, setMatchedBy] = useState(null); // 'vin' | 'plate' | 'vinless'
+
+  // Merge prompt: same year/make/model on file, no VIN on it yet
+  const [mergeCandidates, setMergeCandidates] = useState([]);
+  const [pendingNew, setPendingNew] = useState(null); // { vin, data } if declined
+  const [mergeVin, setMergeVin] = useState('');       // VIN to stamp on the merged vehicle
 
   // Both modes
   const [owner, setOwner] = useState(null);         // customer, or { isNew, name, phone }
@@ -100,6 +105,9 @@ const VehicleQuickScan = () => {
     setVinMatches({});
     setVehicle(null);
     setMatchedBy(null);
+    setMergeCandidates([]);
+    setPendingNew(null);
+    setMergeVin('');
     setOwner(null);
     setPickingOwner(false);
     setMileage('');
@@ -117,9 +125,14 @@ const VehicleQuickScan = () => {
   };
 
   // ── Finding the vehicle ──────────────────────────────────────────────────
-  const openExisting = async (vehicleId, data, how) => {
+  // `stampVin` applies to the 'vinless' match only: the VIN this scan resolved,
+  // which the vehicle on file is missing and this merge exists to fill in.
+  const openExisting = async (vehicleId, data, how, stampVin = '') => {
     const response = await VehicleService.getVehicle(vehicleId);
     const onFile = response.data.vehicle;
+    setMergeCandidates([]);
+    setPendingNew(null);
+    setMergeVin(how === 'vinless' ? stampVin : '');
     setVehicle(onFile);
     setOwner(onFile.customer || null);
     setMatchedBy(how);
@@ -131,6 +144,9 @@ const VehicleQuickScan = () => {
 
   const openNew = (chosenVin, data) => {
     setVehicle(null);
+    setMergeCandidates([]);
+    setPendingNew(null);
+    setMergeVin('');
     setVin(chosenVin || '');
     setOwner(null);
     setPickingOwner(true);
@@ -147,6 +163,32 @@ const VehicleQuickScan = () => {
     setPhase('create');
   };
 
+  /**
+   * No VIN match, but the car may already be in a garage without its VIN —
+   * added when it was booked, before anyone had the VIN to hand. Offer those
+   * to fill in rather than silently adding a second copy of the same car.
+   *
+   * Only VIN-less rows are candidates: two of the same model with VINs on each
+   * are two cars, and the server enforces that. Needs all of year/make/model,
+   * which for a verified VIN come from the NHTSA decode.
+   */
+  const offerMerge = async (chosenVin, data) => {
+    const { year, make, model } = data.fields;
+    if (!year || !make || !model) return false;
+    const candidates = await VehicleService.findVinlessMatches({ year, make, model });
+    if (candidates.length === 0) return false;
+    setMergeCandidates(candidates);
+    setPendingNew({ vin: chosenVin, data });
+    setPhase('merge');
+    return true;
+  };
+
+  // Everything that would add a vehicle goes through here, so the merge offer
+  // can't be skipped by arriving at "new" down a different path.
+  const goCreate = async (chosenVin, data) => {
+    if (!(await offerMerge(chosenVin, data))) openNew(chosenVin, data);
+  };
+
   const lookup = async (chosenVin, data) => {
     setPhase('looking');
     setError(null);
@@ -155,7 +197,7 @@ const VehicleQuickScan = () => {
       if (found.data.exists) {
         await openExisting(found.data.vehicle._id, data, 'vin');
       } else {
-        openNew(chosenVin, data);
+        await goCreate(chosenVin, data);
       }
     } catch (err) {
       setError('Could not look up the VIN. Check your connection and try again.');
@@ -326,6 +368,15 @@ const VehicleQuickScan = () => {
     const body = { ...fields };
     if (ownerChanged) body.customer = finalOwner._id;
 
+    // Filling in a VIN-less vehicle. The VIN is set explicitly rather than
+    // collected, because UPDATE_OWN_FIELDS skips it: on every other update path
+    // the vehicle was found BY its VIN, so there is nothing to write.
+    const changed = Object.keys(fields);
+    if (mergeVin && !vehicle.vin) {
+      body.vin = mergeVin;
+      changed.push('vin');
+    }
+
     let latest = vehicle;
     if (Object.keys(body).length > 0) {
       latest = (await VehicleService.updateVehicle(vehicle._id, body)).data.vehicle;
@@ -340,7 +391,7 @@ const VehicleQuickScan = () => {
       owner: finalOwner,
       created: false,
       ownerChanged,
-      changes: Object.keys(fields),
+      changes: changed,
       readings
     });
     return latest;
@@ -502,10 +553,105 @@ const VehicleQuickScan = () => {
       onType={setVinTyped}
       error={error}
       onContinue={confirmVin}
-      onSkip={() => openNew('', scan)}
+      onSkip={() => { setPhase('looking'); goCreate('', scan); }}
       skipLabel="Add without a VIN"
       onStartOver={startOver}
     />
+  );
+
+  // Same year/make/model already in a garage without a VIN. Almost always the
+  // car being scanned, but "almost always" is why this asks instead of merging.
+  const scannedPlate = normalizePlate(pendingNew?.data?.fields?.licensePlate || '');
+  const plateMatches = (c) => !!scannedPlate && normalizePlate(c.licensePlate || '') === scannedPlate;
+  const sortedCandidates = [...mergeCandidates].sort(
+    (a, b) => Number(plateMatches(b)) - Number(plateMatches(a))
+  );
+
+  const renderMerge = () => (
+    <Card>
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-yellow-700 font-medium">
+            <i className="fas fa-code-branch mr-1"></i>Already on file without a VIN
+          </p>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {[pendingNew?.data?.fields?.year, pendingNew?.data?.fields?.make, pendingNew?.data?.fields?.model].filter(Boolean).join(' ')}
+          </h2>
+          <p className="text-xs text-gray-500 font-mono">{pendingNew?.vin || 'No VIN'}</p>
+        </div>
+
+        <p className="text-sm text-gray-700">
+          {mergeCandidates.length === 1
+            ? 'This vehicle is already in a customer’s garage with no VIN on it. Is it the same one?'
+            : `${mergeCandidates.length} customers have one of these on file with no VIN. Whose is this?`}
+        </p>
+
+        {/* Every candidate is the same year/make/model as the car being scanned —
+            that is why it matched — so the owner is the only thing that tells
+            them apart, and it leads each row.
+
+            A candidate whose plate matches the scanned one is almost certainly
+            the right vehicle: the plate-match lookup only runs when the scan
+            found no VIN at all, so it never got a chance to catch this. Those
+            are flagged and sorted first, but still only offered, never assumed. */}
+        <div className="space-y-2">
+          {sortedCandidates.map(c => (
+            <div
+              key={c._id}
+              className={`border rounded-lg p-3 flex items-center justify-between gap-3 ${
+                plateMatches(c) ? 'border-green-300 bg-green-50' : 'border-gray-200'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {c.customer?.name || <span className="text-gray-500 italic">No owner on file</span>}
+                  {plateMatches(c) && (
+                    <span className="ml-2 text-xs font-normal px-1.5 py-0.5 rounded bg-green-100 text-green-800">
+                      plate matches
+                    </span>
+                  )}
+                </p>
+                {c.customer?.phone && <p className="text-xs text-gray-500">{c.customer.phone}</p>}
+                <p className="text-xs text-gray-500">
+                  {[
+                    c.licensePlate ? `${c.licensePlate}${c.licensePlateState ? ` (${c.licensePlateState})` : ''}` : 'No plate',
+                    c.currentMileage ? `${Number(c.currentMileage).toLocaleString()} mi` : null,
+                    c.createdAt ? `added ${formatDate(c.createdAt)}` : null
+                  ].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                disabled={saving}
+                onClick={() => {
+                  setError(null);
+                  openExisting(c._id, pendingNew.data, 'vinless', pendingNew.vin)
+                    .catch(() => setError('Could not open that vehicle. Try again.'));
+                }}
+              >
+                This one
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {errorBox}
+
+        <div className="flex flex-wrap justify-between gap-2 pt-1">
+          <Button type="button" variant="light" onClick={startOver} disabled={saving}>Start over</Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving}
+            onClick={() => openNew(pendingNew.vin, pendingNew.data)}
+          >
+            None of these — add as new
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 
   const renderUpdate = () => (
@@ -513,10 +659,14 @@ const VehicleQuickScan = () => {
       <div className="space-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-green-700 font-medium">
-            <i className="fas fa-check-circle mr-1"></i>On file{matchedBy === 'plate' ? ' — matched by license plate' : ''}
+            <i className="fas fa-check-circle mr-1"></i>On file{matchedBy === 'plate' ? ' — matched by license plate' : ''}{matchedBy === 'vinless' ? ' — adding the VIN to it' : ''}
           </p>
           <h2 className="text-lg font-semibold text-gray-900">{vehicleName(vehicle)}</h2>
-          <p className="text-xs text-gray-500 font-mono">{vehicle.vin || 'No VIN on file'}</p>
+          <p className="text-xs text-gray-500 font-mono">
+            {vehicle.vin || (mergeVin
+              ? <span className="text-green-700">{mergeVin} <span className="font-sans">— will be added</span></span>
+              : 'No VIN on file')}
+          </p>
         </div>
         {renderOwner('Owner')}
         <div className="border-t border-gray-100 pt-3">
@@ -690,6 +840,7 @@ const VehicleQuickScan = () => {
       )}
 
       {phase === 'confirmVin' && scan && renderConfirmVin()}
+      {phase === 'merge' && pendingNew && renderMerge()}
       {phase === 'update' && vehicle && review.ready && renderUpdate()}
       {phase === 'create' && review.ready && renderCreate()}
       {phase === 'done' && saved && renderDone()}
