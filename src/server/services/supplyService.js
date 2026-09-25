@@ -258,12 +258,36 @@ const resolveLocationPrefixes = async (prefixes) => {
   return rows.map((r) => r._id);
 };
 
+/**
+ * "Needs restocking" as a query fragment.
+ *
+ * At OR below the reorder point, not strictly below: a reorder point is the
+ * level you buy AT, so an item sitting exactly on it is already on the list.
+ * Needs $expr because the threshold is a sibling field, not a constant.
+ *
+ * An item with reorderPoint 0 only qualifies once it hits zero, which is the
+ * honest reading of "don't track this one until it runs out".
+ */
+const LOW_STOCK_EXPR = { $lte: ['$quantityOnHand', '$reorderPoint'] };
+const OUT_OF_STOCK_EXPR = { $lte: ['$quantityOnHand', 0] };
+
+const stockExpr = (stock) => {
+  if (stock === 'low') return LOW_STOCK_EXPR;
+  if (stock === 'out') return OUT_OF_STOCK_EXPR;
+  return null;
+};
+
 const listSupplies = async (query = {}) => {
   const {
     tag, untagged, brand, vendor, form, location, locationPrefix,
-    search, active, attr
+    search, active, attr, stock
   } = query;
   const filter = { isActive: active === 'false' ? false : true };
+
+  // Stock level composes with every other filter, so "what am I low on from
+  // this vendor" is one question rather than two lists to cross-reference.
+  const stockFilter = stockExpr(stock);
+  if (stockFilter) filter.$expr = stockFilter;
 
   // attr[viscosity]=5W-30 â€” keys whitelisted against the registry so a crafted
   // key can't address an arbitrary document path.
@@ -630,19 +654,27 @@ const bulkUpdate = async ({ ids, set = {} }) => {
   return { matched: result.matchedCount, modified: result.modifiedCount };
 };
 
-const getShoppingList = async () => {
-  const rows = await ShopSupply.find({
-    isActive: true,
-    $expr: { $lte: ['$quantityOnHand', '$reorderPoint'] }
-  }).lean();
-
-  const ctx = await namingContext();
-  return rows
-    .map((r) => decorate(r, ctx))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
-};
+/**
+ * Everything at or below its reorder point — the same set the list page shows
+ * under its "Low or out of stock" filter, deliberately through the same query
+ * so the two can never disagree about what "low" means.
+ */
+const getShoppingList = async () => listSupplies({ stock: 'low' });
 
 const countUntagged = async () => ShopSupply.countDocuments({ isActive: true, tags: { $size: 0 } });
+
+/**
+ * How many items need restocking, ignoring whatever filters the list is under.
+ * Rides along on the list response so the page can offer the filter with a live
+ * count on it rather than making the user try it to find out.
+ */
+const countLowStock = async () => {
+  const [low, out] = await Promise.all([
+    ShopSupply.countDocuments({ isActive: true, $expr: LOW_STOCK_EXPR }),
+    ShopSupply.countDocuments({ isActive: true, $expr: OUT_OF_STOCK_EXPR })
+  ]);
+  return { low, out };
+};
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Tax rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1055,6 +1087,7 @@ module.exports = {
   bulkUpdate,
   getShoppingList,
   countUntagged,
+  countLowStock,
   listFields,
   listTaxRules,
   setTaxRule,

@@ -55,6 +55,7 @@ import SupplyList from './pages/Supplies/SupplyList';
 import CountList from './pages/Supplies/CountList';
 import CountSheet from './pages/Supplies/CountSheet';
 import ReceiveStock from './pages/Supplies/ReceiveStock';
+import OrderStock from './pages/Supplies/OrderStock';
 import ServicePackageList from './pages/ServicePackages/ServicePackageList';
 
 // Technician Portal Pages
@@ -185,6 +186,10 @@ const App = () => {
                       {/* Receiving a delivery onto the shelves. Office staff, to
                           match the /adjust route it writes through. */}
                       <Route path="/supplies/receive" element={<ReceiveStock />} />
+                      {/* What needs buying. Read-only, and it shows nothing the
+                          supplies list and detail modal don't already, so it is
+                          open to every role like the counts are. */}
+                      <Route path="/supplies/order" element={<OrderStock />} />
                       {/* Retired Shop Inventory. Unlinked from the nav and no
                           longer written to, but still routed: work order lines
                           created before the switch reference these records. */}

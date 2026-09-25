@@ -5,6 +5,7 @@ import SupplyService from '../../services/supplyService';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { indexTags, tagPath, idOf } from './tagTree';
 import { unitWord } from './units';
+import { isLow } from './restock';
 
 /**
  * Read-only detail card for a supply.
@@ -93,7 +94,7 @@ const SupplyDetailModal = ({ isOpen, onClose, supplyId, tags = [], vocab = [], f
   const purchaseWord = (n = 1) => (upp > 1
     ? unitWord(vocab, supply?.purchaseUnit, 'purchase', n)
     : stockWord(n));
-  const lowStock = supply && supply.quantityOnHand <= supply.reorderPoint;
+  const lowStock = !!supply && isLow(supply);
   const photoUrl = supply ? SupplyService.photoUrl(supply) : null;
 
   return (

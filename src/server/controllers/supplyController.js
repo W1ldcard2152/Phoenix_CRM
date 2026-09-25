@@ -50,15 +50,24 @@ const run = (handler) => catchAsync(async (req, res, next) => {
 // ───────────────────────────────── Supplies ─────────────────────────────────
 
 exports.getAllSupplies = run(async (req, res) => {
-  const [supplies, untaggedCount] = await Promise.all([
+  // Both counts are deliberately unfiltered: they label the shortcuts that TURN
+  // a filter on, so they have to keep reporting the whole shop's figure while
+  // the list itself is narrowed.
+  const [supplies, untaggedCount, stockCounts] = await Promise.all([
     supplyService.listSupplies(req.query),
-    supplyService.countUntagged()
+    supplyService.countUntagged(),
+    supplyService.countLowStock()
   ]);
 
   res.status(200).json({
     status: 'success',
     results: supplies.length,
-    data: { supplies, untaggedCount }
+    data: {
+      supplies,
+      untaggedCount,
+      lowStockCount: stockCounts.low,
+      outOfStockCount: stockCounts.out
+    }
   });
 });
 

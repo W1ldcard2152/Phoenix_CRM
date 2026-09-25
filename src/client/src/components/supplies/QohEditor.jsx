@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import SupplyService from '../../services/supplyService';
 import { unitWord, meaningfulUnit } from './units';
+import { isLow } from './restock';
 
 /**
  * Edit a supply's quantity on hand in place.
@@ -28,7 +29,7 @@ const QohEditor = ({ supply, vocab = [], onSaved, disabled = false, className = 
   const committed = useRef(false);
 
   const qoh = supply?.quantityOnHand ?? 0;
-  const lowStock = qoh <= (supply?.reorderPoint ?? 0);
+  const lowStock = isLow(supply);
   const unit = meaningfulUnit(unitWord(vocab, supply?.stockUnit, 'stock', qoh));
 
   useEffect(() => {

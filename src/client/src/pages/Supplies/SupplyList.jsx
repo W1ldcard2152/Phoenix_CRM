@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import ButtonMenu from '../../components/common/ButtonMenu';
 import Modal from '../../components/common/Modal';
 import SearchableDropdown from '../../components/common/SearchableDropdown';
 import ResponsiveTable, { MobileCard, MobileContainer } from '../../components/common/ResponsiveTable';
@@ -15,6 +16,7 @@ import SettingsService from '../../services/settingsService';
 import { resolveFields } from '../../components/supplies/SupplyAttributes';
 import { indexTags, buildTree, tagPath, idOf, treeLabel } from '../../components/supplies/tagTree';
 import { locationOptions, locationParams } from '../../components/supplies/locationTree';
+import { isLow, isOut } from '../../components/supplies/restock';
 import { useAuth } from '../../contexts/AuthContext';
 
 /**
@@ -37,6 +39,10 @@ const SupplyList = () => {
   const [vocab, setVocab] = useState([]);
   const [fields, setFields] = useState([]);
   const [untaggedCount, setUntaggedCount] = useState(0);
+  // Shop-wide restock figures, unaffected by the filters below — they label the
+  // shortcuts that turn the stock filter ON, so they have to keep reporting the
+  // whole shop while the list itself is narrowed.
+  const [stockCounts, setStockCounts] = useState({ low: 0, out: 0 });
   const [markup, setMarkup] = useState(30);
   const [taxRate, setTaxRate] = useState(0);
   const [taxRules, setTaxRules] = useState([]);
@@ -47,6 +53,9 @@ const SupplyList = () => {
   // Filters
   const [tagFilter, setTagFilter] = useState(null);
   const [untaggedOnly, setUntaggedOnly] = useState(false);
+  // null | 'low' | 'out'. 'low' means at or below the reorder point, which
+  // already includes everything that is out; 'out' narrows to the zeroes.
+  const [stockFilter, setStockFilter] = useState(null);
   const [brandFilter, setBrandFilter] = useState(null);
   const [vendorFilter, setVendorFilter] = useState(null);
   const [locationFilter, setLocationFilter] = useState(null);
@@ -66,6 +75,7 @@ const SupplyList = () => {
   const [bulkLocation, setBulkLocation] = useState(null);
   const [bulkError, setBulkError] = useState(null);
   const [lastUsed, setLastUsed] = useState({});
+  const [copied, setCopied] = useState(false);
 
   const byId = useMemo(() => indexTags(tags), [tags]);
   const tree = useMemo(() => buildTree(tags), [tags]);
@@ -154,6 +164,7 @@ const SupplyList = () => {
       const params = {};
       if (untaggedOnly) params.untagged = 'true';
       else if (tagFilter) params.tag = tagFilter;
+      if (stockFilter) params.stock = stockFilter;
       if (brandFilter) params.brand = brandFilter;
       if (vendorFilter) params.vendor = vendorFilter;
       // Either an exact shelf or a prefix covering everything under a room or
@@ -167,13 +178,18 @@ const SupplyList = () => {
       const res = await SupplyService.getAll(params);
       setSupplies(res.data.supplies);
       setUntaggedCount(res.data.untaggedCount);
+      setStockCounts({
+        low: res.data.lowStockCount || 0,
+        out: res.data.outOfStockCount || 0
+      });
       setError(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load supplies.');
     } finally {
       setLoading(false);
     }
-  }, [tagFilter, untaggedOnly, brandFilter, vendorFilter, locationFilter, search, attrFilters]);
+  }, [tagFilter, untaggedOnly, brandFilter, vendorFilter, locationFilter, search,
+    attrFilters, stockFilter]);
 
   // Measurements offered as filters are those the SELECTED TAG defines — the
   // reason "filter by viscosity" is a coherent question only once you've said
@@ -199,6 +215,7 @@ const SupplyList = () => {
   const clearFilters = () => {
     setTagFilter(null);
     setUntaggedOnly(false);
+    setStockFilter(null);
     setBrandFilter(null);
     setVendorFilter(null);
     setLocationFilter(null);
@@ -214,8 +231,11 @@ const SupplyList = () => {
     setAttrFilters({});
   };
 
-  const hasFilters = tagFilter || untaggedOnly || brandFilter || vendorFilter
+  // Split, because the restock banner needs to say whether the shortage count
+  // it is showing is the whole shop's or just this corner of it.
+  const hasNarrowingFilters = tagFilter || untaggedOnly || brandFilter || vendorFilter
     || locationFilter || search || Object.values(attrFilters).some(Boolean);
+  const hasFilters = hasNarrowingFilters || !!stockFilter;
 
   // Flat tag options, indented by depth, so a single dropdown can stand in for
   // the deferred browse sidebar without losing the shape of the tree.
@@ -234,6 +254,54 @@ const SupplyList = () => {
     walk(tree, 0);
     return out;
   }, [tree]);
+
+  /**
+   * Rows in display order.
+   *
+   * The server sorts by name, which is right for browsing. When the list is
+   * being read as a shopping list it isn't: a zero buried alphabetically among
+   * items that have merely dipped to their reorder point is the one you forget
+   * to buy. So under the stock filter, everything that is OUT floats to the top
+   * and the alphabet only breaks ties.
+   */
+  const rows = useMemo(() => {
+    if (!stockFilter) return supplies;
+    return [...supplies].sort((a, b) => (
+      (isOut(a) ? 0 : 1) - (isOut(b) ? 0 : 1)
+      || (a.displayName || a.name || '').localeCompare(b.displayName || b.name || '')
+    ));
+  }, [supplies, stockFilter]);
+
+  /**
+   * The shortage as plain text, in the order shown, for pasting into a notes
+   * app or a message to whoever is doing the run. Each line carries the vendor
+   * and the product URL, because a shopping list that makes you come back here
+   * to look things up hasn't left the building.
+   */
+  const copyShoppingList = async () => {
+    const date = new Date().toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    });
+    const lines = rows.map((s) => {
+      const bits = [s.displayName || s.name];
+      if (s.partNumber) bits.push(`#${s.partNumber}`);
+      const vendorName = vocabLabel(s.vendor);
+      if (vendorName) bits.push(vendorName);
+      bits.push(`have ${s.quantityOnHand ?? 0}, reorder at ${s.reorderPoint ?? 0}`);
+      return `- ${bits.join(' · ')}${s.url ? `\n  ${s.url}` : ''}`;
+    });
+    const text = [`Shopping list (${date})`, '', ...lines].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Clipboard access can be refused outright (insecure origin, denied
+      // permission). Saying so beats a button that silently does nothing.
+      setError('Could not copy to the clipboard.');
+    }
+  };
 
   const toggleSelect = (id) => setSelectedIds((prev) => (
     prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -309,6 +377,45 @@ const SupplyList = () => {
     );
   };
 
+  /**
+   * The product page, one click away and in a new tab.
+   *
+   * The whole point of spotting a shortage is to end up on the vendor's site,
+   * and a URL you have to open the detail modal to reach is a URL you retype.
+   * stopPropagation because the row itself opens the detail modal.
+   */
+  const renderProductLink = (supply, { label = false } = {}) => {
+    if (!supply.url) return null;
+    return (
+      <a
+        href={supply.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        title="Open product page in a new tab"
+        className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 hover:underline"
+      >
+        <i className="fas fa-external-link-alt text-[10px]"></i>
+        {label && <span className="text-xs">Product page</span>}
+      </a>
+    );
+  };
+
+  /**
+   * Why a stock figure is red. QohEditor colours it but says nothing; a bare
+   * red number reports that something is wrong without saying what the
+   * threshold was, which is the difference between "buy some" and "buy some
+   * because we keep four".
+   */
+  const renderStockNote = (supply) => {
+    if (!isLow(supply)) return null;
+    return (
+      <div className="text-[11px] text-red-600">
+        {isOut(supply) ? 'out of stock' : `reorder at ${supply.reorderPoint ?? 0}`}
+      </div>
+    );
+  };
+
   const renderTags = (supply) => {
     if (!supply.tags?.length) {
       return <span className="text-xs text-amber-600 italic">untagged</span>;
@@ -357,7 +464,7 @@ const SupplyList = () => {
             )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => navigate('/supplies/counts')}>
             <i className="fas fa-clipboard-check mr-2"></i>Cycle counts
           </Button>
@@ -366,19 +473,51 @@ const SupplyList = () => {
             <Button variant="outline" onClick={() => navigate('/supplies/receive')}>
               <i className="fas fa-dolly mr-2"></i>Receive stock
             </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <i className="fas fa-camera mr-2"></i>Import from photos
+            {/* The badge is the point: what needs buying has to be legible from
+                the toolbar, not only once you have filtered the table. */}
+            <Button variant="outline" onClick={() => navigate('/supplies/order')}>
+              <i className="fas fa-cart-shopping mr-2"></i>Order Stock
+              {stockCounts.low > 0 && (
+                <span
+                  className={`ml-2 rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                    stockCounts.out > 0
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
+                  {stockCounts.low}
+                </span>
+              )}
             </Button>
-            <Button variant="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
-              <i className="fas fa-plus mr-2"></i>Add Supply
-            </Button>
+            {/* Two ways to get an item in, one slot. Entering one by hand and
+                reading a batch off photos are the same errand, and the toolbar
+                had run out of room to say so. */}
+            <ButtonMenu
+              label={<><i className="fas fa-plus mr-2"></i>Add Supply</>}
+              items={[
+                {
+                  key: 'single',
+                  label: 'Add a single item',
+                  description: 'Fill in the form yourself',
+                  icon: 'fas fa-pen-to-square',
+                  onClick: () => { setEditing(null); setFormOpen(true); }
+                },
+                {
+                  key: 'photos',
+                  label: 'Import from photos',
+                  description: 'Read receipts or product labels',
+                  icon: 'fas fa-camera',
+                  onClick: () => setImportOpen(true)
+                }
+              ]}
+            />
           </>
         )}
         </div>
       </div>
 
       <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Search</label>
             <input
@@ -426,6 +565,20 @@ const SupplyList = () => {
               allowClear
               clearLabel="— Any location —"
             />
+          </div>
+          {/* A plain select, not SearchableDropdown: three fixed options do not
+              need a search box, and the counts have to stay visible. */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Stock level</label>
+            <select
+              value={stockFilter || ''}
+              onChange={(e) => setStockFilter(e.target.value || null)}
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">Any level</option>
+              <option value="low">Low or out ({stockCounts.low})</option>
+              <option value="out">Out of stock ({stockCounts.out})</option>
+            </select>
           </div>
         </div>
 
@@ -491,6 +644,31 @@ const SupplyList = () => {
         )}
       </Card>
 
+      {stockFilter && !loading && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-md">
+          <span className="text-sm text-red-900">
+            <i className="fas fa-cart-shopping mr-2"></i>
+            {rows.length === 0
+              ? `Nothing is ${stockFilter === 'out' ? 'out of stock' : 'below its reorder point'}`
+              : `${rows.length} item${rows.length === 1 ? '' : 's'} ${
+                stockFilter === 'out' ? 'out of stock' : 'at or below the reorder point'}`}
+            {hasNarrowingFilters && ' under the current filters'}
+          </span>
+          {rows.length > 0 && (
+            <Button size="sm" variant="outline" onClick={copyShoppingList}>
+              <i className={`fas ${copied ? 'fa-check' : 'fa-copy'} mr-2`}></i>
+              {copied ? 'Copied' : 'Copy shopping list'}
+            </Button>
+          )}
+          <button
+            onClick={() => setStockFilter(null)}
+            className="text-sm text-red-700 hover:underline"
+          >
+            Show all stock levels
+          </button>
+        </div>
+      )}
+
       {selectedIds.length > 0 && isOfficeStaff && (
         <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-primary-50 border border-primary-200 rounded-md">
           <span className="text-sm font-medium text-primary-900">
@@ -517,14 +695,16 @@ const SupplyList = () => {
 
       {loading ? (
         <Card><p className="text-center text-gray-400 py-8">Loading...</p></Card>
-      ) : supplies.length === 0 ? (
-        <Card>
-          <p className="text-center text-gray-500 py-8">
-            {hasFilters
-              ? 'No supplies match these filters.'
-              : 'No supplies yet. Add one, or run the import to bring over your existing inventory.'}
-          </p>
-        </Card>
+      ) : rows.length === 0 ? (
+        stockFilter ? null : (
+          <Card>
+            <p className="text-center text-gray-500 py-8">
+              {hasFilters
+                ? 'No supplies match these filters.'
+                : 'No supplies yet. Add one, or run the import to bring over your existing inventory.'}
+            </p>
+          </Card>
+        )
       ) : (
         <>
           <ResponsiveTable>
@@ -552,7 +732,7 @@ const SupplyList = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {supplies.map((s) => {
+              {rows.map((s) => {
                 const id = String(s._id);
                 return (
                   <tr
@@ -587,7 +767,12 @@ const SupplyList = () => {
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <div className="text-sm font-medium text-gray-900">{s.displayName || s.name}</div>
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-sm font-medium text-gray-900">
+                          {s.displayName || s.name}
+                        </span>
+                        {renderProductLink(s)}
+                      </div>
                       {renderAttributes(s)}
                     </td>
                     <td className="px-4 py-2">{renderTags(s)}</td>
@@ -608,6 +793,7 @@ const SupplyList = () => {
                         disabled={!isOfficeStaff}
                         onSaved={applySupply}
                       />
+                      {renderStockNote(s)}
                     </td>
                     <td className="px-4 py-2 text-sm text-right text-gray-700">
                       ${(s.price ?? 0).toFixed(2)}
@@ -639,7 +825,7 @@ const SupplyList = () => {
           </ResponsiveTable>
 
           <MobileContainer>
-            {supplies.map((s) => (
+            {rows.map((s) => (
               <MobileCard key={String(s._id)} onClick={() => openDetail(String(s._id))}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-3 min-w-0">
@@ -664,6 +850,7 @@ const SupplyList = () => {
                         onSaved={applySupply}
                       />
                     </div>
+                    {renderStockNote(s)}
                     <div className="text-xs text-gray-400">${(s.price ?? 0).toFixed(2)}</div>
                   </div>
                 </div>
@@ -672,6 +859,11 @@ const SupplyList = () => {
                   {vocabLabel(s.vendor) && <span>{vocabLabel(s.vendor)}</span>}
                   {vocabLabel(s.location) && <span>· {vocabLabel(s.location)}</span>}
                 </div>
+                {s.url && (
+                  <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                    {renderProductLink(s, { label: true })}
+                  </div>
+                )}
                 {isOfficeStaff && (
                   <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="light" onClick={() => { setEditing(s); setFormOpen(true); }}>
