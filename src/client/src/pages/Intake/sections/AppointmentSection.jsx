@@ -86,7 +86,7 @@ const AppointmentSection = forwardRef(({ customer, vehicle, workOrder, onSaved, 
       setHasConflicts(response.data.hasConflicts);
       setConflictMessage(
         response.data.hasConflicts
-          ? `Found ${response.data.conflicts?.length || 1} scheduling conflict(s).`
+          ? `Found ${(response.data.conflicts?.length || 0) + (response.data.scheduleBlockConflicts?.length || 0)} scheduling conflict(s).`
           : ''
       );
 

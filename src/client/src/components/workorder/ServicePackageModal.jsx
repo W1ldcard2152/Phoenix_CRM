@@ -4,13 +4,16 @@ import SupplyService from '../../services/supplyService';
 import { idOf as tagIdOf } from '../supplies/tagTree';
 import { formatCurrency } from '../../utils/formatters';
 
-const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
+// services = the work order's jobs; the package is billed under one of them.
+const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading, services = [] }) => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Step 2: picking inventory items for a selected package
   const [selectedPkg, setSelectedPkg] = useState(null);
   const [selections, setSelections] = useState({}); // { includedItemId: inventoryItemId }
+  const [jobId, setJobId] = useState(''); // '' = new job named after the package
+  const jobs = services.filter((s) => s && s._id);
   const [inventoryByTag, setInventoryByTag] = useState({}); // { tag: [items] }
   const [loadingTags, setLoadingTags] = useState({});
 
@@ -44,6 +47,11 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   const selectPackage = async (pkg) => {
     setSelectedPkg(pkg);
     setSelections({});
+    // An intake "Oil Change" job and an Oil Change package are the same job.
+    const sameName = jobs.find(
+      (s) => (s.description || '').trim().toLowerCase() === pkg.name.trim().toLowerCase()
+    );
+    setJobId(sameName ? sameName._id : '');
 
     const uniqueTags = [...new Set(
       (pkg.includedItems || []).map(i => tagIdOf(i.supplyTag)).filter(Boolean)
@@ -75,7 +83,8 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
 
     onConfirm({
       servicePackageId: selectedPkg._id,
-      selections: selectionArray
+      selections: selectionArray,
+      serviceId: jobId || null
     });
   };
 
@@ -180,6 +189,20 @@ const ServicePackageModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                   {selectedPkg.description && (
                     <p className="text-xs text-purple-600 mt-1">{selectedPkg.description}</p>
                   )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Bill under job</label>
+                  <select
+                    value={jobId}
+                    onChange={(e) => setJobId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="">New job: {selectedPkg.name}</option>
+                    {jobs.map((s) => (
+                      <option key={s._id} value={s._id}>{s.description}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <p className="text-sm text-gray-600">

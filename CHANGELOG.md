@@ -9,10 +9,17 @@ All notable changes to Phoenix CRM, most recent first. Entries are dated by push
 - **Technicians can check vehicles in from their phone.** A new Check In button in the Technician Portal scans the registration: a vehicle on file gets its details and an odometer reading updated on the spot; one that isn't on file is sent — with odometer and door jamb photos and an optional note — to the technician's service writer to match with its owner. Technicians never see customer names, phone numbers or the customer list.
 - **Tech Check-Ins on the dashboard**, beside Today's Schedule: vehicles technicians checked in that aren't on file yet, with the ones assigned to you first. Opening one loads the technician's scan and mileage so it only needs an owner.
 - **Service writer on each technician's profile** decides whose dashboard their check-ins land on; left blank, anyone in the office can pick them up.
+- **Service packages are now jobs on the work order**, so extra parts and labor (another quart of oil) can be added right alongside the package. Adding a package bills it under an existing job of the same name or a new job named after it; removing it also removes that job if nothing else was added. Printed work orders and invoices list the package as its own priced line when its job has other charges. Packages already on work orders are left as they were.
+
+### Changed
+- **Cycle counts are listed in shelf order** (Stock Room 1-A-1, 1-A-2 … 1-B-1), so a count can be walked shelf by shelf and anything left uncounted on a shelf stands out. Items with no location come last. Applies to newly started counts.
 
 ### Fixed
 - **Changing a vehicle's owner now moves it between customers properly.** Previously the vehicle kept showing up on the old owner's record and not the new one's.
 - Customer search no longer breaks on names containing "&" or other special characters.
+- **Booking an appointment during a technician's scheduled task now warns about the conflict.** Tasks were being skipped by the "already scheduled" check.
+- Parts and labor subtotals on the work order page no longer show rounding noise (2.2 + 0.6 hours showed as 2.8000000000000003).
+- **Attached PDFs display in the work order's document viewer** in Chrome and Edge. They were blank unless opened in a new tab.
 
 ## 2026-09-24
 

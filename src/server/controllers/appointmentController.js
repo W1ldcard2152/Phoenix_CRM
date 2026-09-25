@@ -566,9 +566,11 @@ exports.checkConflicts = catchAsync(async (req, res, next) => {
     );
   }
   
-  // startTime/endTime already converted to UTC by convertDates middleware
-  const start = startTime;
-  const end = endTime;
+  // Naive strings arrive as Dates from convertDates, but ISO strings with a Z
+  // pass through as strings - and comparing a Date to a string is always false,
+  // which silently dropped every task conflict below. Normalize both to Dates.
+  const start = new Date(startTime);
+  const end = new Date(endTime);
 
   if (!moment(start).isValid() || !moment(end).isValid()) {
     return next(

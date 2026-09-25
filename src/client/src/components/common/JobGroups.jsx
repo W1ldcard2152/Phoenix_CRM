@@ -3,19 +3,27 @@ import { formatCurrency } from '../../utils/formatters';
 
 // Renders job-grouped line items for quotes / work orders / invoices.
 // Each group is a "job" (a requested service, a service package, or the
-// General bucket) with its parts, labor, and a per-job total.
+// General bucket) with its packages, parts, labor, and a per-job total.
 //
 // `groups` is the normalized shape produced by the caller:
 //   {
 //     key, name, total,
+//     packages: [{ key, name, price, includedItems: [{ quantity, unit, brand, name, partNumber }] }],
 //     parts: [{ key, description, partNumber, quantity, unitPrice, lineTotal,
 //               warranty, coreCharge, coreChargeInvoiceable }],
 //     labor: [{ key, description, quantity, rate, billingType, lineTotal }],
-//     pkg:   { includedItems: [{ quantity, unit, brand, name, partNumber }], price } | null
 //   }
 //
 // All job tables share the same fixed column widths so amounts line up across
 // containers (Qty / Unit / Amount right-aligned).
+const includedItemLabel = (item) => {
+  const qty = item.quantity || 0;
+  const unit = item.unit ? ` ${item.unit}` : '';
+  const brand = item.brand ? `${item.brand} ` : '';
+  const partNum = item.partNumber ? ` (${item.partNumber})` : '';
+  return `${qty}${unit} - ${brand}${item.name}${partNum}`;
+};
+
 const JobGroups = ({ groups = [] }) => {
   if (!groups.length) return null;
 
@@ -28,9 +36,14 @@ const JobGroups = ({ groups = [] }) => {
   return (
     <div className="mb-6 space-y-8">
       {groups.map((group) => {
+        const packages = group.packages || [];
         const hasParts = group.parts && group.parts.length > 0;
         const hasLabor = group.labor && group.labor.length > 0;
-        const hasTable = hasParts || hasLabor;
+        // A lone package keeps its compact look: included items, then the total.
+        // Beside other lines it needs a priced row, or the total wouldn't add up.
+        const soloPackage = packages.length === 1 && !hasParts && !hasLabor ? packages[0] : null;
+        const hasPackageRows = packages.length > 0 && !soloPackage;
+        const hasTable = hasParts || hasLabor || hasPackageRows;
         return (
           <div key={group.key} className="border border-gray-300 rounded-md overflow-hidden shadow-sm">
             {/* Job heading */}
@@ -39,19 +52,13 @@ const JobGroups = ({ groups = [] }) => {
             </div>
 
             {/* Service package included items */}
-            {group.pkg && group.pkg.includedItems && group.pkg.includedItems.length > 0 && (
+            {soloPackage && soloPackage.includedItems.length > 0 && (
               <ul className="list-disc list-inside text-xs text-gray-600 px-3 py-2">
-                {group.pkg.includedItems.map((item, i) => {
-                  const qty = item.quantity || 0;
-                  const unit = item.unit ? ` ${item.unit}` : '';
-                  const brand = item.brand ? `${item.brand} ` : '';
-                  const partNum = item.partNumber ? ` (${item.partNumber})` : '';
-                  return <li key={i}>{qty}{unit} - {brand}{item.name}{partNum}</li>;
-                })}
+                {soloPackage.includedItems.map((item, i) => <li key={i}>{includedItemLabel(item)}</li>)}
               </ul>
             )}
 
-            {(hasParts || hasLabor) && (
+            {hasTable && (
               <table className="w-full table-fixed border-collapse text-sm">
                 <colgroup>
                   <col />
@@ -68,6 +75,25 @@ const JobGroups = ({ groups = [] }) => {
                   </tr>
                 </thead>
                 <tbody>
+                  {hasPackageRows && (
+                    <>
+                      {sectionRow('Service')}
+                      {packages.map((pkg) => (
+                        <tr key={pkg.key} className="border-t border-gray-100">
+                          <td className="px-3 py-1 align-top">
+                            {pkg.name}
+                            {pkg.includedItems.map((item, i) => (
+                              <div key={i} className="text-xs text-gray-500">{includedItemLabel(item)}</div>
+                            ))}
+                          </td>
+                          <td className="px-3 py-1 text-right text-gray-600 align-top">1</td>
+                          <td className="px-3 py-1 text-right text-gray-600 align-top">{formatCurrency(pkg.price)}</td>
+                          <td className="px-3 py-1 text-right align-top whitespace-nowrap">{formatCurrency(pkg.price)}</td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+
                   {hasParts && (
                     <>
                       {sectionRow('Parts')}

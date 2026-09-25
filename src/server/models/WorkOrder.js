@@ -242,7 +242,14 @@ const ServicePackageLineSchema = new Schema({
   name: { type: String, required: true, trim: true },
   price: { type: Number, required: true, min: 0 },
   committed: { type: Boolean, default: false },
-  includedItems: [ServicePackageItemSchema]
+  includedItems: [ServicePackageItemSchema],
+  // -> WorkOrder.services[]._id: the job this package bills under, so extra
+  // parts/labor (another quart of oil) can sit beside it. Unset on lines added
+  // before packages became jobs; those still render as a job of their own.
+  serviceId: { type: Schema.Types.ObjectId, default: null },
+  // True when adding the package created its job, so removing the package can
+  // take an otherwise-empty job with it without touching a job the writer made.
+  createdJob: { type: Boolean, default: false }
 });
 
 const DiscountAppliedToSchema = new Schema({
