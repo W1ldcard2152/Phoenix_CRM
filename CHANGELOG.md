@@ -2,6 +2,41 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-09-25
+
+### Added
+- **Scan Vehicle page** (Vehicles → Scan Vehicle, or the new "Scan vehicle" option at the top of Quick Entry). Photograph the registration and it finds the vehicle: one on file opens for an update (new plate, renewed registration or inspection, today's mileage), one that isn't becomes a new vehicle, with its owner picked from existing customers or added with just a name and phone. The owner is assumed unchanged, with a "Change owner" link for the rare sale. Mileage is asked for every time but can be skipped, and "Start work order" carries the customer and vehicle straight into Quick Entry.
+- **Technicians can check vehicles in from their phone.** A new Check In button in the Technician Portal scans the registration: a vehicle on file gets its details and an odometer reading updated on the spot; one that isn't on file is sent — with odometer and door jamb photos and an optional note — to the technician's service writer to match with its owner. Technicians never see customer names, phone numbers or the customer list.
+- **Tech Check-Ins on the dashboard**, beside Today's Schedule: vehicles technicians checked in that aren't on file yet, with the ones assigned to you first. Opening one loads the technician's scan and mileage so it only needs an owner.
+- **Service writer on each technician's profile** decides whose dashboard their check-ins land on; left blank, anyone in the office can pick them up.
+- **Service packages are now jobs on the work order**, so extra parts and labor (another quart of oil) can be added right alongside the package. Adding a package bills it under an existing job of the same name or a new job named after it; removing it also removes that job if nothing else was added. Printed work orders and invoices list the package as its own priced line when its job has other charges. Packages already on work orders are left as they were.
+
+### Changed
+- **Cycle counts are listed in shelf order** (Stock Room 1-A-1, 1-A-2 … 1-B-1), so a count can be walked shelf by shelf and anything left uncounted on a shelf stands out. Items with no location come last. Applies to newly started counts.
+
+### Fixed
+- **Changing a vehicle's owner now moves it between customers properly.** Previously the vehicle kept showing up on the old owner's record and not the new one's.
+- Customer search no longer breaks on names containing "&" or other special characters.
+- **Booking an appointment during a technician's scheduled task now warns about the conflict.** Tasks were being skipped by the "already scheduled" check.
+- Parts and labor subtotals on the work order page no longer show rounding noise (2.2 + 0.6 hours showed as 2.8000000000000003).
+- **Attached PDFs display in the work order's document viewer** in Chrome and Edge. They were blank unless opened in a new tab.
+
+## 2026-09-24
+
+### Added
+- **Scan Vehicle reads much more than the VIN.** Photograph the windshield stickers (or registration card), the odometer, and the door jamb label — each photo optional — and it fills in the VIN, year/make/model, plate and state, registration and inspection expiry dates, current mileage, build date, tire size and paint code. Everything is shown for review first, with a checkbox per value; anything doubtful starts unchecked, as does anything that would overwrite a VIN, year, make or model already on file.
+- **Inspection stickers become mileage history.** The mileage printed on a NY inspection sticker is added as a record dated the last day of the month the inspection was done (12 months before the sticker's expiry), noted as an estimate. An odometer photo adds today's reading.
+- **Vehicles now track registration and inspection expiry, build date, paint code and tire size.** They can be edited on the vehicle form, and the vehicle page flags an expiry that has passed or is due within 30 days.
+
+### Changed
+- **VIN misreads are caught.** Every scanned VIN is checked against its check digit and against the other stickers. A single misread character is offered as a suggested fix to confirm rather than filled in, stickers that disagree ask you to choose, and a VIN that decodes to a different year or make than the registration shows a warning.
+
+### Fixed
+- **Scanning a NY registration no longer puts the document number in the License Plate field.** The number in the sticker's top-left corner was being read as the plate on most scans; the plate is now read from its line in the printed block, and a document number is never accepted as a plate.
+- **Take Photo works on phones.** It opens the phone's own camera instead of grabbing an instant frame, often from the front camera or before the camera was ready.
+- Scanning a VIN on the vehicle form now warns when that VIN already belongs to another vehicle, as typing it does.
+- The intake form's new-vehicle step now has a plate state field; a scanned state was being dropped.
+
 ## 2026-09-23
 
 ### Added

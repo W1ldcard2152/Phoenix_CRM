@@ -13,7 +13,7 @@ import { VEHICLE_MAKES } from '../../utils/vehicleMakes';
 import VehicleService from '../../services/vehicleService';
 import CustomerService from '../../services/customerService';
 import vinService from '../../services/vinService';
-import RegistrationScanner from '../../components/vehicles/RegistrationScanner';
+import VehicleScanner from '../../components/vehicles/VehicleScanner';
 import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - updated with mileage history
@@ -31,6 +31,11 @@ const VehicleSchema = Yup.object().shape({
   currentMileage: Yup.number()
     .min(0, 'Mileage cannot be negative')
     .nullable(),
+  registrationExpiration: Yup.string(),
+  inspectionExpiration: Yup.string(),
+  buildDate: Yup.string(),
+  paintCode: Yup.string(),
+  tireSize: Yup.string(),
   mileageHistory: Yup.array().of(
     Yup.object().shape({
       date: Yup.date().required('Date is required'),
@@ -50,8 +55,6 @@ const VehicleForm = () => {
   const [error, setError] = useState(null);
   const [vinDecoding, setVinDecoding] = useState(false);
   const [vinError, setVinError] = useState(null);
-  const [scanError, setScanError] = useState(null);
-  const [scanSuccess, setScanSuccess] = useState(null);
   const [duplicateVinWarning, setDuplicateVinWarning] = useState(null);
   const [vinCheckTimeout, setVinCheckTimeout] = useState(null);
   
@@ -67,6 +70,11 @@ const VehicleForm = () => {
     licensePlate: '',
     licensePlateState: '',
     currentMileage: '',
+    registrationExpiration: '',
+    inspectionExpiration: '',
+    buildDate: '',
+    paintCode: '',
+    tireSize: '',
     mileageHistory: [],
     notes: ''
   });
@@ -97,6 +105,11 @@ const VehicleForm = () => {
             licensePlate: vehicleData.licensePlate || '',
             licensePlateState: vehicleData.licensePlateState || '',
             currentMileage: vehicleData.currentMileage || '',
+            registrationExpiration: formatDateForInput(vehicleData.registrationExpiration),
+            inspectionExpiration: formatDateForInput(vehicleData.inspectionExpiration),
+            buildDate: vehicleData.buildDate || '',
+            paintCode: vehicleData.paintCode || '',
+            tireSize: vehicleData.tireSize || '',
             mileageHistory: vehicleData.mileageHistory || [],
             notes: vehicleData.notes || ''
           });
@@ -223,36 +236,17 @@ const VehicleForm = () => {
     }
   };
 
-  // Registration scanner handlers
-  const handleRegistrationDataExtracted = (extractedData, setFieldValue) => {
-    setScanError(null);
-    
-    if (extractedData.vin) {
-      setFieldValue('vin', extractedData.vin);
-      
-      // Auto-decode VIN if it looks valid
-      if (extractedData.vin.length === 17) {
-        handleVinDecode(extractedData.vin, setFieldValue);
-      }
+  // Vehicle scanner: fill in the values the user accepted in the scan review.
+  const applyScan = ({ fields, mileageRecords }, values, setFieldValue) => {
+    Object.entries(fields).forEach(([field, value]) => setFieldValue(field, value));
+    // Setting the VIN programmatically skips the input's own duplicate check.
+    if (fields.vin && fields.vin !== values.vin) {
+      setVinError(null);
+      checkVinDuplicate(fields.vin);
     }
-    
-    if (extractedData.licensePlate) {
-      setFieldValue('licensePlate', extractedData.licensePlate);
+    if (mileageRecords.length > 0) {
+      setFieldValue('mileageHistory', [...values.mileageHistory, ...mileageRecords]);
     }
-    
-    if (extractedData.licensePlateState) {
-      setFieldValue('licensePlateState', extractedData.licensePlateState);
-    }
-    
-    setScanSuccess('Registration scanned successfully! Vehicle information has been auto-filled.');
-    
-    // Clear success message after 5 seconds
-    setTimeout(() => setScanSuccess(null), 5000);
-  };
-
-  const handleRegistrationScanError = (errorMessage) => {
-    setScanError(errorMessage);
-    setScanSuccess(null);
   };
 
   if (loading) {
@@ -357,23 +351,11 @@ const VehicleForm = () => {
                   />
                 </div>
 
-                {/* Registration Scanner */}
+                {/* Vehicle Scanner */}
                 <div className="md:col-span-2">
-                  {scanError && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                      {scanError}
-                    </div>
-                  )}
-                  
-                  {scanSuccess && (
-                    <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-                      {scanSuccess}
-                    </div>
-                  )}
-                  
-                  <RegistrationScanner
-                    onDataExtracted={(data) => handleRegistrationDataExtracted(data, setFieldValue)}
-                    onError={handleRegistrationScanError}
+                  <VehicleScanner
+                    currentValues={values}
+                    onApply={(scan) => applyScan(scan, values, setFieldValue)}
                   />
                 </div>
 
@@ -536,6 +518,62 @@ const VehicleForm = () => {
                     error={errors.currentMileage}
                     touched={touched.currentMileage}
                     placeholder="Enter current odometer reading"
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Registration Expires"
+                    name="registrationExpiration"
+                    type="date"
+                    value={values.registrationExpiration}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Inspection Expires"
+                    name="inspectionExpiration"
+                    type="date"
+                    value={values.inspectionExpiration}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Build Date"
+                    name="buildDate"
+                    type="month"
+                    value={values.buildDate}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={errors.buildDate}
+                    touched={touched.buildDate}
+                  />
+                </div>
+
+                <div>
+                  <Input
+                    label="Paint Code"
+                    name="paintCode"
+                    value={values.paintCode}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <Input
+                    label="Tire Size"
+                    name="tireSize"
+                    value={values.tireSize}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    placeholder="e.g., 245/40R18, or F: 245/40R18 / R: 275/35R18"
                   />
                 </div>
                 

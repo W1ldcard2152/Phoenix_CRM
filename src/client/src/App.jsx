@@ -19,6 +19,7 @@ import CustomerForm from './pages/Customers/CustomerForm';
 import VehicleList from './pages/Vehicles/VehicleList';
 import VehicleDetail from './pages/Vehicles/VehicleDetail';
 import VehicleForm from './pages/Vehicles/VehicleForm';
+import VehicleQuickScan from './pages/Vehicles/VehicleQuickScan';
 import WorkOrderList from './pages/WorkOrders/WorkOrderList';
 import QuoteList from './pages/Quotes/QuoteList';
 import DocumentDetail from './pages/Documents/DocumentDetail';
@@ -62,6 +63,7 @@ import ServicePackageList from './pages/ServicePackages/ServicePackageList';
 import TechnicianPortal from './pages/TechnicianPortal/TechnicianPortal';
 import TechnicianChecklist from './pages/TechnicianPortal/TechnicianChecklist';
 import TechnicianWorkOrderDetail from './pages/TechnicianPortal/TechnicianWorkOrderDetail';
+import TechnicianVehicleScan from './pages/TechnicianPortal/TechnicianVehicleScan';
 
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -133,6 +135,7 @@ const App = () => {
                       {/* Vehicle Routes (office staff) */}
                       <Route path="/vehicles" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleList /></RoleRoute>} />
                       <Route path="/vehicles/new" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleForm /></RoleRoute>} />
+                      <Route path="/vehicles/scan" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleQuickScan /></RoleRoute>} />
                       <Route path="/vehicles/:id" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleDetail /></RoleRoute>} />
                       <Route path="/vehicles/:id/edit" element={<RoleRoute roles={['admin', 'management', 'service-writer']}><VehicleForm /></RoleRoute>} />
                       
@@ -200,6 +203,7 @@ const App = () => {
                       <Route path="/technician-portal" element={<TechnicianPortal />} />
                       <Route path="/technician-portal/checklist/:id" element={<TechnicianChecklist />} />
                       <Route path="/technician-portal/work-orders/:id" element={<TechnicianWorkOrderDetail />} />
+                      <Route path="/technician-portal/scan" element={<TechnicianVehicleScan />} />
 
                       {/* Settings Routes */}
                       <Route path="/settings" element={<SettingsPage />} />

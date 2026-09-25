@@ -187,41 +187,45 @@ exports.createInvoice = catchAsync(async (req, res, next) => {
   const validServices = serviceList.filter(s => s && s._id);
   const firstServiceId = validServices.length > 0 ? validServices[0]._id.toString() : null;
 
-  // Emit items in job order: each service (with its parts then labor),
-  // then each service package as its own job. The FIRST service absorbs all
-  // unassigned lines ("unassigned → Job 1"); only a service-less work order
-  // leaves unassigned lines in a "General" group (jobName '').
+  const mapPackage = pkg => ({
+    type: 'Service',
+    jobName: pkg.name,
+    description: pkg.name,
+    quantity: 1,
+    unitPrice: pkg.price,
+    total: pkg.price,
+    taxable: true,
+    billingType: 'fixed',
+    includedItems: (pkg.includedItems || []).map(item => ({
+      name: item.name,
+      partNumber: item.partNumber || '',
+      brand: item.brand || '',
+      quantity: item.quantity,
+      unit: item.unit || ''
+    }))
+  });
+
+  // Emit items in job order: each service (its packages, then parts, then
+  // labor), then any package with no job of its own. The FIRST service absorbs
+  // all unassigned parts/labor ("unassigned → Job 1"); only a service-less work
+  // order leaves them in a "General" group (jobName ''). An unassigned package
+  // predates packages-as-jobs and stays its own job, named after itself.
   const items = [];
+  const packageList = servicePackages || [];
 
   validServices.forEach((service, idx) => {
     const sid = service._id.toString();
     const belongs = line => matchesService(line, sid) || (idx === 0 && isUnassigned(line));
+    const servicePkgs = packageList.filter(pkg => matchesService(pkg, sid));
     const serviceParts = parts.filter(belongs);
     const serviceLabor = labor.filter(belongs);
-    if (serviceParts.length === 0 && serviceLabor.length === 0) return; // skip empty jobs
+    if (servicePkgs.length === 0 && serviceParts.length === 0 && serviceLabor.length === 0) return; // skip empty jobs
+    servicePkgs.forEach(pkg => items.push({ ...mapPackage(pkg), jobName: service.description }));
     serviceParts.forEach(p => items.push({ ...mapPart(p), jobName: service.description }));
     serviceLabor.forEach(l => items.push({ ...mapLabor(l), jobName: service.description }));
   });
 
-  (servicePackages || []).forEach(pkg => {
-    items.push({
-      type: 'Service',
-      jobName: pkg.name,
-      description: pkg.name,
-      quantity: 1,
-      unitPrice: pkg.price,
-      total: pkg.price,
-      taxable: true,
-      billingType: 'fixed',
-      includedItems: (pkg.includedItems || []).map(item => ({
-        name: item.name,
-        partNumber: item.partNumber || '',
-        brand: item.brand || '',
-        quantity: item.quantity,
-        unit: item.unit || ''
-      }))
-    });
-  });
+  packageList.filter(isUnassigned).forEach(pkg => items.push(mapPackage(pkg)));
 
   // No services at all → unassigned lines fall into the General bucket.
   if (!firstServiceId) {

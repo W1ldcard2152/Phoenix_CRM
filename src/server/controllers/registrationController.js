@@ -1,236 +1,80 @@
 const multer = require('multer');
+const moment = require('moment-timezone');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
-const { getModel } = require('../services/aiService');
+const { makeFileFilter } = require('../utils/uploadFilters');
+const { TIMEZONE } = require('../config/timezone');
+const { extractVehicleScan } = require('../services/aiService');
+const { decodeVin } = require('../services/vinDecodeService');
+const { resolveVin, interpretScan } = require('../utils/vehicleScanInterpreter');
 
-// Configure multer for file uploads
-const storage = multer.memoryStorage();
+// Photo slots, in the order the model sees them.
+const SLOTS = ['registration', 'odometer', 'doorJamb'];
+
+// Formats Gemini accepts. HEIC/HEIF matter: an iPhone upload can arrive as either.
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
 const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    // Accept only image files
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new AppError('Only image files are allowed', 400), false);
-    }
-  },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: SLOTS.length },
+  fileFilter: makeFileFilter(ALLOWED_MIME_TYPES, 'JPEG, PNG, WebP or HEIC photos')
+}).fields(SLOTS.map(name => ({ name, maxCount: 1 })));
+
+// Multer's own errors (too large, unknown field) carry no status code — report them as 400s.
+exports.scanUpload = (req, res, next) => upload(req, res, (err) => {
+  if (err instanceof multer.MulterError) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Each photo must be under 10MB' : `Upload error: ${err.message}`;
+    return next(new AppError(message, 400));
+  }
+  next(err);
 });
 
-if (!process.env.GEMINI_API_KEY) {
-  console.warn('⚠️  GEMINI_API_KEY not found in environment variables. Registration scanning will not work.');
-}
-
 /**
- * Call Gemini Vision API to analyze registration image
+ * POST /api/registration/scan
+ * Reads up to three vehicle photos (registration/stickers, odometer, door jamb)
+ * and returns values for the vehicle form plus warnings for a person to review.
+ * Nothing is saved here — the form applies what the user accepts.
  */
-const analyzeRegistrationWithGemini = async (imageBuffer) => {
+exports.scanVehicle = catchAsync(async (req, res, next) => {
   if (!process.env.GEMINI_API_KEY) {
-    throw new AppError('Gemini API key not configured', 500);
+    return next(new AppError('AI scanning is not configured on this server', 503));
   }
 
-  try {
-    const base64Image = imageBuffer.toString('base64');
-    const model = getModel();
-
-    const prompt = `Please analyze this vehicle registration document and extract the following information in JSON format:
-
-{
-  "vin": "Vehicle Identification Number (17 characters if found)",
-  "licensePlate": "License plate number",
-  "licensePlateState": "State of registration (e.g., 'NY', 'CA', 'TX')",
-  "confidence": "Your confidence level (0.0 to 1.0) in the accuracy of the extracted information"
-}
-
-Important instructions:
-- If you cannot find a field, omit it from the response or set it to null
-- VIN should be exactly 17 characters if found - be very careful with VIN recognition
-- License plate should be the actual plate number without state prefix
-- License plate state should be the 2-letter state abbreviation (e.g., 'NY', 'CA', 'TX')
-- Confidence should reflect how clearly you can read the information
-- Focus only on these essential fields - ignore make, model, year as they will be obtained from VIN decoding`;
-
-    const result = await model.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [
-          { text: prompt },
-          { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
-        ]
-      }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 2000
-      }
+  const images = SLOTS
+    .filter(slot => req.files?.[slot]?.[0])
+    .map(slot => {
+      const file = req.files[slot][0];
+      return { slot, buffer: file.buffer, mimeType: file.mimetype };
     });
 
-    const response = result.response;
-    const content = response.text();
-    console.log('Gemini registration response:', content);
-
-    if (!content || content.trim() === '') {
-      const finishReason = response.candidates?.[0]?.finishReason;
-      console.error('Gemini returned empty response. Finish reason:', finishReason);
-      throw new AppError('AI returned an empty response. Please try a clearer image.', 422);
-    }
-
-    return JSON.parse(content);
-
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-
-    console.error('Gemini API call failed:', error);
-
-    if (error.status === 429) {
-      throw new AppError('Rate limit exceeded. Please try again later.', 429);
-    }
-
-    throw new AppError('Failed to analyze registration image', 500);
-  }
-};
-
-/**
- * Validate and clean extracted data
- */
-const validateExtractedData = (data) => {
-  if (!data || typeof data !== 'object') {
-    return { isValid: false, error: 'No data extracted from image' };
+  if (images.length === 0) {
+    return next(new AppError('Add at least one photo to scan', 400));
   }
 
-  const cleaned = {};
+  const raw = await extractVehicleScan(images);
 
-  // Validate VIN
-  if (data.vin) {
-    const vinStr = data.vin.toString().toUpperCase().trim();
-    const vinRegex = /^[A-HJ-NPR-Z0-9]{17}$/;
+  if (!['registration', 'inspection', 'odometer', 'doorJamb'].some(key => raw[key]?.found)) {
+    return next(new AppError("Couldn't find a registration, inspection sticker, odometer or door jamb label in the photos. Try a closer, sharper photo.", 422));
+  }
 
-    if (vinRegex.test(vinStr)) {
-      cleaned.vin = vinStr;
-    } else if (vinStr.length === 17) {
-      // Include potentially invalid VINs but flag them
-      cleaned.vin = vinStr;
-      cleaned.vinWarning = 'VIN format may be incorrect';
+  const vin = resolveVin(raw);
+
+  // NHTSA is a cross-check and a source of the model name, not a requirement:
+  // if it's down, the scan still returns what the photos show.
+  let decoded = null;
+  if (vin.value && (vin.status === 'verified' || vin.status === 'corrected')) {
+    try {
+      decoded = await decodeVin(vin.value);
+    } catch (err) {
+      console.warn('Vehicle scan: NHTSA decode failed:', err.message);
     }
   }
 
-  // Validate license plate
-  if (data.licensePlate) {
-    const plateStr = data.licensePlate.toString().toUpperCase().trim();
-    if (plateStr.length >= 2 && plateStr.length <= 10) {
-      cleaned.licensePlate = plateStr;
-    }
-  }
-
-  // Include license plate state
-  if (data.licensePlateState && data.licensePlateState.toString().trim()) {
-    const state = data.licensePlateState.toString().toUpperCase().trim();
-    if (state.length <= 2) {
-      cleaned.licensePlateState = state;
-    }
-  }
-
-  // Include confidence
-  if (data.confidence) {
-    const confidence = parseFloat(data.confidence);
-    if (confidence >= 0 && confidence <= 1) {
-      cleaned.confidence = confidence;
-    }
-  }
-
-  // Check if we have minimum required data
-  const hasRequiredData = cleaned.vin || cleaned.licensePlate;
-
-  return {
-    isValid: hasRequiredData,
-    data: cleaned,
-    error: hasRequiredData ? null : 'Could not extract VIN or license plate from image'
-  };
-};
-
-/**
- * Handle registration image scanning
- */
-const scanRegistration = catchAsync(async (req, res, next) => {
-  console.log('Registration scan request received:', {
-    hasFile: !!req.file,
-    userAgent: req.headers['user-agent'],
-    contentType: req.headers['content-type'],
-    fileInfo: req.file ? {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size
-    } : null
+  const result = interpretScan(raw, {
+    vin,
+    decoded,
+    today: moment.tz(TIMEZONE).format('YYYY-MM-DD')
   });
 
-  // Check if file was uploaded
-  if (!req.file) {
-    console.error('No file in request:', req.body);
-    return next(new AppError('No image file provided', 400));
-  }
-
-  // Validate file type
-  if (!req.file.mimetype.startsWith('image/')) {
-    console.error('Invalid file type:', req.file.mimetype);
-    return next(new AppError('Only image files are allowed', 400));
-  }
-
-  // Check file size (mobile might send very large images)
-  if (req.file.size > 10 * 1024 * 1024) {
-    console.error('File too large:', req.file.size);
-    return next(new AppError('Image file too large. Maximum size is 10MB.', 400));
-  }
-
-  try {
-    console.log('Processing image with Gemini...');
-
-    // Analyze the image with Gemini
-    const extractedData = await analyzeRegistrationWithGemini(req.file.buffer);
-
-    console.log('Gemini response:', extractedData);
-
-    // Validate and clean the extracted data
-    const validation = validateExtractedData(extractedData);
-
-    console.log('Validation result:', validation);
-
-    if (!validation.isValid) {
-      return res.status(200).json({
-        success: false,
-        error: validation.error,
-        data: null
-      });
-    }
-
-    // Return successful result
-    res.status(200).json({
-      success: true,
-      data: validation.data,
-      message: 'Registration scanned successfully'
-    });
-
-  } catch (error) {
-    console.error('Registration scanning error details:', {
-      message: error.message,
-      stack: error.stack,
-      userAgent: req.headers['user-agent'],
-      fileSize: req.file?.size,
-      fileMimetype: req.file?.mimetype
-    });
-
-    if (error instanceof AppError) {
-      return next(error);
-    }
-
-    return next(new AppError('Failed to process registration image', 500));
-  }
+  res.status(200).json({ status: 'success', data: result });
 });
-
-module.exports = {
-  upload,
-  scanRegistration
-};

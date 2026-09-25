@@ -5,6 +5,7 @@ import QuoteService from '../../services/quoteService';
 import WorkOrderService from '../../services/workOrderService';
 import followUpService from '../../services/followUpService';
 import FollowUpDetailModal from '../followups/FollowUpDetailModal';
+import PendingCheckIns from '../vehicles/scan/PendingCheckIns';
 import { formatTime, formatDate } from '../../utils/formatters';
 
 const priorityConfig = {
@@ -275,8 +276,10 @@ const WorkflowSummary = () => {
         </div>
       )}
 
-      {/* Today's Schedule - Full Width Card */}
-      <div className={`bg-white rounded-lg shadow-md border ${blueColors.border} overflow-hidden mb-4`}>
+      {/* Today's Schedule, with technician check-ins in a narrow box beside it —
+          kept on one row so the columns below don't get pushed down. */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+      <div className={`lg:col-span-3 bg-white rounded-lg shadow-md border ${blueColors.border} overflow-hidden`}>
         <div className={`px-4 py-3 ${blueColors.light} border-b ${blueColors.border}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -294,7 +297,7 @@ const WorkflowSummary = () => {
               No appointments today
             </div>
           ) : (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1">
               {todayAppointments.slice(0, 10).map((appt) => (
                 <li
                   key={appt._id}
@@ -326,6 +329,8 @@ const WorkflowSummary = () => {
             </Link>
           </div>
         )}
+      </div>
+      <PendingCheckIns />
       </div>
 
       {/* 4-Column Grid */}

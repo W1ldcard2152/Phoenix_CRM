@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import IntakeSection from './sections/IntakeSection';
 import CustomerSection from './sections/CustomerSection';
 import VehicleSection from './sections/VehicleSection';
@@ -7,18 +7,28 @@ import WorkOrderSection from './sections/WorkOrderSection';
 import AppointmentSection from './sections/AppointmentSection';
 import Button from '../../components/common/Button';
 import { formatDateTime } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Scan Vehicle (and its API) is office-only.
+const SCAN_ROLES = ['admin', 'management', 'service-writer'];
 
 const IntakePage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const canScan = SCAN_ROLES.includes(user?.role);
+
+  // Scan Vehicle hands over a customer + vehicle so a work order can start straight away.
+  const handoff = location.state?.customer && location.state?.vehicle ? location.state : null;
 
   // Saved entity state
-  const [customer, setCustomer] = useState(null);
-  const [vehicle, setVehicle] = useState(null);
+  const [customer, setCustomer] = useState(handoff?.customer || null);
+  const [vehicle, setVehicle] = useState(handoff?.vehicle || null);
   const [workOrder, setWorkOrder] = useState(null);
   const [appointment, setAppointment] = useState(null);
 
   // UI state
-  const [expandedSection, setExpandedSection] = useState('customer');
+  const [expandedSection, setExpandedSection] = useState(handoff ? 'workOrder' : 'customer');
   const [intakeMode, setIntakeMode] = useState('workOrder'); // 'workOrder' or 'quote'
   const [errors, setErrors] = useState({});
 
@@ -181,6 +191,19 @@ const IntakePage = () => {
           Done
         </Button>
       </div>
+
+      {/* Two ways in: this full entry, or Scan Vehicle for a registration photo */}
+      {canScan && <div className="grid grid-cols-2 gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="py-2 px-3 rounded-md text-sm font-medium bg-white text-primary-700 shadow-sm text-center">
+          <i className="fas fa-keyboard mr-2"></i>Full entry
+        </div>
+        <Link
+          to="/vehicles/scan"
+          className="py-2 px-3 rounded-md text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-white/60 text-center"
+        >
+          <i className="fas fa-camera mr-2"></i>Scan vehicle
+        </Link>
+      </div>}
 
       {/* Section 1: Customer */}
       <IntakeSection

@@ -1,6 +1,7 @@
 const SupplyCount = require('../models/SupplyCount');
 const SupplyCountScope = require('../models/SupplyCountScope');
 const ShopSupply = require('../models/ShopSupply');
+const SupplyVocab = require('../models/SupplyVocab');
 const supplyService = require('./supplyService');
 const {
   resolveCountEntry, resolveCountLine, summarizeCount, countProgress, isCounted
@@ -77,9 +78,35 @@ const normalizeScope = (scope = {}) => ({
   )
 });
 
+// Numeric-aware, so shelf 1-A-10 follows 1-A-9 rather than 1-A-1.
+const shelfCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+/**
+ * Order supplies the way a counter walks the shelves: by location, then name.
+ *
+ * A count is done on foot, so the sheet follows the room rather than the
+ * alphabet - everything on 1-A-1, then 1-A-2, and so on. That also makes a
+ * shelf's leftovers obvious: whatever is still sitting there after its run of
+ * lines is something the sheet didn't list. Unshelved items go last.
+ */
+const sortByLocation = async (supplies) => {
+  const vocab = await SupplyVocab.find({ fieldKey: 'location' }, '_id label value').lean();
+  const labelById = new Map(vocab.map((v) => [String(v._id), v.label || v.value]));
+  const locationOf = (s) => (s.location ? labelById.get(String(s.location)) || '' : '');
+
+  return [...supplies].sort((a, b) => {
+    const la = locationOf(a);
+    const lb = locationOf(b);
+    if (!la !== !lb) return la ? -1 : 1;
+    return shelfCollator.compare(la, lb) || a.displayName.localeCompare(b.displayName);
+  });
+};
+
 /** Preview how many items a scope covers, before committing to counting them. */
 const previewScope = async (scope) => {
-  const supplies = await supplyService.listSupplies(scopeToQuery(normalizeScope(scope)));
+  const supplies = await sortByLocation(
+    await supplyService.listSupplies(scopeToQuery(normalizeScope(scope)))
+  );
   return {
     count: supplies.length,
     supplies: supplies.map((s) => ({
@@ -100,7 +127,7 @@ const previewScope = async (scope) => {
  */
 const createCount = async (body, userId) => {
   const scope = normalizeScope(body.scope);
-  const supplies = await supplyService.listSupplies(scopeToQuery(scope));
+  const supplies = await sortByLocation(await supplyService.listSupplies(scopeToQuery(scope)));
 
   if (supplies.length === 0) {
     throw new CountError('Nothing matches that scope, so there is nothing to count.', 400, {

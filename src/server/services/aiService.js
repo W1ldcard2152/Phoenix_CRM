@@ -8,10 +8,10 @@ const MAX_REDIRECTS = 5;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Default model for high-volume / lower-stakes calls: duplicate detection,
-// registration scans, connection test.
+// connection test.
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-// Model for the accuracy-sensitive extractors: receipt parsing and offer-screenshot
-// decode. 'flash' is the middle tier — much faster/cheaper than 'pro', stronger than
+// Model for the accuracy-sensitive extractors: receipt parsing, offer-screenshot
+// decode, and vehicle scans (VIN/plate/stickers). 'flash' is the middle tier — much faster/cheaper than 'pro', stronger than
 // 'flash-lite'. Override with GEMINI_EXTRACT_MODEL (e.g. 'gemini-2.5-pro') if accuracy
 // needs the top tier. (extractFromUrl still hardcodes pro for JS-rendered pages.)
 const EXTRACT_MODEL = process.env.GEMINI_EXTRACT_MODEL || 'gemini-2.5-flash';
@@ -694,6 +694,149 @@ Return a single JSON object with exactly these keys: brand, partNumber, productT
   } catch (error) {
     console.error('Error reading supply label with Gemini:', error);
     throw new AppError(`Label read failed: ${error.message}`, 502);
+  }
+};
+
+/**
+ * Read vehicle photos — registration + inspection stickers, odometer, door-jamb
+ * label — into RAW per-document readings.
+ *
+ * The model only transcribes; it does not interpret. Deriving dates, choosing
+ * between VIN readings, check-digit correction and every plausibility check
+ * happen in utils/vehicleScanInterpreter.js, where they are testable. That is
+ * also why a VIN is transcribed as printed even when it looks invalid: the
+ * check digit can only catch a misread the model hasn't "fixed" by guessing.
+ *
+ * @param {Array<{slot: 'registration'|'odometer'|'doorJamb', buffer: Buffer, mimeType: string}>} images
+ * @returns {Promise<Object>} raw readings matching VEHICLE_SCAN_SCHEMA
+ */
+const nullableString = (description) => ({ type: SchemaType.STRING, nullable: true, description });
+const nullableInt = (description) => ({ type: SchemaType.INTEGER, nullable: true, description });
+const docSchema = (properties) => ({
+  type: SchemaType.OBJECT,
+  properties: { found: { type: SchemaType.BOOLEAN }, ...properties },
+  required: ['found', ...Object.keys(properties)]
+});
+
+const VEHICLE_SCAN_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    registration: docSchema({
+      documentType: {
+        type: SchemaType.STRING,
+        format: 'enum',
+        enum: ['windshield_sticker', 'registration_card', 'insurance_card', 'title', 'other'],
+        nullable: true
+      },
+      state: nullableString('2-letter issuing state, e.g. NY'),
+      vin: nullableString('VIN exactly as printed'),
+      plateNumber: nullableString('license plate number'),
+      documentNumber: nullableString('document / control / serial number (NOT the plate)'),
+      plateClass: nullableString('plate class code, e.g. PAS, COM'),
+      year: nullableInt('4-digit model year'),
+      make: nullableString('full manufacturer name'),
+      makeAsPrinted: nullableString('make exactly as printed, e.g. MERZ'),
+      bodyType: nullableString('body type code as printed, e.g. SUBN, 4DSD'),
+      expirationMonth: nullableInt('1-12'),
+      expirationDay: nullableInt('1-31, null if not printed'),
+      expirationYear: nullableInt('4-digit year')
+    }),
+    inspection: docSchema({
+      state: nullableString('2-letter state'),
+      vin: nullableString('VIN exactly as printed'),
+      mileage: nullableInt('odometer reading printed on the sticker'),
+      expirationMonth: nullableInt('1-12'),
+      expirationYear: nullableInt('4-digit year')
+    }),
+    odometer: docSchema({
+      reading: nullableInt('total odometer reading, whole units'),
+      unit: { type: SchemaType.STRING, format: 'enum', enum: ['mi', 'km', 'unknown'], nullable: true }
+    }),
+    doorJamb: docSchema({
+      vin: nullableString('VIN exactly as printed'),
+      manufactureMonth: nullableInt('1-12'),
+      manufactureYear: nullableInt('4-digit year'),
+      paintCode: nullableString('paint / color code'),
+      tireSizeFront: nullableString('e.g. 245/40R18'),
+      tireSizeRear: nullableString('only if different from front')
+    }),
+    notes: nullableString('anything uncertain or unreadable, in one or two sentences')
+  },
+  required: ['registration', 'inspection', 'odometer', 'doorJamb', 'notes']
+};
+
+const VEHICLE_SCAN_SLOT_LABELS = {
+  registration: 'REGISTRATION — windshield registration/inspection stickers, or a registration or insurance card',
+  odometer: 'ODOMETER — the instrument cluster',
+  doorJamb: 'DOOR JAMB — the driver door-jamb certification / tire label'
+};
+
+const VEHICLE_SCAN_PROMPT = `You are reading photos a US auto repair shop took of a customer's vehicle. Transcribe what is PRINTED. Do not infer, correct, or fill in anything that is not visible — use null (and found: false for a document that is not in any photo).
+
+Each photo is labeled with what the user meant to capture, but read EVERY photo for EVERY document: one windshield photo often shows both the registration and the inspection sticker.
+
+REGISTRATION (windshield sticker, registration card, insurance card, or title)
+- plateNumber: the license plate. On a card it is labeled PLATE, PLATE NO, TAG or similar.
+  NEW YORK windshield sticker: the printed data block has three lines —
+    line 1: VIN                         e.g. WBA8E9C58GK123456
+    line 2: YEAR MAKE BODY              e.g. 2016 BMW 4DSD
+    line 3: PLATE CLASS ...             e.g. KLM4821 PAS 2 X   → plateNumber KLM4821, plateClass PAS
+  The number printed ALONE near the top-left corner of the NY sticker, above the barcode (e.g. JR204417), is the DOCUMENT NUMBER — it is NEVER the plate. Put it in documentNumber.
+  In every state: document numbers, control numbers, title numbers, customer IDs, sticker serials and barcodes are never the plate.
+- vin: exactly as printed, character for character, even if it looks wrong. A VIN never contains I, O or Q.
+- year / make / bodyType from the printed data. make: the full manufacturer name. DMV and NCIC abbreviations must be expanded (MERZ → Mercedes-Benz, VOLK → Volkswagen, CHEV → Chevrolet, TOYT → Toyota, PORS → Porsche, LNDR → Land Rover, HOND → Honda, NISS → Nissan, SUBA → Subaru, LEXS → Lexus). Put the printed text in makeAsPrinted.
+- expiration: the registration expiry. NY sticker: the small full date (e.g. 07/14/27 → month 7, day 14, year 2027); the big number on the left is the month and the big number on the right is the year. Always use 4-digit years (27 → 2027). If only a month and year are printed, set expirationDay to null.
+- state: the issuing state (e.g. "NEW YORK" → NY).
+
+INSPECTION STICKER (e.g. NEW YORK STATE SAFETY/EMISSIONS)
+- The large "MM YY" pair (e.g. 11 26) is the month and year the inspection EXPIRES → expirationMonth 11, expirationYear 2026.
+- mileage: the "Mileage:" value printed on the sticker. vin: the VIN printed on it. Ignore the certificate number and serials.
+
+ODOMETER
+- reading: the TOTAL odometer only. NOT a trip meter (TRIP, TRIP A/B, or a reading with a decimal tenth), NOT range / distance-to-empty, NOT a service reminder ("service in 5,000 mi"), NOT the outside temperature or clock.
+- unit: mi or km as shown next to the number; unknown if not shown.
+- If you cannot tell which number is the odometer, set reading to null.
+
+DOOR JAMB LABEL
+- The certification label reads "MFD BY ... DATE: MM/YY" (or MM/YYYY): that is the manufacture month and year (4-digit year).
+- vin: exactly as printed.
+- Tire sizes from the tire and loading information placard. Staggered fitments list different front and rear sizes; set tireSizeRear only when it differs from the front.
+- paintCode: only if a code is explicitly labeled (PAINT, PNT, COLOR, LACK, FARBE, EXT). Otherwise null — do not guess from the vehicle's color.
+
+notes: mention anything partially obscured, glare, water drops, or any value you are unsure of.`;
+
+exports.extractVehicleScan = async (images) => {
+  try {
+    const model = getModel(EXTRACT_MODEL);
+
+    const parts = [{ text: VEHICLE_SCAN_PROMPT }];
+    images.forEach((image, i) => {
+      parts.push({ text: `Photo ${i + 1} — ${VEHICLE_SCAN_SLOT_LABELS[image.slot] || image.slot}:` });
+      parts.push({ inlineData: { mimeType: image.mimeType, data: image.buffer.toString('base64') } });
+    });
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts }],
+      // Thinking tokens count against maxOutputTokens on 2.5 models — keep headroom.
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: VEHICLE_SCAN_SCHEMA,
+        temperature: 0.1,
+        maxOutputTokens: 8192
+      }
+    });
+
+    const responseText = (result.response.text() || '').trim();
+    if (!responseText) {
+      console.error('Gemini vehicle scan returned empty. Finish reason:', result.response.candidates?.[0]?.finishReason);
+      throw new AppError('AI returned an empty response. Please try a clearer photo.', 422);
+    }
+    return JSON.parse(responseText);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error('Gemini vehicle scan failed:', error);
+    if (error.status === 429) throw new AppError('Rate limit exceeded. Please try again later.', 429);
+    throw new AppError('Failed to read the vehicle photos', 502);
   }
 };
 

@@ -6,7 +6,7 @@ Auto repair shop CRM for a German vehicle specialist. Manages customers, vehicle
 
 - **Frontend**: React 18 + React Router v6, Tailwind CSS + Bootstrap, Axios, Formik/Yup, jsPDF
 - **Backend**: Node.js/Express, MongoDB/Mongoose, JWT (HTTP-only cookies), Passport.js (Google OAuth)
-- **External Services**: AWS S3 (media), SendGrid (email), Twilio (SMS), Google Gemini (all AI: receipt/offer/registration image extraction, URL product extraction, duplicate detection)
+- **External Services**: AWS S3 (media), SendGrid (email), Twilio (SMS), Google Gemini (all AI: receipt/offer/vehicle-photo image extraction, URL product extraction, duplicate detection)
 
 ## Project Structure
 
@@ -62,7 +62,7 @@ src/
 - All dates stored as UTC in MongoDB, converted at boundaries
 - `convertDates` middleware (`src/server/middleware/convertDates.js`) automatically converts `req.body` date strings to UTC before controllers run — **do not manually convert dates in controllers**
 - Naive datetime strings (e.g. `"2026-03-14T10:30:00"`, no Z/offset) on any field → converted to UTC Date
-- Named date-only fields (`effectiveFrom`, `oneTimeDate` → start-of-day; `effectiveUntil` → end-of-day) → converted to UTC Date
+- Named date-only fields (`effectiveFrom`, `oneTimeDate` → start-of-day; `effectiveUntil`, `registrationExpiration`, `inspectionExpiration` → end-of-day) → converted to UTC Date
 - Frontend sends local-timezone strings; backend receives them already as UTC Date objects
 - For display: `moment.utc(date).tz(TIMEZONE)` (server: `src/server/config/timezone.js`, client: `src/client/src/utils/formatters.js`)
 - Date-only utilities available in `src/server/utils/dateUtils.js` (parseLocalDate, buildDateRangeQuery, etc.)
@@ -122,7 +122,7 @@ Required in `.env`:
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`, `AWS_REGION`
 - `SENDGRID_API_KEY`, `EMAIL_FROM`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
-- `GEMINI_API_KEY` (optional `GEMINI_MODEL`, defaults to `gemini-2.5-flash` for dup-detection/registration; optional `GEMINI_EXTRACT_MODEL` defaults to `gemini-2.5-flash` for receipt + offer-screenshot extraction; `extractFromUrl` hardcodes `gemini-2.5-pro`)
+- `GEMINI_API_KEY` (optional `GEMINI_MODEL`, defaults to `gemini-2.5-flash` for dup-detection; optional `GEMINI_EXTRACT_MODEL` defaults to `gemini-2.5-flash` for receipt, offer-screenshot and vehicle-scan extraction; `extractFromUrl` hardcodes `gemini-2.5-pro`)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` (must match the deployment's own origin)
 
 Optional, but per-deployment:

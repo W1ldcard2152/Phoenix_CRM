@@ -267,8 +267,13 @@ const TechnicianPortal = () => {
             <h1 className="text-xl font-bold text-gray-800">
               Technician Portal
             </h1>
-            <div className="text-sm text-gray-500">
-              {user?.name?.split(' ')[0] || 'Tech'}
+            <div className="flex items-center gap-3">
+              <Button to="/technician-portal/scan" variant="primary" size="sm">
+                <i className="fas fa-camera mr-1"></i>Check In
+              </Button>
+              <div className="text-sm text-gray-500">
+                {user?.name?.split(' ')[0] || 'Tech'}
+              </div>
             </div>
           </div>
 

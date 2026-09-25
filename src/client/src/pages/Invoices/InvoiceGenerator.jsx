@@ -423,6 +423,7 @@ const InvoiceGenerator = () => {
     servicePackages: (invoiceData.servicePackages || []).map(pkg => ({
       name: pkg.name,
       price: pkg.price,
+      serviceId: pkg.serviceId || null,
       committed: true,
       includedItems: pkg.includedItems || []
     })),

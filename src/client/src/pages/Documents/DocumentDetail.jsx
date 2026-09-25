@@ -1013,10 +1013,10 @@ const DocumentDetail = () => {
   };
 
   // Add service package
-  const handleAddServicePackage = async ({ servicePackageId, selections }) => {
+  const handleAddServicePackage = async ({ servicePackageId, selections, serviceId }) => {
     setServiceModalLoading(true);
     try {
-      const response = await DocumentService.addServicePackage(id, { servicePackageId, selections });
+      const response = await DocumentService.addServicePackage(id, { servicePackageId, selections, serviceId });
       setWorkOrder(response.data.workOrder);
       setServiceModalOpen(false);
       if (response.lowStockWarnings?.length > 0) {
@@ -1570,15 +1570,21 @@ const DocumentDetail = () => {
   const validServices = (workOrder.services || []).filter(s => s && s._id);
   const serviceIdSet = new Set(validServices.map(s => s._id.toString()));
   const lineIsUnassigned = (line) => !line.serviceId || !serviceIdSet.has(line.serviceId.toString());
+  // Packages carry their index because commit/remove address them by it.
+  const packagesWithIndex = (workOrder.servicePackages || []).map((pkg, packageIndex) => ({ ...pkg, packageIndex }));
+  // A package with no job predates packages-as-jobs and keeps its own container.
+  const unassignedPackages = packagesWithIndex.filter(lineIsUnassigned);
 
-  // Each service is a job container; the FIRST service also absorbs unassigned lines.
+  // Each service is a job container; the FIRST service also absorbs unassigned
+  // parts/labor (not packages — those were never part of Job 1).
   const jobs = validServices.map((svc, idx) => {
     const sid = svc._id.toString();
-    const belongs = (line) =>
-      (line.serviceId && line.serviceId.toString() === sid) || (idx === 0 && lineIsUnassigned(line));
+    const isThisJob = (line) => line.serviceId && line.serviceId.toString() === sid;
+    const belongs = (line) => isThisJob(line) || (idx === 0 && lineIsUnassigned(line));
     return {
       serviceId: sid,
       name: svc.description,
+      packages: packagesWithIndex.filter(isThisJob),
       parts: partsWithIndex.filter(belongs),
       labor: laborWithIndex.filter(belongs),
     };
@@ -1606,16 +1612,20 @@ const DocumentDetail = () => {
       0
     ),
     labor: jobLike.labor.reduce((t, l) => t + ((l.quantity || l.hours || 0) * (l.rate || 0)), 0),
+    packages: (jobLike.packages || []).reduce((t, pkg) => t + (pkg.price || 0), 0),
   });
   const jobSummaries = [
     ...(hasServices ? jobs : [{ serviceId: 'general', name: 'General', parts: generalParts, labor: generalLabor }]).map((j) => {
       const c = costOf(j);
-      return { key: j.serviceId, name: j.name, parts: c.parts, labor: c.labor, total: c.parts + c.labor, isPackage: false };
+      return {
+        key: j.serviceId, name: j.name, packages: c.packages, parts: c.parts, labor: c.labor,
+        total: c.packages + c.parts + c.labor, isPackage: false, hasPackage: (j.packages || []).length > 0,
+      };
     }),
-    ...(workOrder.servicePackages || []).map((pkg, i) => ({
-      key: `pkg-${i}`, name: pkg.name, parts: 0, labor: 0, total: pkg.price || 0, isPackage: true,
+    ...unassignedPackages.map((pkg) => ({
+      key: `pkg-${pkg.packageIndex}`, name: pkg.name, parts: 0, labor: 0, total: pkg.price || 0, isPackage: true,
     })),
-  ].filter((s) => s.isPackage || s.parts || s.labor);
+  ].filter((s) => s.isPackage || s.hasPackage || s.parts || s.labor);
 
   const openInventoryForJob = (serviceId = null) => { setActiveServiceId(serviceId); setInventoryModalOpen(true); };
   const openImportForJob = (serviceId = null) => { setActiveServiceId(serviceId); setReceiptModalOpen(true); };
@@ -1771,6 +1781,8 @@ const DocumentDetail = () => {
       return <div className="text-sm text-gray-400 py-2">No parts.</div>;
     }
     const subtotalQty = partsForJob.reduce((t, p) => t + (p.quantity || 0), 0);
+    // Rounded for display: 2.2 + 0.6 is 2.8000000000000003 in floating point.
+    const subtotalQtyLabel = Math.round(subtotalQty * 100) / 100;
     const subtotalCost = partsForJob.reduce(
       (t, p) => t + ((p.price || 0) * (p.quantity || 0)) + ((p.coreChargeInvoiceable && p.coreCharge) ? p.coreCharge : 0),
       0
@@ -1983,7 +1995,7 @@ const DocumentDetail = () => {
           <tfoot className="bg-gray-50">
             <tr>
               <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
-              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQty}</td>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQtyLabel}</td>
               {isQuote ? (
                 <>
                   <td></td>
@@ -2017,6 +2029,8 @@ const DocumentDetail = () => {
       return <div className="text-sm text-gray-400 py-2">No labor.</div>;
     }
     const subtotalQty = laborForJob.reduce((t, l) => t + (l.quantity || l.hours || 0), 0);
+    // Rounded for display: 2.2 + 0.6 is 2.8000000000000003 in floating point.
+    const subtotalQtyLabel = Math.round(subtotalQty * 100) / 100;
     const subtotalCost = laborForJob.reduce((t, l) => t + ((l.quantity || l.hours || 0) * (l.rate || 0)), 0);
     return (
       <div className="overflow-x-auto">
@@ -2053,7 +2067,7 @@ const DocumentDetail = () => {
           <tfoot className="bg-gray-50">
             <tr>
               <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
-              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQty}</td>
+              <td className="px-4 py-2 text-sm font-bold text-gray-900">{subtotalQtyLabel}</td>
               <td></td>
               <td className="px-4 py-2 text-sm font-bold text-gray-900">{formatCurrency(subtotalCost)}</td>
               <td></td>
@@ -2065,36 +2079,58 @@ const DocumentDetail = () => {
   };
 
   // One service package rendered as its own job-style container.
+  const renderPackageTitle = (pkg) => (
+    <span className="flex items-center gap-2">
+      {pkg.name}
+      {pkg.committed ? (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+          <i className="fas fa-check mr-0.5"></i>Pulled
+        </span>
+      ) : (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">Draft</span>
+      )}
+    </span>
+  );
+
+  const renderPackageActions = (pkg, pkgIndex) => (
+    <div className="flex items-center gap-2">
+      <span className="text-lg font-bold text-purple-700">{formatCurrency(pkg.price)}</span>
+      {!pkg.committed && !isInvoiced && (
+        <button onClick={() => handleCommitServicePackage(pkgIndex)}
+          className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700">
+          <i className="fas fa-arrow-down mr-1"></i>Pull from Inventory
+        </button>
+      )}
+      {!isInvoiced && (
+        <button onClick={() => handleRemoveServicePackage(pkgIndex)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+      )}
+    </div>
+  );
+
+  // A package inside its job's card, above the job's parts and labor.
+  const renderPackageBlock = (pkg) => (
+    <div key={`pkg-${pkg.packageIndex}`} className="border border-purple-200 bg-purple-50/40 rounded-lg p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span className="text-sm font-semibold text-gray-800">{renderPackageTitle(pkg)}</span>
+        {renderPackageActions(pkg, pkg.packageIndex)}
+      </div>
+      {renderPackageItems(pkg)}
+    </div>
+  );
+
+  // A package with no job (added before packages became jobs), as its own card.
   const renderPackageContainer = (pkg, pkgIndex) => (
     <Card
       key={`pkg-${pkgIndex}`}
-      title={
-        <span className="flex items-center gap-2">
-          {pkg.name}
-          {pkg.committed ? (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
-              <i className="fas fa-check mr-0.5"></i>Pulled
-            </span>
-          ) : (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700">Draft</span>
-          )}
-        </span>
-      }
-      headerActions={
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-purple-700">{formatCurrency(pkg.price)}</span>
-          {!pkg.committed && !isInvoiced && (
-            <button onClick={() => handleCommitServicePackage(pkgIndex)}
-              className="px-2 py-1 text-xs font-semibold bg-green-600 text-white rounded hover:bg-green-700">
-              <i className="fas fa-arrow-down mr-1"></i>Pull from Inventory
-            </button>
-          )}
-          {!isInvoiced && (
-            <button onClick={() => handleRemoveServicePackage(pkgIndex)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
-          )}
-        </div>
-      }
+      title={renderPackageTitle(pkg)}
+      headerActions={renderPackageActions(pkg, pkgIndex)}
     >
+      {renderPackageItems(pkg)}
+    </Card>
+  );
+
+  const renderPackageItems = (pkg) => (
+    <>
       {pkg.includedItems && pkg.includedItems.length > 0 ? (
         <div>
           <div className="text-xs font-medium text-gray-500 mb-1">
@@ -2120,7 +2156,7 @@ const DocumentDetail = () => {
       ) : (
         <div className="text-sm text-gray-400">No included items.</div>
       )}
-    </Card>
+    </>
   );
 
   // ==================== RENDER ====================
@@ -2366,6 +2402,11 @@ const DocumentDetail = () => {
                   </div>
                   {showJobBreakdown && !s.isPackage && (
                     <div className="ml-3 mt-0.5 space-y-0.5">
+                      {s.packages > 0 && (
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>Service</span><span>{formatCurrency(s.packages)}</span>
+                        </div>
+                      )}
                       {s.parts > 0 && (
                         <div className="flex justify-between text-xs text-gray-500">
                           <span>Parts</span><span>{formatCurrency(s.parts)}</span>
@@ -2750,6 +2791,7 @@ const DocumentDetail = () => {
             {jobs.map((job) => (
               <Card key={job.serviceId} title={job.name} headerActions={renderJobHeaderActions(job.serviceId)}>
                 <div className="space-y-4">
+                  {job.packages.map(renderPackageBlock)}
                   <div>
                     <p className="text-sm font-semibold text-gray-700 mb-1">Parts</p>
                     {renderPartsTable(job.parts)}
@@ -2762,7 +2804,7 @@ const DocumentDetail = () => {
                 </div>
               </Card>
             ))}
-            {(workOrder.servicePackages || []).map((pkg, pkgIndex) => renderPackageContainer(pkg, pkgIndex))}
+            {unassignedPackages.map((pkg) => renderPackageContainer(pkg, pkg.packageIndex))}
             {!hasServices && (
               <Card title="General" headerActions={renderJobHeaderActions(null)}>
                 <div className="space-y-4">
@@ -3325,6 +3367,7 @@ const DocumentDetail = () => {
         onClose={() => setServiceModalOpen(false)}
         onConfirm={handleAddServicePackage}
         isLoading={serviceModalLoading}
+        services={workOrder.services || []}
       />
       <ServicePackageCommitModal
         isOpen={serviceCommitModalOpen}

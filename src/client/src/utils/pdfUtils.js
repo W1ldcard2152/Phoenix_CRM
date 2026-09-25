@@ -48,15 +48,17 @@ const renderJobGroupsHtml = (groups) => {
     </tr>`;
   };
 
+  const includedItemLabel = (i) => {
+    const qty = i.quantity || 0;
+    const unit = i.unit ? ` ${i.unit}` : '';
+    const brand = i.brand ? `${i.brand} ` : '';
+    const partNum = i.partNumber ? ` (${i.partNumber})` : '';
+    return `${qty}${unit} - ${brand}${i.name}${partNum}`;
+  };
+
   const includedItemsHtml = (pkg) => (pkg.includedItems && pkg.includedItems.length > 0) ? `
     <ul style="margin: 8px 10px; padding-left: 18px; font-size: 11px; color: #4b5563;">
-      ${pkg.includedItems.map(i => {
-        const qty = i.quantity || 0;
-        const unit = i.unit ? ` ${i.unit}` : '';
-        const brand = i.brand ? `${i.brand} ` : '';
-        const partNum = i.partNumber ? ` (${i.partNumber})` : '';
-        return `<li>${qty}${unit} - ${brand}${i.name}${partNum}</li>`;
-      }).join('')}
+      ${pkg.includedItems.map(i => `<li>${includedItemLabel(i)}</li>`).join('')}
     </ul>` : '';
 
   // Customer-facing notes written against this job, printed under its lines.
@@ -68,6 +70,14 @@ const renderJobGroupsHtml = (groups) => {
       </ul>
     </div>` : '';
 
+  const packageRow = (pkg) => `
+    <tr style="border-top: 1px solid #f3f4f6;">
+      <td style="${cellL}">${pkg.name || ''}${(pkg.includedItems || []).map(i => `<div style="font-size: 11px; color: #4b5563;">${includedItemLabel(i)}</div>`).join('')}</td>
+      <td style="${cellR} color: #4b5563;">1</td>
+      <td style="${cellR} color: #4b5563;">${formatCurrency(pkg.price)}</td>
+      <td style="${cellR}">${formatCurrency(pkg.price)}</td>
+    </tr>`;
+
   const totalRow = (group) =>
     `<tr style="border-top: 2px solid #d1d5db; font-weight: 700; color: #111827;">
       <td style="padding: 6px 8px;">Total</td>
@@ -77,9 +87,14 @@ const renderJobGroupsHtml = (groups) => {
     </tr>`;
 
   return groups.map(group => {
+    const packages = group.packages || [];
     const hasParts = group.parts && group.parts.length > 0;
     const hasLabor = group.labor && group.labor.length > 0;
-    const hasTable = hasParts || hasLabor;
+    // A lone package keeps its compact look: included items, then the total.
+    // Beside other lines it needs a priced row, or the total wouldn't add up.
+    const soloPackage = packages.length === 1 && !hasParts && !hasLabor ? packages[0] : null;
+    const hasPackageRows = packages.length > 0 && !soloPackage;
+    const hasTable = hasParts || hasLabor || hasPackageRows;
     const lineTable = hasTable ? `
       <table style="width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;">
         <colgroup>
@@ -94,6 +109,7 @@ const renderJobGroupsHtml = (groups) => {
           <th style="${cellR} font-weight: 500;">Unit Price</th>
           <th style="${cellR} font-weight: 500;">Amount</th>
         </tr>
+        ${hasPackageRows ? sectionRow('Service') + packages.map(packageRow).join('') : ''}
         ${hasParts ? sectionRow('Parts') + group.parts.map(partRow).join('') : ''}
         ${hasLabor ? sectionRow('Labor') + group.labor.map(laborRow).join('') : ''}
         ${totalRow(group)}
@@ -113,7 +129,7 @@ const renderJobGroupsHtml = (groups) => {
           <td style="padding: 6px 10px; font-weight: 700; border-bottom: 1px solid #d1d5db;">${group.name}</td>
         </tr>
       </table>
-      ${group.pkg ? includedItemsHtml(group.pkg) : ''}
+      ${soloPackage ? includedItemsHtml(soloPackage) : ''}
       ${lineTable}
       ${pkgTotal}
       ${jobNotesHtml(group)}

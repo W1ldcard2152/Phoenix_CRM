@@ -59,7 +59,7 @@ const CustomerService = {
   // Search customers
   searchCustomers: async (query) => {
     try {
-      const response = await API.get(`/customers/search?query=${query}`);
+      const response = await API.get(`/customers/search?query=${encodeURIComponent(query)}`);
       return response.data;
     } catch (error) {
       console.error(`Error searching customers with query "${query}":`, error);

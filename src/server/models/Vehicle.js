@@ -66,6 +66,29 @@ const VehicleSchema = new Schema(
       type: Number,
       min: [0, 'Mileage cannot be negative']
     },
+    // Valid-through dates (end of day, business timezone — see convertDates).
+    registrationExpiration: {
+      type: Date
+    },
+    inspectionExpiration: {
+      type: Date
+    },
+    // From the door-jamb label. Month precision is all the label prints, so
+    // it's stored as 'YYYY-MM' rather than a Date that would imply a day.
+    buildDate: {
+      type: String,
+      trim: true,
+      match: [/^\d{4}-(0[1-9]|1[0-2])$/, 'Build date must be a month (YYYY-MM)']
+    },
+    paintCode: {
+      type: String,
+      trim: true,
+      uppercase: true
+    },
+    tireSize: {
+      type: String,
+      trim: true
+    },
     mileageHistory: [MileageRecordSchema],
     serviceHistory: [{
       type: mongoose.Schema.Types.ObjectId,

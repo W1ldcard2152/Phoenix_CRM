@@ -32,6 +32,11 @@ export const reactivateTechnician = (id) => {
   return api.patch(`${TECHNICIANS_ENDPOINT}/${id}`, { isActive: true });
 };
 
+// Office users a technician can be assigned to (name + role only)
+export const getServiceWriterOptions = () => {
+  return api.get(`${TECHNICIANS_ENDPOINT}/service-writer-options`);
+};
+
 // If you implement permanent delete on the server:
 // export const permanentlyDeleteTechnician = (id) => {
 //   return api.delete(`${TECHNICIANS_ENDPOINT}/${id}/permanent`);
@@ -44,6 +49,7 @@ const technicianService = {
   updateTechnician,
   deactivateTechnician,
   reactivateTechnician,
+  getServiceWriterOptions,
   // permanentlyDeleteTechnician,
 };
 

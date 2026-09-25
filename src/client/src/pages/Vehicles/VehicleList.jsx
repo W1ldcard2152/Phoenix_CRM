@@ -118,9 +118,14 @@ const VehicleList = () => {
     <div className="container mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Vehicles</h1>
-        <Button to="/vehicles/new" variant="primary">
-          Add New Vehicle
-        </Button>
+        <div className="flex gap-2">
+          <Button to="/vehicles/scan" variant="primary">
+            <i className="fas fa-camera mr-2"></i>Scan Vehicle
+          </Button>
+          <Button to="/vehicles/new" variant="outline">
+            Add New Vehicle
+          </Button>
+        </div>
       </div>
 
       {error && (

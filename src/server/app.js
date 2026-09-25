@@ -95,7 +95,10 @@ app.use(
           'https://*.googleusercontent.com',
         ],
         frameSrc: ["'self'", 'https://accounts.google.com', ...s3Origins],
-        objectSrc: ["'none'"],
+        // Chrome/Edge render a PDF with their built-in viewer, which counts as a
+        // plugin: the embedding page's object-src applies even inside an iframe,
+        // so 'none' blanked the attached-document viewer (a new tab worked).
+        objectSrc: s3Origins.length > 0 ? s3Origins : ["'none'"],
         upgradeInsecureRequests: [],
       },
     },

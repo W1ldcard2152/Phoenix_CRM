@@ -1173,13 +1173,33 @@ exports.addServicePackage = catchAsync(async (req, res, next) => {
     });
   }
 
+  // The package bills as a job: into the one the writer picked, or a new job
+  // named after it. An id that doesn't resolve falls back to a new job.
+  const requestedServiceId = req.body.serviceId ? String(req.body.serviceId) : null;
+  let job = requestedServiceId
+    ? workOrder.services.find((s) => String(s._id) === requestedServiceId)
+    : null;
+  const createdJob = !job;
+  if (!job) {
+    // The pre-save hook only migrates a legacy serviceRequested into services
+    // while services is empty, and then rewrites serviceRequested from it — so
+    // pushing first would silently drop that request. Migrate it ourselves.
+    if (workOrder.services.length === 0 && workOrder.serviceRequested) {
+      workOrder.services.push({ description: workOrder.serviceRequested });
+    }
+    workOrder.services.push({ description: pkg.name });
+    job = workOrder.services[workOrder.services.length - 1];
+  }
+
   // Add as uncommitted draft — no inventory deducted
   workOrder.servicePackages.push({
     servicePackageId: pkg._id,
     name: pkg.name,
     price: pkg.price,
     committed: false,
-    includedItems: packageIncludedItems
+    includedItems: packageIncludedItems,
+    serviceId: job._id,
+    createdJob
   });
 
   workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
@@ -1399,6 +1419,23 @@ exports.removeServicePackage = catchAsync(async (req, res, next) => {
   }
 
   workOrder.servicePackages.splice(packageIndex, 1);
+
+  // A job that only existed to hold this package goes with it — unless the
+  // writer has since put parts, labor or another package in it.
+  if (removedPkg.createdJob && removedPkg.serviceId) {
+    const jobId = String(removedPkg.serviceId);
+    const inJob = (line) => line.serviceId && String(line.serviceId) === jobId;
+    const stillUsed = workOrder.parts.some(inJob)
+      || workOrder.labor.some(inJob)
+      || workOrder.servicePackages.some(inJob);
+    if (!stillUsed) {
+      workOrder.services.pull(removedPkg.serviceId);
+      // serviceRequested is derived from services; left stale, the pre-save
+      // hook would resurrect the job from it.
+      if (workOrder.services.length === 0) workOrder.serviceRequested = '';
+    }
+  }
+
   workOrder.totalEstimate = calculateWorkOrderTotal(workOrder.parts, workOrder.labor, workOrder.servicePackages);
   await workOrder.save();
 

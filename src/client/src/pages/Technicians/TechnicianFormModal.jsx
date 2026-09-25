@@ -13,7 +13,9 @@ const TechnicianFormModal = ({ technician, onClose, onSave }) => {
     hourlyRate: '',
     notes: '',
     isActive: true,
+    serviceWriter: '',
   });
+  const [writerOptions, setWriterOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -27,6 +29,7 @@ const TechnicianFormModal = ({ technician, onClose, onSave }) => {
         hourlyRate: technician.hourlyRate || '',
         notes: technician.notes || '',
         isActive: technician.isActive !== undefined ? technician.isActive : true,
+        serviceWriter: technician.serviceWriter?._id || technician.serviceWriter || '',
       });
     } else {
       // Reset for new technician
@@ -38,9 +41,17 @@ const TechnicianFormModal = ({ technician, onClose, onSave }) => {
         hourlyRate: '',
         notes: '',
         isActive: true,
+        serviceWriter: '',
       });
     }
   }, [technician]);
+
+  // Office users this technician's check-ins can go to.
+  useEffect(() => {
+    technicianService.getServiceWriterOptions()
+      .then(res => setWriterOptions(res.data.data.users || []))
+      .catch(() => setWriterOptions([]));
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -73,6 +84,8 @@ const TechnicianFormModal = ({ technician, onClose, onSave }) => {
             delete payload[key];
         }
     });
+    // Unlike the other fields, clearing the service writer must reach the server.
+    payload.serviceWriter = formData.serviceWriter || null;
 
 
     try {
@@ -149,6 +162,22 @@ const TechnicianFormModal = ({ technician, onClose, onSave }) => {
               min="0"
               step="0.01"
             />
+          </div>
+          <div className="mb-4">
+            <label htmlFor="serviceWriter" className="block text-sm font-medium text-gray-700 mb-1">Service Writer</label>
+            <select
+              id="serviceWriter"
+              name="serviceWriter"
+              value={formData.serviceWriter}
+              onChange={handleChange}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+            >
+              <option value="">Anyone in the office</option>
+              {writerOptions.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Vehicles this technician checks in that aren't on file go to this person to match with an owner.
+            </p>
           </div>
           <div className="mb-4">
             <TextArea
