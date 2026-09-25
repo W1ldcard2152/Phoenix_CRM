@@ -1,5 +1,6 @@
 const express = require('express');
 const vehicleController = require('../controllers/vehicleController');
+const checkInController = require('../controllers/vehicleCheckInController');
 const authController = require('../controllers/authController');
 const router = express.Router();
 
@@ -11,8 +12,19 @@ router.get('/:id/mileage-history', vehicleController.getMileageHistory);
 router.post('/:id/mileage', vehicleController.addMileageRecord);
 router.get('/:id/mileage-at-date', vehicleController.getMileageAtDate);
 
+// Vehicle scan - open to technicians, who check vehicles in from the lot. These
+// return vehicles without their owner and accept only scanned fields.
+router.get('/scan-lookup', checkInController.scanLookup);
+router.post('/check-ins', checkInController.createCheckIn);
+router.post('/:id/scan-update', checkInController.scanUpdate);
+
 // All remaining vehicle routes require office staff
 router.use(authController.restrictTo('admin', 'management', 'service-writer'));
+
+// Check-ins waiting for the office to find the owner
+router.get('/check-ins', checkInController.listCheckIns);
+router.get('/check-ins/:id', checkInController.getCheckIn);
+router.patch('/check-ins/:id', checkInController.resolveCheckIn);
 
 // Check if VIN exists
 router.get('/check-vin', vehicleController.checkVinExists);

@@ -37,6 +37,12 @@ const technicianSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  // The office user this technician's escalations go to (e.g. a vehicle they
+  // checked in that isn't on file). Unset → any office user picks it up.
+  serviceWriter: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
   notes: {
     type: String,
     trim: true,

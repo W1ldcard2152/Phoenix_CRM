@@ -74,6 +74,7 @@ jest.mock('../../models/User', () => {
 jest.mock('../../models/WorkOrderNote', () => createMockModel('WorkOrderNote'));
 jest.mock('../../models/CustomerInteraction', () => createMockModel('CustomerInteraction'));
 jest.mock('../../models/InventoryItem', () => createMockModel('InventoryItem'));
+jest.mock('../../models/VehicleCheckIn', () => createMockModel('VehicleCheckIn'));
 
 // Mock external services
 jest.mock('../../services/emailService', () => ({
@@ -207,6 +208,40 @@ describe('Route access control', () => {
 
     it('allows service-writer to GET /api/vehicles', () =>
       expectNotForbidden('get', '/api/vehicles', 'serviceWriter'));
+
+    // Vehicle scan: technicians check cars in, but never see owners or customers.
+    it('allows technician to look up a scanned vehicle', () =>
+      expectNotForbidden('get', '/api/vehicles/scan-lookup?vin=1GKDT13S672104751', 'technician'));
+    it('allows technician to apply a scan to a vehicle', () =>
+      expectNotForbidden('post', `/api/vehicles/${vehicleId}/scan-update`, 'technician'));
+    it('allows technician to send a check-in to the office', () =>
+      expectNotForbidden('post', '/api/vehicles/check-ins', 'technician'));
+    it('rejects technician from the check-in queue', () =>
+      expectForbidden('get', '/api/vehicles/check-ins', 'technician'));
+    it('rejects technician from resolving a check-in', () =>
+      expectForbidden('patch', `/api/vehicles/check-ins/${vehicleId}`, 'technician'));
+    it('rejects technician from GET /api/vehicles/:id (includes the owner)', () =>
+      expectForbidden('get', `/api/vehicles/${vehicleId}`, 'technician'));
+    it('rejects technician from vehicle search', () =>
+      expectForbidden('get', '/api/vehicles/search?query=abc', 'technician'));
+    it('rejects technician from the general vehicle update', () =>
+      expectForbidden('patch', `/api/vehicles/${vehicleId}`, 'technician'));
+    it('allows service-writer to see the check-in queue', () =>
+      expectNotForbidden('get', '/api/vehicles/check-ins', 'serviceWriter'));
+  });
+
+  describe('Vehicle photo scan (/api/registration/scan)', () => {
+    it('allows technician to scan', () =>
+      expectNotForbidden('post', '/api/registration/scan', 'technician'));
+  });
+
+  describe('Technician service-writer picker', () => {
+    it('allows management', () =>
+      expectNotForbidden('get', '/api/technicians/service-writer-options', 'management'));
+    it('rejects technician', () =>
+      expectForbidden('get', '/api/technicians/service-writer-options', 'technician'));
+    it('rejects service-writer', () =>
+      expectForbidden('get', '/api/technicians/service-writer-options', 'serviceWriter'));
   });
 
   // ==================================================================

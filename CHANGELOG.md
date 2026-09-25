@@ -2,6 +2,18 @@
 
 All notable changes to Phoenix CRM, most recent first. Entries are dated by push-to-main (deploy date). Categories follow [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## 2026-09-25
+
+### Added
+- **Scan Vehicle page** (Vehicles → Scan Vehicle, or the new "Scan vehicle" option at the top of Quick Entry). Photograph the registration and it finds the vehicle: one on file opens for an update (new plate, renewed registration or inspection, today's mileage), one that isn't becomes a new vehicle, with its owner picked from existing customers or added with just a name and phone. The owner is assumed unchanged, with a "Change owner" link for the rare sale. Mileage is asked for every time but can be skipped, and "Start work order" carries the customer and vehicle straight into Quick Entry.
+- **Technicians can check vehicles in from their phone.** A new Check In button in the Technician Portal scans the registration: a vehicle on file gets its details and an odometer reading updated on the spot; one that isn't on file is sent — with odometer and door jamb photos and an optional note — to the technician's service writer to match with its owner. Technicians never see customer names, phone numbers or the customer list.
+- **Tech Check-Ins on the dashboard**, beside Today's Schedule: vehicles technicians checked in that aren't on file yet, with the ones assigned to you first. Opening one loads the technician's scan and mileage so it only needs an owner.
+- **Service writer on each technician's profile** decides whose dashboard their check-ins land on; left blank, anyone in the office can pick them up.
+
+### Fixed
+- **Changing a vehicle's owner now moves it between customers properly.** Previously the vehicle kept showing up on the old owner's record and not the new one's.
+- Customer search no longer breaks on names containing "&" or other special characters.
+
 ## 2026-09-24
 
 ### Added

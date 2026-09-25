@@ -7,6 +7,13 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(authController.protect);
 
+// Office users a technician can be assigned to (technician form picker)
+router.get(
+  '/service-writer-options',
+  authController.restrictTo('admin', 'management'),
+  technicianController.getServiceWriterOptions
+);
+
 // Read operations - available to all authenticated users
 router.get('/', technicianController.getAllTechnicians);
 router.get('/:id', technicianController.getTechnicianById);

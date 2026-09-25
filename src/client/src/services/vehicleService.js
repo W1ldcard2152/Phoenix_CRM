@@ -49,8 +49,8 @@ const VehicleService = {
 
   // Add a mileage record (uses the dedicated server endpoint, which handles
   // TZ-correct date parsing and currentMileage update via the model's pre-save hook).
-  addMileageRecord: async (id, { date, mileage, notes } = {}) => {
-    const response = await API.post(`/vehicles/${id}/mileage`, { date, mileage, notes });
+  addMileageRecord: async (id, { date, mileage, notes, source } = {}) => {
+    const response = await API.post(`/vehicles/${id}/mileage`, { date, mileage, notes, source });
     return response.data;
   },
 

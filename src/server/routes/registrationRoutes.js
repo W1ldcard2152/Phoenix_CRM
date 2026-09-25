@@ -16,6 +16,6 @@ router.use(authController.protect);
  * @body {File} [doorJamb]     - door-jamb certification / tire label
  * @returns {Object} { vin, fields, mileageRecords, warnings, found, notes }
  */
-router.post('/scan', authController.restrictTo('admin', 'management', 'service-writer'), scanUpload, scanVehicle);
+router.post('/scan', authController.restrictTo('admin', 'management', 'service-writer', 'technician'), scanUpload, scanVehicle);
 
 module.exports = router;

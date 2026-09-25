@@ -167,13 +167,27 @@ exports.createVehicle = catchAsync(async (req, res, next) => {
 exports.updateVehicle = catchAsync(async (req, res, next) => {
   normalizeMileageHistory(req.body);
 
+  const existing = await Vehicle.findById(req.params.id).select('customer');
+  if (!existing) {
+    return next(new AppError('No vehicle found with that ID', 404));
+  }
+
+  // Ownership change: the new owner must exist, and both customers' vehicles
+  // arrays have to follow (create and delete maintain them; update must too).
+  const newOwner = req.body.customer ? String(req.body.customer) : null;
+  const ownerChanged = newOwner && newOwner !== String(existing.customer);
+  if (ownerChanged && !(await Customer.exists({ _id: newOwner }))) {
+    return next(new AppError('No customer found with that ID', 404));
+  }
+
   const vehicle = await Vehicle.findByIdAndUpdate(req.params.id, req.body, {
     new: true,
     runValidators: true
   }).populate('customer', 'name');
 
-  if (!vehicle) {
-    return next(new AppError('No vehicle found with that ID', 404));
+  if (ownerChanged) {
+    await Customer.updateOne({ _id: existing.customer }, { $pull: { vehicles: existing._id } });
+    await Customer.updateOne({ _id: newOwner }, { $addToSet: { vehicles: existing._id } });
   }
 
   // Invalidate vehicle and customer caches
@@ -321,7 +335,7 @@ exports.getVehicleServiceHistory = catchAsync(async (req, res, next) => {
 
 // Add a mileage record to a vehicle
 exports.addMileageRecord = catchAsync(async (req, res, next) => {
-  const { mileage, date, notes } = req.body;
+  const { mileage, date, notes, source } = req.body;
 
   // Validate that mileage is provided
   if (!mileage) {
@@ -381,7 +395,9 @@ exports.addMileageRecord = catchAsync(async (req, res, next) => {
     });
   }
 
-  vehicle.addMileageRecord(recordMileage, recordDate, notes || '');
+  // Where the reading came from (e.g. "Odometer photo") — free text, kept short.
+  const recordSource = typeof source === 'string' ? source.trim().slice(0, 60) : '';
+  vehicle.addMileageRecord(recordMileage, recordDate, notes || '', recordSource);
   await vehicle.save();
   cacheService.invalidateAllVehicles();
 
