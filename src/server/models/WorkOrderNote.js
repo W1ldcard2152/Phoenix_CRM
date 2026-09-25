@@ -15,6 +15,20 @@ const WorkOrderNoteSchema = new Schema(
       required: true,
       trim: true
     },
+    // -> WorkOrder.services[]._id. null/unset = a work-order-level note (the
+    // original behavior, and still how the top-level Notes card writes).
+    serviceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+    // Denormalized job name, captured at write time (cf. createdByName below).
+    // A job can be removed from the work order later; the note survives at
+    // work-order level and this is what keeps "which job was this about?"
+    // answerable. Not the source of truth for grouping — serviceId is.
+    serviceName: {
+      type: String,
+      trim: true
+    },
     isCustomerFacing: {
       type: Boolean,
       default: false
@@ -45,6 +59,7 @@ const WorkOrderNoteSchema = new Schema(
 // Indexes for better query performance
 WorkOrderNoteSchema.index({ workOrder: 1, createdAt: -1 });
 WorkOrderNoteSchema.index({ workOrder: 1, isCustomerFacing: 1 });
+WorkOrderNoteSchema.index({ workOrder: 1, serviceId: 1, createdAt: -1 });
 
 // Virtual for getting formatted creation date
 WorkOrderNoteSchema.virtual('formattedCreatedAt').get(function() {

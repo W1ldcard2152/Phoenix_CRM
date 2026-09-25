@@ -11,7 +11,8 @@ import { formatCurrency } from '../../utils/formatters';
 //     parts: [{ key, description, partNumber, quantity, unitPrice, lineTotal,
 //               warranty, coreCharge, coreChargeInvoiceable }],
 //     labor: [{ key, description, quantity, rate, billingType, lineTotal }],
-//     pkg:   { includedItems: [{ quantity, unit, brand, name, partNumber }], price } | null
+//     pkg:   { includedItems: [{ quantity, unit, brand, name, partNumber }], price } | null,
+//     notes: [{ _id, content }]   // customer-facing notes filed against this job
 //   }
 //
 // All job tables share the same fixed column widths so amounts line up across
@@ -135,6 +136,18 @@ const JobGroups = ({ groups = [] }) => {
               <div className="flex justify-between items-center border-t-2 border-gray-300 px-3 py-1.5 font-semibold text-gray-900">
                 <span>Total</span>
                 <span className="whitespace-nowrap">{formatCurrency(group.total)}</span>
+              </div>
+            )}
+
+            {/* Customer-facing notes written against this job */}
+            {group.notes && group.notes.length > 0 && (
+              <div className="border-t border-gray-200 bg-gray-50 px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Notes</div>
+                <ul className="space-y-1 text-xs text-gray-700">
+                  {group.notes.map((note, i) => (
+                    <li key={note._id || i} style={{ whiteSpace: 'pre-line' }}>{note.content}</li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>

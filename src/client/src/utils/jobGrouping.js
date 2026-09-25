@@ -119,6 +119,70 @@ export const groupInvoiceItemsByJob = (items = []) => {
   return order.map((name) => map.get(name));
 };
 
+/**
+ * Customer-facing notes filed against a job print inside that job's block; only
+ * work-order-level notes fall through to the document's bottom Notes block. A
+ * note whose serviceId no longer resolves counts as work-order-level, so a
+ * removed job never hides a note the customer was meant to see.
+ * @param {Array} notes customer-facing notes with { serviceId, serviceName, content }
+ * @param {Array} services the document's services[]
+ * @returns {{byServiceId: Map<string, Array>, documentLevel: Array}}
+ */
+export const splitNotesByJob = (notes = [], services = []) => {
+  const serviceIds = new Set(
+    services.filter((s) => s && s._id).map((s) => idStr(s._id))
+  );
+  const byServiceId = new Map();
+  const documentLevel = [];
+  notes.forEach((note) => {
+    const sid = note.serviceId ? idStr(note.serviceId) : null;
+    if (sid && serviceIds.has(sid)) {
+      if (!byServiceId.has(sid)) byServiceId.set(sid, []);
+      byServiceId.get(sid).push(note);
+    } else {
+      documentLevel.push(note);
+    }
+  });
+  return { byServiceId, documentLevel };
+};
+
+/**
+ * Same split for a saved invoice, which has no live services[] — its notes are
+ * matched to job groups by the denormalized serviceName captured at write time.
+ * @param {Array} notes customer-facing notes
+ * @param {Array<string>} jobNames the invoice's job group names
+ */
+export const splitNotesByJobName = (notes = [], jobNames = []) => {
+  const known = new Set(jobNames);
+  const byName = new Map();
+  const documentLevel = [];
+  notes.forEach((note) => {
+    const name = note.serviceName;
+    if (name && known.has(name)) {
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push(note);
+    } else {
+      documentLevel.push(note);
+    }
+  });
+  return { byName, documentLevel };
+};
+
+/**
+ * The notes a document must print in its own Notes section: everything not
+ * already shown inside a rendered job block. Derived from the groups rather than
+ * from serviceId, because a job with a note but no parts or labor is skipped by
+ * the grouping entirely — its note belongs at document level, not nowhere.
+ * @param {Array} notes customer-facing notes
+ * @param {Array} groups the normalized groups actually being rendered
+ */
+export const notesNotShownInGroups = (notes = [], groups = []) => {
+  const shown = new Set(
+    groups.flatMap((g) => (g.notes || []).map((n) => n && n._id)).filter(Boolean)
+  );
+  return notes.filter((n) => !(n && n._id && shown.has(n._id)));
+};
+
 // ---- Normalizers ----
 // Both produce the shape consumed by <JobGroups /> and the PDF renderer:
 //   { key, name, total, pkg|null, parts: [...], labor: [...] }
@@ -145,8 +209,14 @@ const normLabor = (l, i) => ({
 });
 
 // From live work-order/quote data (parts/labor carry serviceId).
-export const normalizeLiveGroups = (data) =>
-  groupLinesByJob(data).map((g) => ({
+// `customerFacingNotes` on the data are distributed to the job they were filed
+// under; the caller keeps the leftovers for the document's Notes block.
+export const normalizeLiveGroups = (data) => {
+  const { byServiceId } = splitNotesByJob(
+    data?.customerFacingNotes || [],
+    data?.services || []
+  );
+  return groupLinesByJob(data).map((g) => ({
     key: g.key,
     name: g.name,
     total: g.total,
@@ -155,11 +225,15 @@ export const normalizeLiveGroups = (data) =>
       : null,
     parts: g.parts.map(normPart),
     labor: g.labor.map(normLabor),
+    notes: byServiceId.get(g.key) || [],
   }));
+};
 
 // From a saved invoice's items[] (carry denormalized jobName + type).
-export const normalizeInvoiceGroups = (items) =>
-  groupInvoiceItemsByJob(items).map((g, gi) => {
+export const normalizeInvoiceGroups = (items, customerFacingNotes = []) => {
+  const grouped = groupInvoiceItemsByJob(items);
+  const { byName } = splitNotesByJobName(customerFacingNotes, grouped.map((g) => g.name));
+  return grouped.map((g, gi) => {
     const parts = g.items.filter((i) => i.type === 'Part');
     const labor = g.items.filter((i) => i.type === 'Labor');
     const services = g.items.filter((i) => i.type === 'Service');
@@ -176,5 +250,7 @@ export const normalizeInvoiceGroups = (items) =>
       pkg,
       parts: parts.map((p, i) => normPart({ ...p, lineTotal: p.total }, i)),
       labor: labor.map((l, i) => normLabor({ ...l, rate: l.unitPrice, lineTotal: l.total }, i)),
+      notes: byName.get(g.name) || [],
     };
   });
+};

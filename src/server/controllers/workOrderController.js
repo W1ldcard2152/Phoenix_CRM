@@ -526,6 +526,25 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   // Always clear diagnosticNotes field - set to empty string to ensure it's cleared in DB
   workOrderData.diagnosticNotes = '';
 
+  // A job removed by this update leaves its notes pointing at a services[] entry
+  // that no longer exists. The client warns the user per job and sends their
+  // answers here as { [serviceId]: 'keep' | 'delete' }. 'keep' (the default for
+  // anything unanswered) drops those notes back to work-order level; nothing is
+  // silently orphaned either way.
+  const orphanedNoteActions = workOrderData.orphanedNoteActions || {};
+  delete workOrderData.orphanedNoteActions;
+
+  let removedServiceIds = [];
+  if (Array.isArray(workOrderData.services)) {
+    const priorWorkOrder = oldWorkOrder || await WorkOrder.findById(req.params.id);
+    const keptServiceIds = new Set(
+      workOrderData.services.filter(s => s && s._id).map(s => s._id.toString())
+    );
+    removedServiceIds = (priorWorkOrder?.services || [])
+      .filter(s => s && s._id && !keptServiceIds.has(s._id.toString()))
+      .map(s => s._id);
+  }
+
   const updatedWorkOrderPopulated = await applyPopulation(
     WorkOrder.findByIdAndUpdate(req.params.id, workOrderData, {
       new: true,
@@ -538,7 +557,36 @@ exports.updateWorkOrder = catchAsync(async (req, res, next) => {
   if (!updatedWorkOrderPopulated) {
     return next(new AppError('No work order found with that ID', 404));
   }
-  
+
+  // Resolve notes whose job just disappeared (see removedServiceIds above).
+  if (removedServiceIds.length > 0) {
+    try {
+      const toDelete = removedServiceIds.filter(
+        sid => orphanedNoteActions[sid.toString()] === 'delete'
+      );
+      const toKeep = removedServiceIds.filter(
+        sid => orphanedNoteActions[sid.toString()] !== 'delete'
+      );
+      if (toDelete.length > 0) {
+        await WorkOrderNote.deleteMany({
+          workOrder: req.params.id,
+          serviceId: { $in: toDelete }
+        });
+      }
+      if (toKeep.length > 0) {
+        // serviceName is deliberately left in place so the note can still show
+        // which job it was written against.
+        await WorkOrderNote.updateMany(
+          { workOrder: req.params.id, serviceId: { $in: toKeep } },
+          { $set: { serviceId: null } }
+        );
+      }
+    } catch (orphanError) {
+      console.error('Error resolving notes for removed jobs:', orphanError);
+      // Don't fail the work order update over note bookkeeping.
+    }
+  }
+
   // Sync assignedTechnician if appointmentId and its technician exist
   // This logic is now moved before the update to ensure workOrderData contains the correct technician
   // if (updatedWorkOrderPopulated.appointmentId && updatedWorkOrderPopulated.appointmentId.technician) {

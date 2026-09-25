@@ -121,7 +121,7 @@ const InvoiceDetail = () => {
       parts,
       labor,
       servicePackages,
-      jobGroups: items.length > 0 ? normalizeInvoiceGroups(items) : undefined,
+      jobGroups: items.length > 0 ? normalizeInvoiceGroups(items, customerFacingNotes) : undefined,
       discount: invoice?.discount || null,
       customerFacingNotes,
       customerNotes: invoice?.notes,

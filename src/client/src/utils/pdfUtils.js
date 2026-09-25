@@ -1,7 +1,13 @@
 import html2canvas from 'html2canvas';
 import businessConfig from '../config/businessConfig';
 import { formatCurrency, formatDate } from './formatters';
-import { normalizeLiveGroups } from './jobGrouping';
+import { normalizeLiveGroups, notesNotShownInGroups } from './jobGrouping';
+
+// Note text is free-typed by shop staff ("pads under <1mm"), and these documents
+// are assembled as raw HTML strings — escape it so a stray angle bracket can't
+// swallow the rest of the block.
+const escapeHtml = (value) =>
+  String(value ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
 /**
  * Render job-grouped line items as HTML for the document body.
@@ -53,6 +59,15 @@ const renderJobGroupsHtml = (groups) => {
       }).join('')}
     </ul>` : '';
 
+  // Customer-facing notes written against this job, printed under its lines.
+  const jobNotesHtml = (group) => (group.notes && group.notes.length > 0) ? `
+    <div style="border-top: 1px solid #e5e7eb; background-color: #f9fafb; padding: 6px 10px;">
+      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; margin-bottom: 2px;">Notes</div>
+      <ul style="margin: 0; padding-left: 18px; font-size: 11px; color: #374151;">
+        ${group.notes.map(n => `<li style="white-space: pre-line;">${escapeHtml(n.content)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
   const totalRow = (group) =>
     `<tr style="border-top: 2px solid #d1d5db; font-weight: 700; color: #111827;">
       <td style="padding: 6px 8px;">Total</td>
@@ -101,6 +116,7 @@ const renderJobGroupsHtml = (groups) => {
       ${group.pkg ? includedItemsHtml(group.pkg) : ''}
       ${lineTable}
       ${pkgTotal}
+      ${jobNotesHtml(group)}
     </div>`;
   }).join('');
 };
@@ -335,9 +351,14 @@ export const generateDocumentHtml = (type, data) => {
   // Job-grouped line items (parts/labor under their service, packages as their own job, then General).
   // Saved-invoice surfaces pass a pre-computed jobGroups (grouped by denormalized jobName);
   // live work-order/quote surfaces pass services + serviceId-tagged lines.
-  const jobGroupsHtml = renderJobGroupsHtml(
-    jobGroupsOverride || normalizeLiveGroups({ services, parts, labor, servicePackages: committedServicePackages })
-  );
+  const jobGroups = jobGroupsOverride
+    || normalizeLiveGroups({ services, parts, labor, servicePackages: committedServicePackages, customerFacingNotes });
+  const jobGroupsHtml = renderJobGroupsHtml(jobGroups);
+
+  // Notes already printed inside a job block don't repeat in the Notes section at
+  // the bottom. Works for both group sources, since either way the groups carry
+  // the notes they rendered.
+  const documentLevelNotes = notesNotShownInGroups(customerFacingNotes, jobGroups);
 
   // Customer address formatting
   const custAddr = customer?.address;
@@ -467,11 +488,11 @@ export const generateDocumentHtml = (type, data) => {
       </table>
 
       <!-- Customer Facing Notes (Work Order Notes) -->
-      ${customerFacingNotes.length > 0 ? `
+      ${documentLevelNotes.length > 0 ? `
       <div style="margin-bottom: 24px; font-size: 14px;">
         <p style="font-weight: 600; font-size: 16px; margin: 0 0 8px 0; color: #111827;">Work Order Notes:</p>
         <div style="border: 1px solid #d1d5db; background-color: #f9fafb;">
-          ${customerFacingNotes.map((note, index) => {
+          ${documentLevelNotes.map((note, index) => {
             const authorName = note.createdBy?.displayName || (note.createdBy?.name || note.createdByName || '').split(' ')[0];
             return `
             <div style="padding: 12px;${index > 0 ? ' border-top: 1px solid #e5e7eb;' : ''}">

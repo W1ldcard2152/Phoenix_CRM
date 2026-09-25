@@ -143,6 +143,12 @@ const DocumentDetail = () => {
   const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false });
   const [addingNote, setAddingNote] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
+  // Per-job note composers, keyed by serviceId. Each job card has its own draft so
+  // switching between jobs never clobbers half-typed text.
+  const [jobNoteDrafts, setJobNoteDrafts] = useState({});
+  const [addingJobNoteFor, setAddingJobNoteFor] = useState(null);
+  // The top card is the work-order-level view; this opts into seeing job notes there too.
+  const [includeJobNotesInTop, setIncludeJobNotesInTop] = useState(false);
 
   // Parts/Labor editing state (shared)
   const [editingPart, setEditingPart] = useState(null);
@@ -595,11 +601,33 @@ const DocumentDetail = () => {
     }
   };
 
-  const getFilteredNotes = () => {
+  // Add a note filed against a specific job (serviceId).
+  const handleAddJobNote = async (serviceId) => {
+    const draft = jobNoteDrafts[serviceId] || { content: '', isCustomerFacing: false };
+    if (!draft.content.trim()) return;
+    try {
+      setAddingJobNoteFor(serviceId);
+      await workOrderNotesService.createNote(id, {
+        content: draft.content,
+        isCustomerFacing: draft.isCustomerFacing,
+        noteType: draft.isCustomerFacing ? 'customer-facing' : 'internal',
+        serviceId
+      });
+      setJobNoteDrafts((prev) => ({ ...prev, [serviceId]: { content: '', isCustomerFacing: false } }));
+      await fetchNotes();
+    } catch (err) {
+      console.error('Error adding job note:', err);
+      setError('Failed to add note');
+    } finally {
+      setAddingJobNoteFor(null);
+    }
+  };
+
+  const getFilteredNotes = (source = notes) => {
     switch (notesFilter) {
-      case 'customer': return notes.filter(note => note.isCustomerFacing);
-      case 'private': return notes.filter(note => !note.isCustomerFacing);
-      default: return notes;
+      case 'customer': return source.filter(note => note.isCustomerFacing);
+      case 'private': return source.filter(note => !note.isCustomerFacing);
+      default: return source;
     }
   };
 
@@ -1556,6 +1584,17 @@ const DocumentDetail = () => {
     };
   });
   const hasServices = validServices.length > 0;
+
+  // Notes by job. A serviceId that no longer resolves — job removed, or lines moved
+  // out by a split — reads as work-order-level, so a note is never left invisible.
+  const noteIsWorkOrderLevel = (n) => !n.serviceId || !serviceIdSet.has(n.serviceId.toString());
+  const workOrderLevelNotes = notes.filter(noteIsWorkOrderLevel);
+  const jobNotes = notes.filter((n) => !noteIsWorkOrderLevel(n));
+  const notesForJob = (sid) => notes.filter((n) => n.serviceId && n.serviceId.toString() === sid);
+  // An invoiced work order keeps the legacy flat layout — with no job containers to
+  // hold them, its job notes have to show in the top card or nowhere.
+  const topLevelNoteSource = (includeJobNotesInTop || isInvoiced) ? notes : workOrderLevelNotes;
+
   // Only a service-less work order shows a standalone "General" container.
   const generalParts = hasServices ? [] : partsWithIndex.filter(lineIsUnassigned);
   const generalLabor = hasServices ? [] : laborWithIndex.filter(lineIsUnassigned);
@@ -1622,6 +1661,109 @@ const DocumentDetail = () => {
       )}
     </div>
   );
+
+  // One note, rendered identically in the work-order card and inside a job card.
+  // `showJobTag` is on only in the top card, where a note's job isn't implied by
+  // its container.
+  const renderNoteItem = (note, { showJobTag = false } = {}) => (
+    <div key={note._id} className="border border-gray-200 rounded-lg p-4">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${
+              note.isCustomerFacing ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+            }`}>
+              {note.isCustomerFacing ? 'Customer-facing' : 'Private'}
+            </span>
+            {showJobTag && note.serviceName && (
+              <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                <i className="fas fa-wrench mr-1"></i>{note.serviceName}
+              </span>
+            )}
+            <span className="text-xs text-gray-500">{formatDateTime(note.createdAt)}</span>
+            {note.createdBy?.name && <span className="text-xs text-gray-500">by {note.createdBy.name}</span>}
+            {note.createdByName && <span className="text-xs text-gray-500">by {note.createdByName}</span>}
+          </div>
+          {editingNote?._id === note._id ? (
+            <div className="space-y-2">
+              <TextArea value={editingNote.content}
+                onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })} rows={3} />
+              <div className="flex items-center space-x-4">
+                <label className="flex items-center">
+                  <input type="checkbox" checked={editingNote.isCustomerFacing}
+                    onChange={(e) => setEditingNote({ ...editingNote, isCustomerFacing: e.target.checked })}
+                    className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+                  <span className="text-sm text-gray-700">Customer-facing</span>
+                </label>
+                <div className="flex space-x-2">
+                  <Button onClick={() => handleUpdateNote(note._id, { content: editingNote.content, isCustomerFacing: editingNote.isCustomerFacing })}
+                    variant="primary" size="sm">Save</Button>
+                  <Button onClick={() => setEditingNote(null)} variant="outline" size="sm">Cancel</Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>{note.content}</div>
+          )}
+        </div>
+        {editingNote?._id !== note._id && (
+          <div className="flex space-x-1 ml-4">
+            <Button onClick={() => setEditingNote(note)} variant="outline" size="sm">Edit</Button>
+            <Button onClick={() => handleDeleteNote(note._id)} variant="danger" size="sm">Delete</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Notes for one job, shown inside that job's container.
+  const renderJobNotesSection = (serviceId) => {
+    const forJob = notesForJob(serviceId);
+    const draft = jobNoteDrafts[serviceId] || { content: '', isCustomerFacing: false };
+    const setDraft = (patch) =>
+      setJobNoteDrafts((prev) => ({ ...prev, [serviceId]: { ...draft, ...patch } }));
+
+    return (
+      <div className="border-t border-gray-200 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-semibold text-gray-700">
+            Notes {forJob.length > 0 && <span className="text-gray-400 font-normal">({forJob.length})</span>}
+          </p>
+        </div>
+
+        {forJob.length > 0 && (
+          <div className="space-y-2 mb-3">{forJob.map((note) => renderNoteItem(note))}</div>
+        )}
+
+        <div className="space-y-2">
+          <TextArea
+            value={draft.content}
+            onChange={(e) => setDraft({ content: e.target.value })}
+            placeholder="Add a note for this job..."
+            rows={2}
+          />
+          <div className="flex items-center justify-between">
+            <label className="flex items-center">
+              <input type="checkbox" checked={draft.isCustomerFacing}
+                onChange={(e) => setDraft({ isCustomerFacing: e.target.checked })}
+                className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+              <span className="text-sm text-gray-700">
+                Customer-facing (appears under this job on the invoice)
+              </span>
+            </label>
+            <Button
+              onClick={() => handleAddJobNote(serviceId)}
+              disabled={!draft.content.trim() || addingJobNoteFor === serviceId}
+              variant="primary"
+              size="sm"
+            >
+              {addingJobNoteFor === serviceId ? 'Adding...' : 'Add Note'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Parts table for a given (already index-tagged) subset of parts.
   const renderPartsTable = (partsForJob) => {
@@ -2485,79 +2627,48 @@ const DocumentDetail = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <span className="text-sm font-medium text-gray-700">Filter:</span>
               <div className="flex space-x-2">
                 <button onClick={() => setNotesFilter('all')}
                   className={`px-3 py-1 text-xs rounded-full ${notesFilter === 'all' ? 'bg-primary-100 text-primary-800' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  All ({notes.length})
+                  All ({topLevelNoteSource.length})
                 </button>
                 <button onClick={() => setNotesFilter('customer')}
                   className={`px-3 py-1 text-xs rounded-full ${notesFilter === 'customer' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  Customer-facing ({notes.filter(n => n.isCustomerFacing).length})
+                  Customer-facing ({topLevelNoteSource.filter(n => n.isCustomerFacing).length})
                 </button>
                 <button onClick={() => setNotesFilter('private')}
                   className={`px-3 py-1 text-xs rounded-full ${notesFilter === 'private' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  Private ({notes.filter(n => !n.isCustomerFacing).length})
+                  Private ({topLevelNoteSource.filter(n => !n.isCustomerFacing).length})
                 </button>
               </div>
+              {jobNotes.length > 0 && !isInvoiced && (
+                <label className="flex items-center ml-auto">
+                  <input type="checkbox" checked={includeJobNotesInTop}
+                    onChange={(e) => setIncludeJobNotesInTop(e.target.checked)}
+                    className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
+                  <span className="text-sm text-gray-700">Include job notes ({jobNotes.length})</span>
+                </label>
+              )}
             </div>
 
             <div className="space-y-3">
               {notesLoading ? (
                 <div className="text-center py-4">Loading notes...</div>
-              ) : getFilteredNotes().length === 0 ? (
+              ) : getFilteredNotes(topLevelNoteSource).length === 0 ? (
                 <div className="text-center py-6 text-gray-500">
                   {notesFilter === 'all' ? 'No notes added yet.' : `No ${notesFilter} notes found.`}
+                  {!includeJobNotesInTop && jobNotes.length > 0 && (
+                    <div className="text-xs mt-1">
+                      {jobNotes.length} job note{jobNotes.length === 1 ? '' : 's'} on this {typeLabel.toLowerCase()} — see the job containers below.
+                    </div>
+                  )}
                 </div>
               ) : (
-                getFilteredNotes().map((note) => (
-                  <div key={note._id} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <span className={`inline-flex items-center px-2 py-1 text-xs rounded-full ${
-                            note.isCustomerFacing ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {note.isCustomerFacing ? 'Customer-facing' : 'Private'}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {formatDateTime(note.createdAt)}
-                          </span>
-                          {note.createdBy?.name && <span className="text-xs text-gray-500">by {note.createdBy.name}</span>}
-                          {note.createdByName && <span className="text-xs text-gray-500">by {note.createdByName}</span>}
-                        </div>
-                        {editingNote?._id === note._id ? (
-                          <div className="space-y-2">
-                            <TextArea value={editingNote.content}
-                              onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })} rows={3} />
-                            <div className="flex items-center space-x-4">
-                              <label className="flex items-center">
-                                <input type="checkbox" checked={editingNote.isCustomerFacing}
-                                  onChange={(e) => setEditingNote({ ...editingNote, isCustomerFacing: e.target.checked })}
-                                  className="mr-2 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" />
-                                <span className="text-sm text-gray-700">Customer-facing</span>
-                              </label>
-                              <div className="flex space-x-2">
-                                <Button onClick={() => handleUpdateNote(note._id, { content: editingNote.content, isCustomerFacing: editingNote.isCustomerFacing })}
-                                  variant="primary" size="sm">Save</Button>
-                                <Button onClick={() => setEditingNote(null)} variant="outline" size="sm">Cancel</Button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-gray-700" style={{ whiteSpace: 'pre-line' }}>{note.content}</div>
-                        )}
-                      </div>
-                      {editingNote?._id !== note._id && (
-                        <div className="flex space-x-1 ml-4">
-                          <Button onClick={() => setEditingNote(note)} variant="outline" size="sm">Edit</Button>
-                          <Button onClick={() => handleDeleteNote(note._id)} variant="danger" size="sm">Delete</Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
+                getFilteredNotes(topLevelNoteSource).map((note) =>
+                  renderNoteItem(note, { showJobTag: includeJobNotesInTop || isInvoiced })
+                )
               )}
             </div>
           </div>
@@ -2647,6 +2758,7 @@ const DocumentDetail = () => {
                     <p className="text-sm font-semibold text-gray-700 mb-1">Labor</p>
                     {renderLaborTable(job.labor)}
                   </div>
+                  {renderJobNotesSection(job.serviceId)}
                 </div>
               </Card>
             ))}

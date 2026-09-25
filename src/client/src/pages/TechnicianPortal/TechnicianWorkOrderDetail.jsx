@@ -23,7 +23,8 @@ const TechnicianWorkOrderDetail = () => {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [notesFilter, setNotesFilter] = useState('all');
-  const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false });
+  // serviceId '' files the note at work-order level; a job id files it under that job.
+  const [newNote, setNewNote] = useState({ content: '', isCustomerFacing: false, serviceId: '' });
   const [addingNote, setAddingNote] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   
@@ -100,8 +101,12 @@ const TechnicianWorkOrderDetail = () => {
     
     try {
       setAddingNote(true);
-      await workOrderNotesService.createNote(id, newNote);
-      setNewNote({ content: '', isCustomerFacing: false });
+      await workOrderNotesService.createNote(id, {
+        ...newNote,
+        serviceId: newNote.serviceId || null
+      });
+      // Keep the chosen job selected — a tech usually writes several notes per job.
+      setNewNote({ content: '', isCustomerFacing: false, serviceId: newNote.serviceId });
       await fetchNotes();
     } catch (err) {
       console.error('Error adding note:', err);
@@ -465,6 +470,21 @@ const TechnicianWorkOrderDetail = () => {
                   placeholder="Document work progress, findings, or next steps..."
                   rows={3}
                 />
+                {/* Which job this note is about. Defaults to the whole work order. */}
+                {workOrder.services && workOrder.services.filter(s => s && s._id).length > 0 && (
+                  <SelectInput
+                    label="About"
+                    name="noteServiceId"
+                    value={newNote.serviceId}
+                    onChange={(e) => setNewNote({ ...newNote, serviceId: e.target.value })}
+                    options={[
+                      { value: '', label: 'Whole work order' },
+                      ...workOrder.services
+                        .filter(s => s && s._id)
+                        .map(s => ({ value: s._id, label: s.description }))
+                    ]}
+                  />
+                )}
                 <div className="flex items-center justify-between">
                   <label className="flex items-center">
                     <input
@@ -549,6 +569,11 @@ const TechnicianWorkOrderDetail = () => {
                               <>🔒 Private</>
                             )}
                           </span>
+                          {note.serviceName && (
+                            <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                              🔧 {note.serviceName}
+                            </span>
+                          )}
                           <span className="text-xs text-gray-500">
                             {formatDateTime(note.createdAt)}
                           </span>

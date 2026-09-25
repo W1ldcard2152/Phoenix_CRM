@@ -10,6 +10,8 @@ import Button from '../../components/common/Button';
 import WorkOrderService from '../../services/workOrderService';
 import CustomerService from '../../services/customerService';
 import VehicleService from '../../services/vehicleService'; // Added VehicleService
+import workOrderNotesService from '../../services/workOrderNotesService';
+import JobNotesRemovalModal from '../../components/workorder/JobNotesRemovalModal';
 import { formatDateForInput, getTodayForInput } from '../../utils/formatters';
 
 // Validation schema - updated for services array
@@ -42,7 +44,15 @@ const WorkOrderForm = () => {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
+  // How many notes are filed against each job, so removing a job can warn about
+  // them instead of quietly orphaning what a tech wrote.
+  const [noteCountsByService, setNoteCountsByService] = useState({});
+  // The user's per-job answers: { [serviceId]: 'keep' | 'delete' }, sent on save.
+  const [orphanedNoteActions, setOrphanedNoteActions] = useState({});
+  // The job awaiting an answer: { serviceId, description, noteCount, onResolved }
+  const [jobNotePrompt, setJobNotePrompt] = useState(null);
+
   // Get parameters from URL
   const customerIdParam = searchParams.get('customer');
   const vehicleIdParam = searchParams.get('vehicle');
@@ -127,7 +137,22 @@ const WorkOrderForm = () => {
             parts: workOrderData.parts || [],
             labor: workOrderData.labor || []
           });
-          
+
+          // Note counts per job, for the removal warning. A failure here only
+          // costs the warning, so it must not block loading the form.
+          try {
+            const notesResponse = await workOrderNotesService.getNotes(id);
+            const counts = {};
+            (notesResponse.data?.notes || []).forEach((note) => {
+              if (!note.serviceId) return;
+              const sid = note.serviceId.toString();
+              counts[sid] = (counts[sid] || 0) + 1;
+            });
+            setNoteCountsByService(counts);
+          } catch (notesErr) {
+            console.error('Error fetching notes for job removal warning:', notesErr);
+          }
+
           if (workOrderData.customer) {
             const customerIdToFetch = typeof workOrderData.customer === 'object' 
               ? workOrderData.customer._id 
@@ -231,13 +256,37 @@ const WorkOrderForm = () => {
     // Don't auto-fill mileage - let user enter it manually
   };
 
+  // Removing a job row. If notes are filed against it, ask what should happen to
+  // them first (keep at work-order level, or delete) and remove the row once the
+  // user answers — the answer rides along to the server on save.
+  const handleRemoveService = (service, removeRow) => {
+    const sid = service?._id ? service._id.toString() : null;
+    const noteCount = sid ? (noteCountsByService[sid] || 0) : 0;
+    if (!sid || noteCount === 0) {
+      removeRow();
+      return;
+    }
+    setJobNotePrompt({
+      serviceId: sid,
+      description: service.description,
+      noteCount,
+      onResolved: (action) => {
+        setOrphanedNoteActions((prev) => ({ ...prev, [sid]: action }));
+        removeRow();
+        setJobNotePrompt(null);
+      }
+    });
+  };
+
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
       // Prepare final data - ensure services array is properly formatted
       const finalData = {
         ...values,
         // Generate serviceRequested for backward compatibility
-        serviceRequested: values.services.map(s => s.description).join('\n')
+        serviceRequested: values.services.map(s => s.description).join('\n'),
+        // Per-job answers for notes whose job is being removed by this save.
+        orphanedNoteActions
       };
 
       if (id) {
@@ -493,7 +542,12 @@ const WorkOrderForm = () => {
                                 <button
                                   type="button"
                                   className="ml-2 text-red-600 hover:text-red-800"
-                                  onClick={() => remove(index)}
+                                  onClick={() => handleRemoveService(service, () => remove(index))}
+                                  title={
+                                    service._id && noteCountsByService[service._id.toString()]
+                                      ? `${noteCountsByService[service._id.toString()]} note(s) on this job`
+                                      : 'Remove this service'
+                                  }
                                 >
                                   <i className="fas fa-times"></i>
                                 </button>
@@ -560,6 +614,13 @@ const WorkOrderForm = () => {
           )}
         </Formik>
       </Card>
+
+      <JobNotesRemovalModal
+        isOpen={!!jobNotePrompt}
+        job={jobNotePrompt}
+        onClose={() => setJobNotePrompt(null)}
+        onConfirm={(action) => jobNotePrompt?.onResolved(action)}
+      />
     </div>
   );
 };

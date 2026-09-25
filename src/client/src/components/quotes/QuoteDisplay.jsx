@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters';
 import workOrderNotesService from '../../services/workOrderNotesService';
 import JobGroups from '../common/JobGroups';
-import { normalizeLiveGroups } from '../../utils/jobGrouping';
+import { normalizeLiveGroups, notesNotShownInGroups } from '../../utils/jobGrouping';
 
 const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost, laborCost, subtotal, taxRate = 0, taxAmount, total }, ref) => {
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
@@ -29,7 +29,10 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
   const { customer, vehicle, currentMileage, parts = [], labor = [], servicePackages = [], services = [] } = quoteData;
   const custAddr = customer?.address;
 
-  const jobGroups = normalizeLiveGroups({ services, parts, labor, servicePackages });
+  // Job notes print inside their job's block; only quote-level notes reach the
+  // Notes section at the bottom.
+  const jobGroups = normalizeLiveGroups({ services, parts, labor, servicePackages, customerFacingNotes });
+  const quoteLevelNotes = notesNotShownInGroups(customerFacingNotes, jobGroups);
 
   // Calculate totals from data if not provided as props
   const calculatedPartsCost = partsCost !== undefined ? partsCost
@@ -128,12 +131,12 @@ const QuoteDisplay = React.forwardRef(({ quoteData, businessSettings, partsCost,
       </div>
 
       {/* Customer-Facing Notes */}
-      {customerFacingNotes.length > 0 && (
+      {quoteLevelNotes.length > 0 && (
         <div className="mb-6 text-sm">
           <h3 className="font-semibold text-md mb-2 text-gray-700">Notes:</h3>
           <div className="border border-gray-300 rounded-md bg-gray-50">
             <div className="divide-y divide-gray-200">
-              {customerFacingNotes.map((note) => (
+              {quoteLevelNotes.map((note) => (
                 <div key={note._id} className="p-3">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs text-gray-500">

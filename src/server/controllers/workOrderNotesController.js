@@ -1,14 +1,34 @@
 const WorkOrderNote = require('../models/WorkOrderNote');
 const WorkOrder = require('../models/WorkOrder');
 
+// Resolve a job's name from the work order's services[], so the denormalized
+// serviceName on a note always matches the job it was filed under. Returns
+// undefined when the id doesn't resolve — the caller then stores no name
+// rather than a stale or invented one.
+const resolveServiceName = (workOrder, serviceId) => {
+  if (!serviceId) return undefined;
+  const svc = (workOrder.services || []).find(
+    (s) => s && s._id && s._id.toString() === serviceId.toString()
+  );
+  return svc ? svc.description : undefined;
+};
+
 // Get all notes for a specific work order
 const getWorkOrderNotes = async (req, res) => {
   try {
     const { workOrderId } = req.params;
-    const { customerFacing, noteType } = req.query;
+    const { customerFacing, noteType, serviceId } = req.query;
 
     // Build query
     const query = { workOrder: workOrderId };
+
+    // serviceId=<id> → that job's notes; serviceId=none → work-order-level only.
+    // Omitted → every note on the work order (what the detail page fetches).
+    if (serviceId === 'none') {
+      query.serviceId = null;
+    } else if (serviceId) {
+      query.serviceId = serviceId;
+    }
 
     // Support noteType filtering (preferred)
     if (noteType) {
@@ -45,7 +65,7 @@ const getWorkOrderNotes = async (req, res) => {
 const createWorkOrderNote = async (req, res) => {
   try {
     const { workOrderId } = req.params;
-    const { content, isCustomerFacing = false, noteType } = req.body;
+    const { content, isCustomerFacing = false, noteType, serviceId = null } = req.body;
 
     // Verify work order exists
     const workOrder = await WorkOrder.findById(workOrderId);
@@ -53,6 +73,16 @@ const createWorkOrderNote = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Work order not found'
+      });
+    }
+
+    // A job note must name a job that actually exists on this work order —
+    // otherwise it would render in no container at all.
+    const serviceName = resolveServiceName(workOrder, serviceId);
+    if (serviceId && !serviceName) {
+      return res.status(400).json({
+        success: false,
+        message: 'That job is not on this work order'
       });
     }
 
@@ -64,7 +94,9 @@ const createWorkOrderNote = async (req, res) => {
       workOrder: workOrderId,
       content: content.trim(),
       isCustomerFacing,
-      createdBy
+      createdBy,
+      serviceId: serviceId || null,
+      serviceName
     };
 
     // If noteType is provided, use it (preferred)
@@ -99,7 +131,7 @@ const createWorkOrderNote = async (req, res) => {
 const updateWorkOrderNote = async (req, res) => {
   try {
     const { noteId } = req.params;
-    const { content, isCustomerFacing, noteType } = req.body;
+    const { content, isCustomerFacing, noteType, serviceId } = req.body;
 
     const note = await WorkOrderNote.findById(noteId);
     if (!note) {
@@ -107,6 +139,25 @@ const updateWorkOrderNote = async (req, res) => {
         success: false,
         message: 'Note not found'
       });
+    }
+
+    // Reassigning a note to another job (or back to work-order level with null).
+    if (serviceId !== undefined) {
+      if (serviceId === null || serviceId === '') {
+        note.serviceId = null;
+        note.serviceName = undefined;
+      } else {
+        const workOrder = await WorkOrder.findById(note.workOrder);
+        const serviceName = resolveServiceName(workOrder, serviceId);
+        if (!serviceName) {
+          return res.status(400).json({
+            success: false,
+            message: 'That job is not on this work order'
+          });
+        }
+        note.serviceId = serviceId;
+        note.serviceName = serviceName;
+      }
     }
 
     // Update fields

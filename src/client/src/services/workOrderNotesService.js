@@ -7,7 +7,9 @@ const workOrderNotesService = {
   /**
    * Get all notes for a work order
    * @param {string} workOrderId - The work order ID
-   * @param {boolean|null} customerFacing - Filter by customer-facing status (true/false/null for all)
+   * @param {boolean|Object|null} params - Legacy boolean customerFacing, or
+   *   {noteType, customerFacing, serviceId}. serviceId accepts a job id for that
+   *   job's notes or 'none' for work-order-level notes only; omit for all notes.
    * @returns {Promise} API response with notes
    */
   getNotes: async (workOrderId, params = null) => {
@@ -33,7 +35,8 @@ const workOrderNotesService = {
   /**
    * Create a new note for a work order
    * @param {string} workOrderId - The work order ID
-   * @param {Object} noteData - Note data {content, isCustomerFacing}
+   * @param {Object} noteData - Note data {content, isCustomerFacing, serviceId}
+   *   serviceId files the note under a job; omit/null for a work-order-level note.
    * @returns {Promise} API response with created note
    */
   createNote: async (workOrderId, noteData) => {

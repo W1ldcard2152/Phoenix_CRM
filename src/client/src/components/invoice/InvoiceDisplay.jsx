@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCurrency, parseLocalDate, formatDate, formatDateTime } from '../../utils/formatters'; // Import centralized formatter
 import workOrderNotesService from '../../services/workOrderNotesService';
 import JobGroups from '../common/JobGroups';
-import { normalizeInvoiceGroups, normalizeLiveGroups } from '../../utils/jobGrouping';
+import { normalizeInvoiceGroups, normalizeLiveGroups, notesNotShownInGroups } from '../../utils/jobGrouping';
 
 const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref) => {
   const [customerFacingNotes, setCustomerFacingNotes] = useState([]);
@@ -102,8 +102,12 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
   // Group line items by job. Modern invoices carry a per-item jobName; legacy
   // invoices (no items[]) fall back to the General bucket via live grouping.
   const jobGroups = (items && items.length > 0)
-    ? normalizeInvoiceGroups(items)
-    : normalizeLiveGroups({ services: workOrder?.services || [], parts, labor, servicePackages: services });
+    ? normalizeInvoiceGroups(items, customerFacingNotes)
+    : normalizeLiveGroups({ services: workOrder?.services || [], parts, labor, servicePackages: services, customerFacingNotes });
+
+  // Notes filed against a job print inside that job's block above; only what's
+  // left over reaches the Work Order Notes section.
+  const workOrderLevelNotes = notesNotShownInGroups(customerFacingNotes, jobGroups);
 
   const finalSubtotal = initialSubtotal !== undefined ? initialSubtotal : calculatedSubtotal;
   const finalDiscountAmount = initialDiscountAmount !== undefined
@@ -208,12 +212,12 @@ const InvoiceDisplay = React.forwardRef(({ invoiceData, businessSettings }, ref)
       </div>
 
       {/* Work Order Notes */}
-      {customerFacingNotes.length > 0 && (
+      {workOrderLevelNotes.length > 0 && (
         <div className="mb-6 text-sm">
           <h3 className="font-semibold text-md mb-2 text-gray-700">Work Order Notes:</h3>
           <div className="border border-gray-300 rounded-md bg-gray-50">
             <div className="divide-y divide-gray-200">
-              {customerFacingNotes.map((note, index) => (
+              {workOrderLevelNotes.map((note, index) => (
                 <div key={note._id} className="p-3">
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs text-gray-500">
